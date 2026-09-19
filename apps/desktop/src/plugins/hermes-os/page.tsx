@@ -1,4 +1,4 @@
-import { Button, cn, Codicon, host } from '@hermes/plugin-sdk'
+import { Button, Codicon, host } from '@hermes/plugin-sdk'
 import type { ReactNode } from 'react'
 
 export type HermesOsSection = 'mission' | 'attention' | 'projects' | 'fleet' | 'timeline' | 'security'
@@ -203,8 +203,7 @@ export function HermesOsPage({ section }: { section: HermesOsSection }) {
                   onClick={() => host.navigate(item.path)}
                   size="sm"
                   type="button"
-                  variant="ghost"
-                  className={cn(selected && 'bg-(--chrome-action-hover) text-(--ui-text-primary)')}
+                  variant={selected ? 'secondary' : 'ghost'}
                 >
                   <Codicon name={item.icon} size="0.8rem" />
                   {item.label}
