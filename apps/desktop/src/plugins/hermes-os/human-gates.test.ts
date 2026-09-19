@@ -14,7 +14,6 @@ describe('Hermes OS human gates', () => {
           patternKey: 'git.clean',
           patternKeys: ['git.clean', 'filesystem.delete'],
           sessionId: 'unlisted-runtime',
-          smartDenied: true,
           toolName: 'terminal'
         },
         'unlisted-runtime'
@@ -25,9 +24,23 @@ describe('Hermes OS human gates', () => {
       mode: 'unknown',
       patternKeys: ['git.clean', 'filesystem.delete'],
       profile: 'default',
-      smartDenied: true,
+      smartDenied: false,
       toolName: 'terminal'
     })
+  })
+
+  it('treats an explicit smart-denied request as proof of Smart mode', () => {
+    expect(
+      approvalProvenanceFor(
+        {
+          command: 'rm -rf generated',
+          description: 'recursive delete',
+          sessionId: 'runtime',
+          smartDenied: true
+        },
+        'runtime'
+      ).mode
+    ).toBe('smart')
   })
 
   it('uses a confirmed mode resolver without changing policy provenance', () => {
