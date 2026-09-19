@@ -67,8 +67,11 @@ def telemetry_security_summary(config: dict | None) -> dict:
     endpoint = endpoint.strip()
 
     safe = _endpoint_is_safe(endpoint)
-    parsed = urlparse(endpoint) if endpoint else None
-    host = (parsed.hostname or "") if parsed else ""
+    try:
+        parsed = urlparse(endpoint) if endpoint else None
+        host = (parsed.hostname or "") if parsed else ""
+    except ValueError:
+        host = ""
 
     if endpoint == DEFAULT_ENDPOINT:
         destination = "nous"
