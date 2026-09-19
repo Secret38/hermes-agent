@@ -45,6 +45,10 @@ function canOpenProjectSession(
   const profile = session.profile || activeProfile || 'default'
 
   if (session.connection_id) {
+    if (session.connection_id === activeConnectionId && profile === activeProfile) {
+      return { allowed: true }
+    }
+
     const route = exactOperationsRoute(session.connection_id, profile, routes)
     return route ? { allowed: true, route } : { allowed: false }
   }
