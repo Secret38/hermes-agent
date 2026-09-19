@@ -39,7 +39,8 @@ import {
   fetchBoard,
   fetchOperationsRunInspection,
   fetchOperationsSnapshot,
-  fetchOperationsTaskExecution
+  fetchOperationsTaskExecution,
+  fetchOperationsTaskLog
 } from './api'
 import { KanbanBoardPage } from './board'
 import { KANBAN_LOCALES } from './i18n'
@@ -123,6 +124,7 @@ const plugin: HermesPlugin = {
           queryKey: ['operations', 'kanban'],
           readRunInspection: fetchOperationsRunInspection,
           readTaskExecution: fetchOperationsTaskExecution,
+          readTaskLog: fetchOperationsTaskLog,
           readSnapshot: async () => {
             const connectionId = host.state.connectionId.get()
             const profile = host.state.profile.get()
