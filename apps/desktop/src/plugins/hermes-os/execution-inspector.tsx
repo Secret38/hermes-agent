@@ -95,26 +95,26 @@ function Meta({
 }
 
 function RunCard({
-  connectionId,
   routes,
   run,
+  snapshot,
   source
 }: {
-  connectionId?: null | string
   routes: readonly PluginProfileRoute[]
   run: OperationsRun
+  snapshot: OperationsTaskSnapshot
   source: OperationsTaskSource
 }) {
   const inspection = useQuery({
     enabled: Boolean(!run.endedAt && source.readRunInspection),
-    queryFn: () => source.readRunInspection!(run.id),
-    queryKey: ['hermes-os', 'run-inspection', source.id, String(run.id)],
+    queryFn: () => source.readRunInspection!(run.id, snapshot),
+    queryKey: ['hermes-os', 'run-inspection', source.id, snapshot.scopeKey, String(run.id)],
     refetchInterval: 2_500,
     retry: false,
     staleTime: 1_000
   })
 
-  const workerRoute = exactOperationsRoute(connectionId, run.profile, routes)
+  const workerRoute = exactOperationsRoute(snapshot.connectionId, run.profile, routes)
   const canOpenWorker = Boolean(run.workerSessionId && workerRoute)
 
   return (
@@ -206,8 +206,16 @@ function InspectorBody({
   const { snapshot, source, task } = selection
   const execution = useQuery({
     enabled: Boolean(source.readTaskExecution),
-    queryFn: () => source.readTaskExecution!(task.id),
-    queryKey: ['hermes-os', 'task-execution', source.id, task.id, snapshot.connectionId, snapshot.profile],
+    queryFn: () => source.readTaskExecution!(task.id, snapshot),
+    queryKey: [
+      'hermes-os',
+      'task-execution',
+      source.id,
+      task.id,
+      snapshot.connectionId,
+      snapshot.profile,
+      snapshot.scopeKey
+    ],
     refetchInterval: task.status === 'running' ? 4_000 : false,
     retry: false,
     staleTime: 1_500
@@ -285,10 +293,10 @@ function InspectorBody({
                 <div className="mt-2">
                   {[...execution.data.runs].reverse().map(run => (
                     <RunCard
-                      connectionId={snapshot.connectionId}
                       key={String(run.id)}
                       routes={routes}
                       run={run}
+                      snapshot={snapshot}
                       source={source}
                     />
                   ))}
