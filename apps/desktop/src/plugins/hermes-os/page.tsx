@@ -11,6 +11,7 @@ import {
 } from './execution-inspector'
 import { openHumanGateSession, resolveHumanGateApproval, useHumanGates, type HumanGate } from './human-gates'
 import { sourceForSnapshot, useHermesOperations, useLiveFleet } from './operations-data'
+import { useComputerUseSecurity } from './security-data'
 import { openHermesSession, storedHermesSessionId } from './session-navigation'
 import {
   activeRunIds,
@@ -795,6 +796,7 @@ function SecurityPage() {
   const snapshot = useHermesOperations()
   const humanGates = useHumanGates()
   const approvalModes = useStore($approvalModes)
+  const computerUse = useComputerUseSecurity()
   const approvals = humanGates.filter(gate => gate.kind === 'approval')
   const profiles = new Set([
     snapshot.profile || 'default',
@@ -822,6 +824,76 @@ function SecurityPage() {
           <FoundationRow detail={snapshot.cwd || 'No workspace attached.'} icon="folder" label="Workspace scope" state={snapshot.cwd ? 'BOUND' : 'NONE'} />
           <FoundationRow detail={`${snapshot.sources.length} registered read-only source(s)`} icon="lock" label="Operations data" state="READ ONLY" />
         </div>
+      </section>
+
+      <section>
+        <div className="flex items-baseline justify-between gap-4">
+          <h3 className="text-sm font-semibold text-(--ui-text-primary)">Computer Use boundary</h3>
+          <span className="font-mono text-[0.6875rem] text-(--ui-text-tertiary)">
+            {computerUse.data?.permission_mode.toUpperCase() || (computerUse.isError ? 'UNAVAILABLE' : 'LOADING')}
+          </span>
+        </div>
+        <p className="mt-1 max-w-3xl text-xs leading-relaxed text-(--ui-text-tertiary)">
+          Sanitized profile-scoped policy facts only. Manifest paths and contents never leave the backend authority.
+        </p>
+        {computerUse.isError ? (
+          <p className="mt-2 text-xs text-(--ui-text-tertiary)">
+            This backend does not expose the narrow Computer Use security summary.
+          </p>
+        ) : computerUse.data ? (
+          <div className="mt-2 divide-y divide-(--ui-stroke-tertiary)">
+            <FoundationRow
+              detail={
+                computerUse.data.permission_mode === 'bounded'
+                  ? 'cua-driver is configured with a manifest-backed capability ceiling.'
+                  : 'Normal Computer Use approval behavior; unrestricted remains session-only via explicit approval bypass.'
+              }
+              icon="remote-explorer"
+              label="Permission mode"
+              state={computerUse.data.permission_mode.toUpperCase()}
+            />
+            <FoundationRow
+              detail={
+                computerUse.data.telemetry_enabled
+                  ? 'cua-driver anonymous telemetry is explicitly enabled by profile configuration.'
+                  : 'Hermes disables cua-driver anonymous telemetry by default.'
+              }
+              icon="broadcast"
+              label="Driver telemetry"
+              state={computerUse.data.telemetry_enabled ? 'ENABLED' : 'DISABLED'}
+            />
+            <FoundationRow
+              detail={
+                !computerUse.data.manifest.configured
+                  ? computerUse.data.manifest.required
+                    ? 'Bounded mode requires a capability manifest, but none is configured.'
+                    : 'No capability manifest is configured for this profile.'
+                  : !computerUse.data.manifest.readable
+                    ? 'A capability manifest is configured but cannot be safely read.'
+                    : computerUse.data.manifest.version == null
+                      ? 'Manifest is readable but has no recognized integer version.'
+                      : computerUse.data.manifest.mode_independent
+                        ? `Capability manifest v${computerUse.data.manifest.version}; usable as a ceiling across permission modes.`
+                        : `Legacy capability manifest v${computerUse.data.manifest.version}; mode-specific semantics apply.`
+              }
+              icon="shield"
+              label="Capability manifest"
+              state={
+                !computerUse.data.manifest.configured
+                  ? computerUse.data.manifest.required
+                    ? 'MISSING'
+                    : 'NONE'
+                  : !computerUse.data.manifest.readable
+                    ? 'UNREADABLE'
+                    : computerUse.data.manifest.mode_independent
+                      ? `V${computerUse.data.manifest.version}`
+                      : 'LEGACY'
+              }
+            />
+          </div>
+        ) : (
+          <p className="mt-2 text-xs text-(--ui-text-tertiary)">Reading Computer Use security state…</p>
+        )}
       </section>
 
       <section>
