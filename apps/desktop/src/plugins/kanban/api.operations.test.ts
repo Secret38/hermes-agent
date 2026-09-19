@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
 import type { KanbanTaskDetail } from './types'
-import { toOperationsRunInspection, toOperationsSnapshot, toOperationsTaskExecution } from './api'
+import {
+  toOperationsRunInspection,
+  toOperationsSnapshot,
+  toOperationsTaskExecution,
+  toOperationsTaskLog
+} from './api'
 
 describe('Kanban operations execution projection', () => {
   it('preserves the board scope used to produce an operations snapshot', () => {
@@ -74,6 +79,7 @@ describe('Kanban operations execution projection', () => {
       workspacePath: '/work/project',
       branchName: 'agent/t_1',
       artifacts: [{ id: 7, name: 'report.json', sizeBytes: 2048 }],
+      events: [],
       runs: [
         {
           id: 10,
@@ -100,6 +106,22 @@ describe('Kanban operations execution projection', () => {
           error: undefined
         }
       ]
+    })
+  })
+
+  it('projects worker log metadata and content', () => {
+    expect(
+      toOperationsTaskLog({
+        exists: true,
+        size_bytes: 4096,
+        content: 'worker output',
+        truncated: true
+      })
+    ).toEqual({
+      exists: true,
+      sizeBytes: 4096,
+      content: 'worker output',
+      truncated: true
     })
   })
 
