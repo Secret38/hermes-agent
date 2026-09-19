@@ -44,6 +44,51 @@ def _endpoint_is_safe(endpoint: str) -> bool:
     return parsed.scheme == "http" and (parsed.hostname or "") in _LOCAL_HOSTS
 
 
+def telemetry_security_summary(config: dict | None) -> dict:
+    """Side-effect-free, sanitized shared-metrics posture for local control UIs.
+
+    Deliberately omits the raw endpoint. transmission_enabled is the effective
+    state after collection + endpoint safety are applied; a requested send that
+    cannot legally transmit therefore reads False without causing the config
+    getter itself to emit resolver warnings.
+    """
+    raw = config if isinstance(config, dict) else {}
+    telemetry = raw.get("telemetry")
+    telemetry = telemetry if isinstance(telemetry, dict) else {}
+    shared = telemetry.get("shared_metrics")
+    shared = shared if isinstance(shared, dict) else {}
+
+    collection_enabled = shared.get("enabled") is True
+    transmission_requested = shared.get("send") is True
+
+    endpoint = shared.get("endpoint")
+    if not isinstance(endpoint, str) or not endpoint.strip():
+        endpoint = DEFAULT_ENDPOINT
+    endpoint = endpoint.strip()
+
+    safe = _endpoint_is_safe(endpoint)
+    parsed = urlparse(endpoint) if endpoint else None
+    host = (parsed.hostname or "") if parsed else ""
+
+    if endpoint == DEFAULT_ENDPOINT:
+        destination = "nous"
+    elif host in _LOCAL_HOSTS:
+        destination = "loopback"
+    elif safe:
+        destination = "custom_https"
+    else:
+        destination = "blocked"
+
+    return {
+        "shared_metrics": {
+            "collection_enabled": collection_enabled,
+            "transmission_requested": transmission_requested,
+            "transmission_enabled": collection_enabled and transmission_requested and safe,
+            "destination": destination,
+        }
+    }
+
+
 def resolve_send_config(config: dict | None) -> SendConfig:
     """Resolve transmission settings from config (endpoint: config > production default).
 
