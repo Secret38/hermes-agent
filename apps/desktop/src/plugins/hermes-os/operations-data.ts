@@ -148,10 +148,11 @@ export function useLiveFleet() {
   const liveSessionSnapshots = useStore($liveSessionSnapshots)
   const subagentsBySession = useStore($subagentsBySession)
   const connectionId = useValue(host.state.connectionId)
+  const gateway = useValue(host.state.gateway)
   const profile = useValue(host.state.profile)
   const scopeKey = liveSessionScopeKey(connectionId, profile)
   const snapshot = liveSessionSnapshots[scopeKey]
-  const sessions = snapshot?.sessions ?? []
+  const sessions = gateway ? (snapshot?.sessions ?? []) : []
 
   return {
     data: {
