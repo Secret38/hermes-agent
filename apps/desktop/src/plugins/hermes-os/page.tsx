@@ -1,9 +1,9 @@
 import { Button, Codicon, host, type OperationsTask, type OperationsTaskSnapshot, type OperationsTaskSource } from '@hermes/plugin-sdk'
 import type { ReactNode } from 'react'
 
-import { openHumanGateSession, resolveHumanGateApproval, useHumanGates, type HumanGate } from './human-gates'
 import { notifyError } from '@/store/notifications'
 
+import { openHumanGateSession, resolveHumanGateApproval, useHumanGates, type HumanGate } from './human-gates'
 import { sourceForSnapshot, useHermesOperations, useLiveFleet } from './operations-data'
 import {
   activeRunIds,
@@ -30,7 +30,7 @@ const SECTIONS: Record<HermesOsSection, SectionDefinition> = {
     path: '/hermes-os'
   },
   attention: {
-    description: 'Human approvals, questions, credentials, review states, blockers, and diagnostics that need you.'
+    description: 'Human approvals, questions, credentials, review states, blockers, and diagnostics that need you.',
     icon: 'bell',
     label: 'What Needs Me',
     path: '/hermes-os/attention'
