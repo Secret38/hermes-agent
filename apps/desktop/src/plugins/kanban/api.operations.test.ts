@@ -1,9 +1,30 @@
 import { describe, expect, it } from 'vitest'
 
 import type { KanbanTaskDetail } from './types'
-import { toOperationsRunInspection, toOperationsTaskExecution } from './api'
+import { toOperationsRunInspection, toOperationsSnapshot, toOperationsTaskExecution } from './api'
 
 describe('Kanban operations execution projection', () => {
+  it('preserves the board scope used to produce an operations snapshot', () => {
+    const snapshot = toOperationsSnapshot(
+      {
+        assignees: [],
+        columns: [],
+        latest_event_id: 0,
+        now: 10,
+        tenants: []
+      },
+      {
+        boards: [{ slug: 'alpha', name: 'Alpha' }],
+        current: 'alpha'
+      },
+      [],
+      'alpha'
+    )
+
+    expect(snapshot.scopeKey).toBe('alpha')
+  })
+
+
   it('projects task runs, artifacts, workspace, result, and failure fields', () => {
     const detail: KanbanTaskDetail = {
       task: {
