@@ -1,3 +1,4 @@
+import { host } from '@hermes/plugin-sdk'
 import { useStore } from '@nanostores/react'
 
 import { openSession } from '@/app/open-session'
@@ -12,8 +13,6 @@ import {
 } from '@/store/prompts'
 import { ownerLookupSessionRows, sessionMatchesStoredId } from '@/store/session'
 import { storedSessionIdForRuntimeId } from '@/store/session-states'
-
-import { host } from '@hermes/plugin-sdk'
 
 export type HumanGateKind = 'approval' | 'clarify' | 'secret' | 'sudo' | 'vault-code' | 'vault-save' | 'vault-unlock'
 
