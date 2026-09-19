@@ -14,6 +14,7 @@ import {
   activeRunIds,
   attentionOperationalTasks,
   exactWorkerRoute,
+  executionOperationalTasks,
   runningOperationalTasks,
   taskCountForProject,
   uniqueOperationalProjects
@@ -152,7 +153,9 @@ function OperationalTaskRows({
           const route = exactWorkerRoute(task, snapshot, routes)
           const canInspect = Boolean(snapshot && source?.readTaskExecution)
           const canOpenWorker = Boolean(task.workerSessionId && route)
-          const taskAction = source?.openTask ? () => source.openTask?.(task.id) : undefined
+          const inspectAction =
+            canInspect && snapshot && source ? () => setInspection({ snapshot, source, task }) : undefined
+          const taskAction = source?.openTask ? () => source.openTask?.(task.id) : inspectAction
 
           if (canInspect || canOpenWorker) {
             return (
@@ -180,7 +183,7 @@ function OperationalTaskRows({
                 </button>
                 {canInspect ? (
                   <Button
-                    onClick={() => setInspection({ snapshot: snapshot!, source: source!, task })}
+                    onClick={inspectAction}
                     size="sm"
                     type="button"
                     variant="secondary"
@@ -651,34 +654,51 @@ function FleetPage() {
 function TimelinePage() {
   const snapshot = useHermesOperations()
   const runtimeRuns = activeRunIds(snapshot.busyBySession)
-  const tasks = runningOperationalTasks(snapshot.snapshots)
+  const tasks = executionOperationalTasks(snapshot.snapshots)
 
   return (
     <div className="space-y-6">
       <section>
-        <h2 className="text-sm font-semibold text-(--ui-text-primary)">Running tasks</h2>
+        <div className="flex items-baseline justify-between gap-4">
+          <h2 className="text-sm font-semibold text-(--ui-text-primary)">Execution history</h2>
+          <span className="font-mono text-[0.6875rem] text-(--ui-text-tertiary)">{tasks.length}</span>
+        </div>
+        <p className="mt-1 max-w-3xl text-xs leading-relaxed text-(--ui-text-tertiary)">
+          Tasks with recorded execution lineage, newest first. Inspect opens producer-owned run history without copying it
+          into Hermes OS.
+        </p>
         {!snapshot.sources.length ? (
-          <NoTaskSource />
+          <div className="mt-2">
+            <NoTaskSource />
+          </div>
         ) : tasks.length ? (
-          <OperationalTaskRows
+          <div className="mt-2">
+            <OperationalTaskRows
               routes={snapshot.routes.data ?? []}
               snapshots={snapshot.snapshots}
               sources={snapshot.sources}
               tasks={tasks}
             />
+          </div>
         ) : (
-          <p className="mt-2 text-xs text-(--ui-text-tertiary)">No task source reports running work.</p>
+          <p className="mt-2 text-xs text-(--ui-text-tertiary)">No task source reports recorded execution yet.</p>
         )}
       </section>
 
       <section>
-        <h2 className="text-sm font-semibold text-(--ui-text-primary)">Runtime sessions</h2>
+        <h2 className="text-sm font-semibold text-(--ui-text-primary)">Live Hermes runtime sessions</h2>
         {runtimeRuns.length === 0 ? (
           <p className="mt-2 text-xs text-(--ui-text-tertiary)">No Hermes session is currently mid-turn.</p>
         ) : (
           <div className="mt-2 divide-y divide-(--ui-stroke-tertiary)">
             {runtimeRuns.map(sessionId => (
-              <FoundationRow detail="Hermes runtime session currently executing a turn." icon="pulse" key={sessionId} label={sessionId} state="RUNNING" />
+              <FoundationRow
+                detail="Hermes runtime session currently executing a turn."
+                icon="pulse"
+                key={sessionId}
+                label={sessionId}
+                state="RUNNING"
+              />
             ))}
           </div>
         )}
