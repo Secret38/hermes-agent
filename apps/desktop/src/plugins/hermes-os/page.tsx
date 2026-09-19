@@ -11,6 +11,8 @@ import {
 } from './execution-inspector'
 import { openHumanGateSession, resolveHumanGateApproval, useHumanGates, type HumanGate } from './human-gates'
 import { sourceForSnapshot, useHermesOperations, useLiveFleet } from './operations-data'
+import { ProjectInspector } from './project-inspector'
+import { useHermesProjects } from './project-data'
 import { useComputerUseSecurity } from './security-data'
 import { openHermesSession, storedHermesSessionId } from './session-navigation'
 import {
@@ -18,9 +20,7 @@ import {
   attentionOperationalTasks,
   exactWorkerRoute,
   executionOperationalTasks,
-  runningOperationalTasks,
-  taskCountForProject,
-  uniqueOperationalProjects
+  runningOperationalTasks
 } from './selectors'
 
 export type HermesOsSection = 'mission' | 'attention' | 'projects' | 'fleet' | 'timeline' | 'security'
@@ -554,37 +554,86 @@ function AttentionPage() {
 
 function ProjectsPage() {
   const snapshot = useHermesOperations()
-  const projects = uniqueOperationalProjects(snapshot.snapshots)
+  const hermesProjects = useHermesProjects()
+  const [selectedProjectId, setSelectedProjectId] = useState<null | string>(null)
+  const selectedProject = hermesProjects.projects.find(project => project.id === selectedProjectId) ?? null
 
   return (
     <div className="space-y-5">
       <div>
         <div className="flex items-center gap-2">
           <Codicon className="text-(--ui-text-secondary)" name="project" size="1rem" />
-          <h2 className="text-base font-semibold text-(--ui-text-primary)">Operational projects</h2>
+          <h2 className="text-base font-semibold text-(--ui-text-primary)">Hermes Projects</h2>
         </div>
         <p className="mt-1 max-w-3xl text-sm leading-relaxed text-(--ui-text-tertiary)">
-          Projects are projected from the source that already owns them; Hermes OS adds no project persistence.
+          Project identity, repository membership, and session ownership come from Hermes Projects. Operational task
+          sources only overlay workload by exact project id.
         </p>
       </div>
 
-      {!snapshot.sources.length ? (
-        <NoTaskSource />
-      ) : projects.length ? (
+      {hermesProjects.loading && hermesProjects.projects.length === 0 ? (
+        <p className="text-xs text-(--ui-text-tertiary)">Loading authoritative project tree…</p>
+      ) : hermesProjects.projects.length ? (
         <div className="divide-y divide-(--ui-stroke-tertiary)">
-          {projects.map(project => (
-            <FoundationRow
-              detail={project.path || project.slug || project.id}
-              icon="repo"
-              key={project.id}
-              label={project.name}
-              state={`${taskCountForProject(snapshot.snapshots, project.id)} ACTIVE`}
-            />
-          ))}
+          {hermesProjects.projects.map(project => {
+            const tasks = snapshot.snapshots.flatMap(source => source.tasks).filter(task => task.projectId === project.id)
+            const running = tasks.filter(task => task.status === 'running').length
+
+            return (
+              <button
+                className="flex w-full min-w-0 items-center gap-3 py-3 text-left hover:bg-(--chrome-action-hover)"
+                key={project.id}
+                onClick={() => setSelectedProjectId(project.id)}
+                type="button"
+              >
+                <Codicon
+                  className="shrink-0 text-(--ui-text-tertiary)"
+                  name={project.isNoProject ? 'home' : project.isAuto ? 'repo' : 'project'}
+                  size="0.9rem"
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium text-(--ui-text-primary)">{project.label}</div>
+                  <div className="truncate text-xs text-(--ui-text-tertiary)">
+                    {[
+                      project.path,
+                      `${project.repos.length} repo${project.repos.length === 1 ? '' : 's'}`,
+                      `${project.sessionCount} session${project.sessionCount === 1 ? '' : 's'}`,
+                      tasks.length ? `${tasks.length} task${tasks.length === 1 ? '' : 's'}` : null
+                    ].filter(Boolean).join(' · ')}
+                  </div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <div className="font-mono text-[0.6875rem] text-(--ui-text-secondary)">
+                    {running ? `${running} RUNNING` : tasks.length ? `${tasks.length} TASKS` : 'IDLE'}
+                  </div>
+                  {project.totalTokens ? (
+                    <div className="mt-0.5 font-mono text-[0.625rem] text-(--ui-text-quaternary)">
+                      {project.totalTokens.toLocaleString()} tokens
+                    </div>
+                  ) : null}
+                </div>
+              </button>
+            )
+          })}
         </div>
       ) : (
-        <p className="text-xs text-(--ui-text-tertiary)">The active task source has no project records.</p>
+        <p className="text-xs text-(--ui-text-tertiary)">
+          Hermes Projects has no project records for the active profile.
+        </p>
       )}
+
+      <ProjectInspector
+        onOpenChange={open => {
+          if (!open) {
+            setSelectedProjectId(null)
+          }
+        }}
+        open={selectedProject !== null}
+        project={selectedProject}
+        routes={snapshot.routes.data ?? []}
+        snapshots={snapshot.snapshots}
+        sources={snapshot.sources}
+      />
     </div>
   )
 }
