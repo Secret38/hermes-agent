@@ -189,10 +189,13 @@ export const fetchOrchestration = () => call<OrchestrationSettings>('/orchestrat
 
 /** Read-only normalized projection for Mission Control and other operations
  * surfaces. Kanban remains authoritative for persistence and workflow rules. */
-export async function fetchOperationsSnapshot(): Promise<OperationsTaskSnapshot> {
-  const [board, boards, projects] = await Promise.all([fetchBoard(false), fetchBoards(), fetchProjects()])
+export function toOperationsSnapshot(
+  board: KanbanBoard,
+  boards: BoardsResponse,
+  projects: readonly KanbanProject[]
+): OperationsTaskSnapshot {
   const current = boards.boards.find(item => item.slug === boards.current)
-  const projectById = new Map(projects.projects.map(project => [project.id, project]))
+  const projectById = new Map(projects.map(project => [project.id, project]))
   const boardProject = current?.project_id ? projectById.get(current.project_id) : undefined
 
   return {
@@ -200,7 +203,7 @@ export async function fetchOperationsSnapshot(): Promise<OperationsTaskSnapshot>
     sourceLabel: 'Kanban',
     scopeLabel: current?.name || current?.slug || boards.current || 'Current board',
     observedAt: board.now * 1000,
-    projects: projects.projects.map(project => ({
+    projects: projects.map(project => ({
       id: project.id,
       name: project.name,
       slug: project.slug,
@@ -227,6 +230,12 @@ export async function fetchOperationsSnapshot(): Promise<OperationsTaskSnapshot>
       })
     )
   }
+}
+
+export async function fetchOperationsSnapshot(): Promise<OperationsTaskSnapshot> {
+  const [board, boards, projects] = await Promise.all([fetchBoard(false), fetchBoards(), fetchProjects()])
+
+  return toOperationsSnapshot(board, boards, projects.projects)
 }
 
 // ── writes ────────────────────────────────────────────────────────────────────
