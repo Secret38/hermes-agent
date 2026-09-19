@@ -70,13 +70,16 @@ export function approvalProvenanceFor(
     ...(request.patternKeys ?? [])
   ].filter((value, index, values) => value && values.indexOf(value) === index)
 
+  const smartDenied = request.smartDenied === true
+  const confirmedMode = modeForProfile(profile)
+
   return {
     allowPermanent: request.allowPermanent !== false,
     allowSession: request.allowSession !== false,
-    mode: modeForProfile(profile),
+    mode: smartDenied ? 'smart' : confirmedMode,
     patternKeys,
     profile,
-    smartDenied: request.smartDenied === true,
+    smartDenied,
     ...(request.toolName ? { toolName: request.toolName } : {})
   }
 }
