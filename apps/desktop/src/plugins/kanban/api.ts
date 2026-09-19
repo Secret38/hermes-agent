@@ -189,11 +189,9 @@ export const fetchRunInspection = (id: number | string) =>
     num_threads?: null | number
   }>(withBoard(`/runs/${id}/inspect`))
 
-export async function fetchOperationsTaskExecution(id: string): Promise<OperationsTaskExecution> {
-  const detail = await fetchTask(id)
-
+export function toOperationsTaskExecution(detail: KanbanTaskDetail): OperationsTaskExecution {
   return {
-    taskId: id,
+    taskId: detail.task.id,
     result: detail.task.result,
     lastFailureError: detail.task.last_failure_error,
     workspacePath: detail.task.workspace_path,
@@ -218,9 +216,20 @@ export async function fetchOperationsTaskExecution(id: string): Promise<Operatio
   }
 }
 
-export async function fetchOperationsRunInspection(id: number | string): Promise<OperationsRunInspection> {
-  const inspection = await fetchRunInspection(id)
+export async function fetchOperationsTaskExecution(id: string): Promise<OperationsTaskExecution> {
+  return toOperationsTaskExecution(await fetchTask(id))
+}
 
+export function toOperationsRunInspection(inspection: {
+  run_id: number | string
+  alive: boolean
+  reason?: null | string
+  pid?: null | number
+  status?: null | string
+  cpu_percent?: null | number
+  memory_rss_bytes?: null | number
+  num_threads?: null | number
+}): OperationsRunInspection {
   return {
     runId: inspection.run_id,
     alive: inspection.alive,
@@ -231,6 +240,10 @@ export async function fetchOperationsRunInspection(id: number | string): Promise
     memoryRssBytes: inspection.memory_rss_bytes,
     numThreads: inspection.num_threads
   }
+}
+
+export async function fetchOperationsRunInspection(id: number | string): Promise<OperationsRunInspection> {
+  return toOperationsRunInspection(await fetchRunInspection(id))
 }
 
 /** Worker stdout/stderr tail (last 16 KiB — plenty for the drawer). */
