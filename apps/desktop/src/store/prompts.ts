@@ -81,12 +81,16 @@ function keyedPromptStore<T extends KeyedPrompt>(): PromptStore<T> {
 export interface ApprovalRequest extends KeyedPrompt {
   // false when the backend won't honor a permanent allow (tirith warning) → hide "Always allow".
   allowPermanent?: boolean
+  allowSession?: boolean
   choices?: string[]
   command: string
   description: string
+  patternKey?: string
+  patternKeys?: string[]
   requestId?: string
   serverRequestId?: string
   smartDenied?: boolean
+  toolName?: string
 }
 
 export type ApprovalChoice = 'always' | 'deny' | 'once' | 'session'
@@ -97,11 +101,15 @@ interface ApprovalGateway {
 
 interface PendingApprovalPayload {
   allow_permanent?: boolean
+  allow_session?: boolean
   choices?: unknown
   command?: unknown
   description?: unknown
+  pattern_key?: unknown
+  pattern_keys?: unknown
   request_id?: unknown
   smart_denied?: boolean
+  tool_name?: unknown
 }
 
 export interface SudoRequest extends KeyedPrompt {
@@ -320,14 +328,20 @@ export async function replayPendingApproval(gateway: ApprovalGateway | null, ses
 
       return receiveApprovalRequest(gateway, {
         allowPermanent: pending.allow_permanent !== false,
+        allowSession: pending.allow_session !== false,
         choices: Array.isArray(pending.choices)
           ? pending.choices.filter(choice => typeof choice === 'string')
           : undefined,
         command: typeof pending.command === 'string' ? pending.command : '',
         description: typeof pending.description === 'string' ? pending.description : 'dangerous command',
+        patternKey: typeof pending.pattern_key === 'string' ? pending.pattern_key : undefined,
+        patternKeys: Array.isArray(pending.pattern_keys)
+          ? pending.pattern_keys.filter(key => typeof key === 'string')
+          : undefined,
         requestId: pending.request_id,
         sessionId,
-        smartDenied: pending.smart_denied === true
+        smartDenied: pending.smart_denied === true,
+        toolName: typeof pending.tool_name === 'string' ? pending.tool_name : undefined
       })
     })
   )
