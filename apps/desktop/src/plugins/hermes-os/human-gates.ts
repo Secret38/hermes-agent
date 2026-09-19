@@ -20,7 +20,7 @@ import {
 } from '@/store/prompts'
 import { ownerLookupSessionRows, sessionMatchesStoredId } from '@/store/session'
 
-import { openHermesSession } from './session-navigation'
+import { openHermesSession, storedHermesSessionId } from './session-navigation'
 
 export type HumanGateKind = 'approval' | 'clarify' | 'secret' | 'sudo' | 'vault-code' | 'vault-save' | 'vault-unlock'
 
@@ -36,7 +36,7 @@ export interface HumanGate {
 }
 
 function labelForSession(runtimeSessionId: string): string {
-  const storedId = runtimeSessionId
+  const storedId = storedHermesSessionId(runtimeSessionId)
   const row = ownerLookupSessionRows().find(session => sessionMatchesStoredId(session, storedId))
 
   return row?.title?.trim() || row?.preview?.trim() || `Session #${storedId.slice(-6)}`
