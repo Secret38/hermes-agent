@@ -6,9 +6,11 @@ import {
   type RouteContribution,
   ROUTES_AREA,
   SIDEBAR_NAV_AREA,
-  type SidebarNavContribution
+  type SidebarNavContribution,
+  STATUSBAR_AREAS
 } from '@hermes/plugin-sdk'
 
+import { HermesOsAttentionIndicator } from './attention-indicator'
 import { HermesOsPage, type HermesOsSection } from './page'
 
 interface HermesOsRoute {
@@ -44,6 +46,12 @@ const plugin: HermesPlugin = {
             render: () => <HermesOsPage section={route.section} />
           }) as const
       ),
+      {
+        id: 'attention-status',
+        area: STATUSBAR_AREAS.right,
+        order: 70,
+        render: () => <HermesOsAttentionIndicator />
+      },
       {
         id: 'nav',
         area: SIDEBAR_NAV_AREA,
