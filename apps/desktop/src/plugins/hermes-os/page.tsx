@@ -5,6 +5,7 @@ import { notifyError } from '@/store/notifications'
 
 import { openHumanGateSession, resolveHumanGateApproval, useHumanGates, type HumanGate } from './human-gates'
 import { sourceForSnapshot, useHermesOperations, useLiveFleet } from './operations-data'
+import { openHermesSession } from './session-navigation'
 import {
   activeRunIds,
   attentionOperationalTasks,
@@ -139,9 +140,47 @@ function OperationalTaskRows({
         const snapshot = owner(task)
         const source = snapshot ? sourceForSnapshot(sources, snapshot) : undefined
 
+        const taskAction = source?.openTask ? () => source.openTask?.(task.id) : undefined
+
+        if (task.workerSessionId) {
+          return (
+            <div
+              className="flex min-w-0 items-center gap-3 py-2.5"
+              key={`${snapshot?.sourceId ?? 'source'}:${task.id}`}
+            >
+              <button
+                className="flex min-w-0 flex-1 items-center gap-3 text-left hover:text-foreground"
+                onClick={taskAction}
+                type="button"
+              >
+                <Codicon
+                  className="shrink-0 text-(--ui-text-tertiary)"
+                  name={task.status === 'blocked' ? 'error' : task.status === 'review' ? 'eye' : 'pulse'}
+                  size="0.9rem"
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium text-(--ui-text-primary)">{task.title}</div>
+                  <div className="truncate text-xs text-(--ui-text-tertiary)">{taskDetail(task)}</div>
+                </div>
+                <div className="shrink-0 font-mono text-[0.6875rem] text-(--ui-text-secondary)">
+                  {(task.warning?.severity || task.status).toUpperCase()}
+                </div>
+              </button>
+              <Button
+                onClick={() => openHermesSession(task.workerSessionId!)}
+                size="sm"
+                type="button"
+                variant="text"
+              >
+                Worker
+              </Button>
+            </div>
+          )
+        }
+
         return (
           <FoundationRow
-            action={source?.openTask ? () => source.openTask?.(task.id) : undefined}
+            action={taskAction}
             detail={taskDetail(task)}
             icon={task.status === 'blocked' ? 'error' : task.status === 'review' ? 'eye' : 'pulse'}
             key={`${snapshot?.sourceId ?? 'source'}:${task.id}`}
