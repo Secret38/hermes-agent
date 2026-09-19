@@ -23,23 +23,26 @@ export function flattenProjectSessions(project: SidebarProjectTree | null | unde
     return []
   }
 
-  const seen = new Set<string>()
-  const sessions: SessionInfo[] = []
+  const newestByLineage = new Map<string, SessionInfo>()
 
   for (const repo of project.repos) {
     for (const group of repo.groups) {
       for (const session of group.sessions) {
         const key = session._lineage_root_id || session.id
+        const current = newestByLineage.get(key)
+        const activity = session.last_active || session.started_at || 0
+        const currentActivity = current ? current.last_active || current.started_at || 0 : -1
 
-        if (!seen.has(key)) {
-          seen.add(key)
-          sessions.push(session)
+        if (!current || activity > currentActivity) {
+          newestByLineage.set(key, session)
         }
       }
     }
   }
 
-  return sessions.sort((a, b) => (b.last_active || b.started_at || 0) - (a.last_active || a.started_at || 0))
+  return [...newestByLineage.values()].sort(
+    (a, b) => (b.last_active || b.started_at || 0) - (a.last_active || a.started_at || 0)
+  )
 }
 
 export function useHermesProjects() {
