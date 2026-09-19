@@ -1556,6 +1556,17 @@ export { CapabilitiesView } from '@/app/capabilities'
  *  renders anywhere (a plugin dialog); pass a live `gateway` (see
  *  `host.getGateway()`) and an optional `profile` to scope it to one bot. */
 export { McpTab } from '@/app/capabilities/mcp/mcp-tab'
+/** Read-only contribution discovery for data-source style plugin contracts. */
+export { useContributions } from '@/contrib/react/use-contributions'
+export {
+  OPERATIONS_TASK_SOURCES_AREA,
+  type OperationsProject,
+  type OperationsTask,
+  type OperationsTaskSnapshot,
+  type OperationsTaskSource,
+  type OperationsTaskWarning
+} from '@/contrib/operations'
+
 // Every contribution surface, plugin-reachable: register keybinds, palette
 // commands, routes, themes, panes, composer extensions, and bar items with
 // the same area ids + payload types core uses.
