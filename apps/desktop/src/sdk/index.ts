@@ -1561,11 +1561,13 @@ export { useContributions } from '@/contrib/react/use-contributions'
 export {
   OPERATIONS_TASK_SOURCES_AREA,
   type OperationsArtifact,
+  type OperationsEvent,
   type OperationsProject,
   type OperationsRun,
   type OperationsRunInspection,
   type OperationsTask,
   type OperationsTaskExecution,
+  type OperationsTaskLog,
   type OperationsTaskSnapshot,
   type OperationsTaskSource,
   type OperationsTaskWarning
