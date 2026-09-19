@@ -11,6 +11,7 @@ export interface KanbanTask {
   assignee?: null | string
   priority?: number
   tenant?: null | string
+  project_id?: null | string
   created_at?: number
   latest_summary?: null | string
   comment_count?: number
