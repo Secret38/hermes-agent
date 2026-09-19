@@ -28,10 +28,9 @@ import { $gateway } from '@/store/gateway'
 import { reconnectAction } from '@/store/gateway-reconnect'
 import { notifyError } from '@/store/notifications'
 import {
-  answerApproval,
+  type ApprovalChoice,
   type ApprovalRequest,
-  clearApprovalRequest,
-  replayPendingApproval,
+  resolveApprovalRequest,
   sessionApprovalRequests,
   sessionApprovalStackSize
 } from '@/store/prompts'
@@ -41,7 +40,6 @@ import { isApprovalActivity } from './approval-activity'
 import { toolEntryDisclosureId } from './fallback-model/targets'
 import { isToolCallPart, summarizeToolRun } from './run-summary'
 
-type ApprovalChoice = 'once' | 'session' | 'always' | 'deny'
 export const ApprovalPlacementContext = createContext<'inline' | 'floating'>('inline')
 
 // One transcript-owned host for the session. Execution rows never mount,
@@ -162,18 +160,11 @@ async function sendApproval(request: ApprovalRequest, choice: ApprovalChoice) {
     throw new Error('Gateway disconnected')
   }
 
-  if (
-    !sessionApprovalRequests(request.sessionId)
-      .get()
-      .some(item => item.requestId === request.requestId)
-  ) {
-    return
-  }
+  const resolved = await resolveApprovalRequest(gateway, request, choice)
 
-  await answerApproval(gateway, request, choice)
-  triggerHaptic(choice === 'deny' ? 'cancel' : 'submit')
-  clearApprovalRequest(request.sessionId, request.requestId)
-  void replayPendingApproval(gateway, request.sessionId).catch(() => undefined)
+  if (resolved) {
+    triggerHaptic(choice === 'deny' ? 'cancel' : 'submit')
+  }
 }
 
 export function ApprovalQueue({
