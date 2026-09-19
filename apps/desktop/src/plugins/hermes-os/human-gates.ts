@@ -3,6 +3,7 @@ import { useStore } from '@nanostores/react'
 
 import { openSession } from '@/app/open-session'
 import { $clarifyRequests, type ClarifyRequest } from '@/store/clarify'
+import { $gateway } from '@/store/gateway'
 import {
   $approvalRequestQueues,
   $secretRequests,
@@ -19,7 +20,6 @@ import {
   type VaultUnlockRequest,
   resolveApprovalRequest
 } from '@/store/prompts'
-import { $gateway } from '@/store/gateway'
 import { ownerLookupSessionRows, sessionMatchesStoredId } from '@/store/session'
 import { storedSessionIdForRuntimeId } from '@/store/session-states'
 
