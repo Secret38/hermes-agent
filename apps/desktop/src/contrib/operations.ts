@@ -55,6 +55,21 @@ export interface OperationsArtifact {
   sizeBytes?: null | number
 }
 
+export interface OperationsEvent {
+  id: number | string
+  kind: string
+  createdAt: number
+  detail?: null | string
+}
+
+export interface OperationsTaskLog {
+  exists: boolean
+  sizeBytes: number
+  content: string
+  truncated: boolean
+}
+
+
 export interface OperationsTaskExecution {
   taskId: string
   result?: null | string
@@ -63,6 +78,7 @@ export interface OperationsTaskExecution {
   branchName?: null | string
   runs: OperationsRun[]
   artifacts: OperationsArtifact[]
+  events: OperationsEvent[]
 }
 
 export interface OperationsRunInspection {
@@ -107,6 +123,11 @@ export interface OperationsTaskSource {
     runId: number | string,
     snapshot: OperationsTaskSnapshot
   ) => Promise<OperationsRunInspection>
+  /** Optional worker/task log tail. */
+  readTaskLog?: (
+    taskId: string,
+    snapshot: OperationsTaskSnapshot
+  ) => Promise<OperationsTaskLog>
   /** Optional deep link into the producer's native UI. */
   openTask?: (taskId: string) => void
 }
