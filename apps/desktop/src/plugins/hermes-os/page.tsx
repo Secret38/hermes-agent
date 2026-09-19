@@ -1,4 +1,4 @@
-import { Button, Codicon, host, type OperationsTask, type OperationsTaskSnapshot, type OperationsTaskSource } from '@hermes/plugin-sdk'
+import { Button, Codicon, host, type OperationsTask, type OperationsTaskSnapshot, type OperationsTaskSource, type PluginProfileRoute } from '@hermes/plugin-sdk'
 import { type ReactNode, useState } from 'react'
 
 import { notifyError } from '@/store/notifications'
@@ -123,10 +123,12 @@ function taskDetail(task: OperationsTask): string {
 }
 
 function OperationalTaskRows({
+  routes,
   snapshots,
   sources,
   tasks
 }: {
+  routes: readonly PluginProfileRoute[]
   snapshots: readonly OperationsTaskSnapshot[]
   sources: readonly OperationsTaskSource[]
   tasks: readonly OperationsTask[]
@@ -134,15 +136,28 @@ function OperationalTaskRows({
   const owner = (task: OperationsTask) =>
     snapshots.find(snapshot => snapshot.tasks.some(candidate => candidate === task)) ?? null
 
+  const workerRoute = (task: OperationsTask, snapshot: OperationsTaskSnapshot | null): PluginProfileRoute | null => {
+    if (!task.workerSessionId || !task.assignee || !snapshot?.connectionId) {
+      return null
+    }
+
+    const matches = routes.filter(
+      route => route.connectionId === snapshot.connectionId && route.targetProfile === task.assignee
+    )
+
+    return matches.length === 1 ? matches[0] : null
+  }
+
   return (
     <div className="divide-y divide-(--ui-stroke-tertiary)">
       {tasks.map(task => {
         const snapshot = owner(task)
         const source = snapshot ? sourceForSnapshot(sources, snapshot) : undefined
+        const route = workerRoute(task, snapshot)
 
         const taskAction = source?.openTask ? () => source.openTask?.(task.id) : undefined
 
-        if (task.workerSessionId) {
+        if (task.workerSessionId && route) {
           return (
             <div
               className="flex min-w-0 items-center gap-3 py-2.5"
@@ -167,7 +182,7 @@ function OperationalTaskRows({
                 </div>
               </button>
               <Button
-                onClick={() => openHermesSession(task.workerSessionId!)}
+                onClick={() => openHermesSession(task.workerSessionId!, route)}
                 size="sm"
                 type="button"
                 variant="text"
@@ -349,7 +364,12 @@ function MissionControl() {
         {!snapshot.sources.length ? (
           <NoTaskSource />
         ) : runningTasks.length ? (
-          <OperationalTaskRows snapshots={snapshot.snapshots} sources={snapshot.sources} tasks={runningTasks} />
+          <OperationalTaskRows
+            routes={snapshot.routes.data ?? []}
+            snapshots={snapshot.snapshots}
+            sources={snapshot.sources}
+            tasks={runningTasks}
+          />
         ) : (
           <p className="mt-2 text-xs text-(--ui-text-tertiary)">No operational task is currently in the running state.</p>
         )}
@@ -407,7 +427,12 @@ function AttentionPage() {
           <p className="mt-2 text-xs text-(--ui-text-tertiary)">The task source could not be read.</p>
         ) : tasks.length ? (
           <div className="mt-2">
-            <OperationalTaskRows snapshots={snapshot.snapshots} sources={snapshot.sources} tasks={tasks} />
+            <OperationalTaskRows
+              routes={snapshot.routes.data ?? []}
+              snapshots={snapshot.snapshots}
+              sources={snapshot.sources}
+              tasks={tasks}
+            />
           </div>
         ) : (
           <p className="mt-2 text-xs text-(--ui-text-tertiary)">
@@ -615,7 +640,12 @@ function TimelinePage() {
         {!snapshot.sources.length ? (
           <NoTaskSource />
         ) : tasks.length ? (
-          <OperationalTaskRows snapshots={snapshot.snapshots} sources={snapshot.sources} tasks={tasks} />
+          <OperationalTaskRows
+              routes={snapshot.routes.data ?? []}
+              snapshots={snapshot.snapshots}
+              sources={snapshot.sources}
+              tasks={tasks}
+            />
         ) : (
           <p className="mt-2 text-xs text-(--ui-text-tertiary)">No task source reports running work.</p>
         )}
