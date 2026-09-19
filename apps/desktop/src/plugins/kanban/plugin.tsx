@@ -113,11 +113,16 @@ const plugin: HermesPlugin = {
           id: 'kanban',
           label: 'Kanban',
           queryKey: ['operations', 'kanban'],
-          readSnapshot: async () => ({
-            ...(await fetchOperationsSnapshot()),
-            connectionId: host.state.connectionId.get(),
-            profile: host.state.profile.get()
-          }),
+          readSnapshot: async () => {
+            const connectionId = host.state.connectionId.get()
+            const profile = host.state.profile.get()
+
+            return {
+              ...(await fetchOperationsSnapshot()),
+              connectionId,
+              profile
+            }
+          },
           openTask: () => host.navigate('/kanban')
         } satisfies OperationsTaskSource
       },
