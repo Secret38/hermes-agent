@@ -43,6 +43,22 @@ export function taskCountForProject(snapshots: readonly OperationsTaskSnapshot[]
 }
 
 
+export function exactOperationsRoute(
+  connectionId: null | string | undefined,
+  targetProfile: null | string | undefined,
+  routes: readonly PluginProfileRoute[]
+): PluginProfileRoute | null {
+  if (!connectionId || !targetProfile) {
+    return null
+  }
+
+  const matches = routes.filter(
+    route => route.connectionId === connectionId && route.targetProfile === targetProfile
+  )
+
+  return matches.length === 1 ? matches[0] : null
+}
+
 /** Exact route for a standalone worker session. Fail closed when the producer
  * cannot prove its source connection or when more than one route could own the
  * assignee profile on that connection. */
@@ -51,13 +67,9 @@ export function exactWorkerRoute(
   snapshot: OperationsTaskSnapshot | null,
   routes: readonly PluginProfileRoute[]
 ): PluginProfileRoute | null {
-  if (!task.workerSessionId || !task.assignee || !snapshot?.connectionId) {
+  if (!task.workerSessionId) {
     return null
   }
 
-  const matches = routes.filter(
-    route => route.connectionId === snapshot.connectionId && route.targetProfile === task.assignee
-  )
-
-  return matches.length === 1 ? matches[0] : null
+  return exactOperationsRoute(snapshot?.connectionId, task.assignee, routes)
 }
