@@ -84,6 +84,8 @@ export interface OperationsTaskSnapshot {
   connectionId?: null | string
   /** Active/source profile when the producer was read. */
   profile?: null | string
+  /** Producer-defined scope key captured with this snapshot (board, workspace, queue, etc.). */
+  scopeKey?: null | string
   tasks: OperationsTask[]
   projects: OperationsProject[]
   scopeLabel?: null | string
@@ -96,9 +98,15 @@ export interface OperationsTaskSource {
   queryKey: readonly unknown[]
   readSnapshot: () => Promise<OperationsTaskSnapshot>
   /** Optional read-only execution history. The producer remains authoritative. */
-  readTaskExecution?: (taskId: string) => Promise<OperationsTaskExecution>
+  readTaskExecution?: (
+    taskId: string,
+    snapshot: OperationsTaskSnapshot
+  ) => Promise<OperationsTaskExecution>
   /** Optional live process inspection for an individual run. */
-  readRunInspection?: (runId: number | string) => Promise<OperationsRunInspection>
+  readRunInspection?: (
+    runId: number | string,
+    snapshot: OperationsTaskSnapshot
+  ) => Promise<OperationsRunInspection>
   /** Optional deep link into the producer's native UI. */
   openTask?: (taskId: string) => void
 }
