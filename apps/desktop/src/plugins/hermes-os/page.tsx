@@ -9,6 +9,7 @@ import { openHermesSession } from './session-navigation'
 import {
   activeRunIds,
   attentionOperationalTasks,
+  exactWorkerRoute,
   runningOperationalTasks,
   taskCountForProject,
   uniqueOperationalProjects
@@ -136,24 +137,12 @@ function OperationalTaskRows({
   const owner = (task: OperationsTask) =>
     snapshots.find(snapshot => snapshot.tasks.some(candidate => candidate === task)) ?? null
 
-  const workerRoute = (task: OperationsTask, snapshot: OperationsTaskSnapshot | null): PluginProfileRoute | null => {
-    if (!task.workerSessionId || !task.assignee || !snapshot?.connectionId) {
-      return null
-    }
-
-    const matches = routes.filter(
-      route => route.connectionId === snapshot.connectionId && route.targetProfile === task.assignee
-    )
-
-    return matches.length === 1 ? matches[0] : null
-  }
-
   return (
     <div className="divide-y divide-(--ui-stroke-tertiary)">
       {tasks.map(task => {
         const snapshot = owner(task)
         const source = snapshot ? sourceForSnapshot(sources, snapshot) : undefined
-        const route = workerRoute(task, snapshot)
+        const route = exactWorkerRoute(task, snapshot, routes)
 
         const taskAction = source?.openTask ? () => source.openTask?.(task.id) : undefined
 
