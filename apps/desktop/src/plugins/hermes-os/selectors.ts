@@ -1,4 +1,4 @@
-import type { OperationsTask, OperationsTaskSnapshot } from '@hermes/plugin-sdk'
+import type { OperationsTask, OperationsTaskSnapshot, PluginProfileRoute } from '@hermes/plugin-sdk'
 
 export function activeRunIds(busyBySession: Readonly<Record<string, boolean>>): string[] {
   return Object.entries(busyBySession)
@@ -40,4 +40,24 @@ export function uniqueOperationalProjects(snapshots: readonly OperationsTaskSnap
 
 export function taskCountForProject(snapshots: readonly OperationsTaskSnapshot[], projectId: string): number {
   return allOperationalTasks(snapshots).filter(task => task.projectId === projectId && task.status !== 'done').length
+}
+
+
+/** Exact route for a standalone worker session. Fail closed when the producer
+ * cannot prove its source connection or when more than one route could own the
+ * assignee profile on that connection. */
+export function exactWorkerRoute(
+  task: OperationsTask,
+  snapshot: OperationsTaskSnapshot | null,
+  routes: readonly PluginProfileRoute[]
+): PluginProfileRoute | null {
+  if (!task.workerSessionId || !task.assignee || !snapshot?.connectionId) {
+    return null
+  }
+
+  const matches = routes.filter(
+    route => route.connectionId === snapshot.connectionId && route.targetProfile === task.assignee
+  )
+
+  return matches.length === 1 ? matches[0] : null
 }
