@@ -5,6 +5,7 @@ import {
   activeRunIds,
   attentionOperationalTasks,
   exactWorkerRoute,
+  executionOperationalTasks,
   runningOperationalTasks,
   taskCountForProject,
   uniqueOperationalProjects
@@ -44,6 +45,24 @@ describe('Hermes OS selectors', () => {
   it('returns an empty operational set when no Hermes session is mid-turn', () => {
     expect(activeRunIds({ a: false, b: false })).toEqual([])
     expect(activeRunCount({ a: false, b: false })).toBe(0)
+  })
+
+  it('orders execution-bearing tasks by newest start time', () => {
+    const history = [
+      {
+        sourceId: 'kanban',
+        sourceLabel: 'Kanban',
+        observedAt: 1,
+        projects: [],
+        tasks: [
+          { id: 'old', title: 'Old', status: 'done', runId: 1, startedAt: 100 },
+          { id: 'none', title: 'None', status: 'todo' },
+          { id: 'new', title: 'New', status: 'done', runId: 2, startedAt: 300 }
+        ]
+      }
+    ]
+
+    expect(executionOperationalTasks(history).map(task => task.id)).toEqual(['new', 'old'])
   })
 
   it('derives running and attention work from producer-authored task state', () => {
