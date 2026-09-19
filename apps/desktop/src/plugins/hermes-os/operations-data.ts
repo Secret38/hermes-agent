@@ -136,9 +136,11 @@ async function readLiveFleetSessions(): Promise<LiveFleetSession[]> {
 
 export function useLiveFleet() {
   const subagentsBySession = useStore($subagentsBySession)
+  const connectionId = useValue(host.state.connectionId)
+  const profile = useValue(host.state.profile)
   const query = useQuery({
     queryFn: readLiveFleetSessions,
-    queryKey: ['hermes-os', 'live-fleet'],
+    queryKey: ['hermes-os', 'live-fleet', connectionId, profile],
     refetchInterval: 4_000,
     refetchOnWindowFocus: true,
     retry: false,
