@@ -1560,8 +1560,12 @@ export { McpTab } from '@/app/capabilities/mcp/mcp-tab'
 export { useContributions } from '@/contrib/react/use-contributions'
 export {
   OPERATIONS_TASK_SOURCES_AREA,
+  type OperationsArtifact,
   type OperationsProject,
+  type OperationsRun,
+  type OperationsRunInspection,
   type OperationsTask,
+  type OperationsTaskExecution,
   type OperationsTaskSnapshot,
   type OperationsTaskSource,
   type OperationsTaskWarning
