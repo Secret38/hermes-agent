@@ -1,6 +1,6 @@
 import { useStore } from '@nanostores/react'
 
-import { $approvalModes, approvalModeForProfile, type ApprovalMode } from '@/store/approval-mode'
+import { $approvalModes, type ApprovalMode } from '@/store/approval-mode'
 import { $clarifyRequests, type ClarifyRequest } from '@/store/clarify'
 import { $gateway } from '@/store/gateway'
 import {
@@ -28,7 +28,7 @@ export type HumanGateKind = 'approval' | 'clarify' | 'secret' | 'sudo' | 'vault-
 export interface ApprovalProvenance {
   allowPermanent: boolean
   allowSession: boolean
-  mode: ApprovalMode
+  mode: ApprovalMode | 'unknown'
   patternKeys: string[]
   profile: string
   smartDenied: boolean
@@ -62,7 +62,7 @@ function profileForSession(runtimeSessionId: string): string {
 export function approvalProvenanceFor(
   request: ApprovalRequest,
   runtimeSessionId: string,
-  modeForProfile: (profile: string) => ApprovalMode = approvalModeForProfile
+  modeForProfile: (profile: string) => ApprovalMode | 'unknown' = () => 'unknown'
 ): ApprovalProvenance {
   const profile = profileForSession(runtimeSessionId)
   const patternKeys = [
@@ -121,7 +121,8 @@ export interface HumanGatePromptMaps {
 
 export function buildHumanGates(
   maps: HumanGatePromptMaps,
-  sessionLabel: (runtimeSessionId: string) => string = labelForSession
+  sessionLabel: (runtimeSessionId: string) => string = labelForSession,
+  approvalMode: (profile: string) => ApprovalMode | 'unknown' = () => 'unknown'
 ): HumanGate[] {
   const gates: HumanGate[] = []
 
@@ -130,7 +131,7 @@ export function buildHumanGates(
       const runtimeSessionId = request.sessionId || sessionId
 
       gates.push({
-        approvalProvenance: approvalProvenanceFor(request, runtimeSessionId),
+        approvalProvenance: approvalProvenanceFor(request, runtimeSessionId, approvalMode),
         approvalRequest: request,
         detail: clipped(request.command, request.description || 'Command requires approval'),
         id: `approval:${sessionId}:${request.requestId ?? request.serverRequestId ?? gates.length}`,
@@ -232,7 +233,7 @@ export function buildHumanGates(
 }
 
 export function useHumanGates(): HumanGate[] {
-  useStore($approvalModes)
+  const approvalModes = useStore($approvalModes)
 
   return buildHumanGates({
     approvals: useStore($approvalRequestQueues),
@@ -242,5 +243,5 @@ export function useHumanGates(): HumanGate[] {
     vaultCode: useStore($vaultCodeRequests),
     vaultSave: useStore($vaultSaveLoginRequests),
     vaultUnlock: useStore($vaultUnlockRequests)
-  })
+  }, labelForSession, profile => approvalModes[profile.trim() || 'default'] ?? 'unknown')
 }
