@@ -1,6 +1,8 @@
 import { Button, Codicon, host, type OperationsTask, type OperationsTaskSnapshot, type OperationsTaskSource, type PluginProfileRoute } from '@hermes/plugin-sdk'
+import { useStore } from '@nanostores/react'
 import { type ReactNode, useState } from 'react'
 
+import { $approvalModes } from '@/store/approval-mode'
 import { notifyError } from '@/store/notifications'
 
 import {
@@ -9,7 +11,7 @@ import {
 } from './execution-inspector'
 import { openHumanGateSession, resolveHumanGateApproval, useHumanGates, type HumanGate } from './human-gates'
 import { sourceForSnapshot, useHermesOperations, useLiveFleet } from './operations-data'
-import { openHermesSession } from './session-navigation'
+import { openHermesSession, storedHermesSessionId } from './session-navigation'
 import {
   activeRunIds,
   attentionOperationalTasks,
@@ -243,6 +245,65 @@ function OperationalTaskRows({
   )
 }
 
+function approvalScopeLabel(gate: HumanGate): string {
+  const request = gate.approvalRequest
+  const provenance = gate.approvalProvenance
+
+  if (!request || !provenance) {
+    return 'Scope unknown'
+  }
+
+  const scopes = request.choices?.length
+    ? request.choices
+    : [
+        'once',
+        ...(provenance.allowSession ? ['session'] : []),
+        ...(provenance.allowPermanent ? ['always'] : []),
+        'deny'
+      ]
+
+  return scopes.join(' / ')
+}
+
+function approvalPolicyDetail(gate: HumanGate): string {
+  const provenance = gate.approvalProvenance
+
+  if (!provenance) {
+    return 'Policy provenance unavailable'
+  }
+
+  const parts = [
+    `mode ${provenance.mode}`,
+    provenance.toolName ? `tool ${provenance.toolName}` : null,
+    provenance.patternKeys.length ? `rule ${provenance.patternKeys.join(', ')}` : null,
+    provenance.smartDenied ? 'smart guardian deny override' : null,
+    `scope ${approvalScopeLabel(gate)}`
+  ].filter(Boolean)
+
+  return parts.join(' · ')
+}
+
+function gateTaskCorrelation(
+  gate: HumanGate,
+  snapshots: readonly OperationsTaskSnapshot[]
+): { snapshot: OperationsTaskSnapshot; task: OperationsTask } | null {
+  const gateStoredId = storedHermesSessionId(gate.runtimeSessionId)
+
+  for (const snapshot of snapshots) {
+    for (const task of snapshot.tasks) {
+      const sessionIds = [task.workerSessionId, task.originSessionId].filter(
+        (value): value is string => typeof value === 'string' && value.length > 0
+      )
+
+      if (sessionIds.some(sessionId => storedHermesSessionId(sessionId) === gateStoredId)) {
+        return { snapshot, task }
+      }
+    }
+  }
+
+  return null
+}
+
 function humanGateIcon(gate: HumanGate): string {
   switch (gate.kind) {
     case 'approval':
@@ -261,7 +322,7 @@ function humanGateIcon(gate: HumanGate): string {
   }
 }
 
-function HumanGateRows({ gates }: { gates: readonly HumanGate[] }) {
+function HumanGateRows({ gates, snapshots = [] }: { gates: readonly HumanGate[]; snapshots?: readonly OperationsTaskSnapshot[] }) {
   const [submitting, setSubmitting] = useState<ReadonlySet<string>>(new Set())
 
   const answer = (gate: HumanGate, choice: 'deny' | 'once') => {
@@ -300,6 +361,17 @@ function HumanGateRows({ gates }: { gates: readonly HumanGate[] }) {
                 <div className="truncate text-xs text-(--ui-text-tertiary)">
                   {gate.sessionLabel + ' · ' + gate.detail}
                 </div>
+                {gate.approvalProvenance ? (
+                  <div className="mt-0.5 truncate font-mono text-[0.625rem] text-(--ui-text-quaternary)">
+                    {approvalPolicyDetail(gate)}
+                    {(() => {
+                      const correlation = gateTaskCorrelation(gate, snapshots)
+                      return correlation
+                        ? ` · task ${correlation.task.id}${correlation.task.runId != null ? ` · run ${correlation.task.runId}` : ''}`
+                        : ''
+                    })()}
+                  </div>
+                ) : null}
               </div>
               <div className="shrink-0 font-mono text-[0.6875rem] text-(--ui-text-secondary)">{gate.state}</div>
             </button>
@@ -442,7 +514,7 @@ function AttentionPage() {
         </p>
         {humanGates.length ? (
           <div className="mt-2">
-            <HumanGateRows gates={humanGates} />
+            <HumanGateRows gates={humanGates} snapshots={snapshot.snapshots} />
           </div>
         ) : (
           <p className="mt-2 text-xs text-(--ui-text-tertiary)">No Hermes session is currently waiting on human input.</p>
@@ -721,26 +793,116 @@ function TimelinePage() {
 
 function SecurityPage() {
   const snapshot = useHermesOperations()
+  const humanGates = useHumanGates()
+  const approvalModes = useStore($approvalModes)
+  const approvals = humanGates.filter(gate => gate.kind === 'approval')
+  const profiles = new Set([
+    snapshot.profile || 'default',
+    ...approvals.flatMap(gate => (gate.approvalProvenance ? [gate.approvalProvenance.profile] : []))
+  ])
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <div>
         <div className="flex items-center gap-2">
           <Codicon className="text-(--ui-text-secondary)" name="shield" size="1rem" />
-          <h2 className="text-base font-semibold text-(--ui-text-primary)">Current boundary</h2>
+          <h2 className="text-base font-semibold text-(--ui-text-primary)">Security & approval provenance</h2>
         </div>
         <p className="mt-1 max-w-3xl text-sm leading-relaxed text-(--ui-text-tertiary)">
-          This read-only view reports the execution context already known to Hermes. Capability manifests and
-          project-scoped policy editing are intentionally not invented ahead of their backend authority.
+          Approval mode and capability provenance are shown separately. Hermes' global approval modes are Manual, Smart,
+          and Off; tool-specific capability manifests remain distinct authorities.
         </p>
       </div>
 
-      <div className="divide-y divide-(--ui-stroke-tertiary)">
-        <FoundationRow detail="Live gateway transport state." icon="radio-tower" label="Gateway" state={snapshot.gateway || 'UNKNOWN'} />
-        <FoundationRow detail="Current Hermes profile scope." icon="account" label="Profile" state={snapshot.profile || 'default'} />
-        <FoundationRow detail={snapshot.cwd || 'No workspace attached.'} icon="folder" label="Workspace scope" state={snapshot.cwd ? 'BOUND' : 'NONE'} />
-        <FoundationRow detail={`${snapshot.sources.length} registered read-only source(s)`} icon="lock" label="Operations data" state="READ ONLY" />
-      </div>
+      <section>
+        <h3 className="text-sm font-semibold text-(--ui-text-primary)">Execution boundary</h3>
+        <div className="mt-2 divide-y divide-(--ui-stroke-tertiary)">
+          <FoundationRow detail="Live gateway transport state." icon="radio-tower" label="Gateway" state={snapshot.gateway || 'UNKNOWN'} />
+          <FoundationRow detail="Current Hermes presentation profile." icon="account" label="Profile" state={snapshot.profile || 'default'} />
+          <FoundationRow detail={snapshot.cwd || 'No workspace attached.'} icon="folder" label="Workspace scope" state={snapshot.cwd ? 'BOUND' : 'NONE'} />
+          <FoundationRow detail={`${snapshot.sources.length} registered read-only source(s)`} icon="lock" label="Operations data" state="READ ONLY" />
+        </div>
+      </section>
+
+      <section>
+        <div className="flex items-baseline justify-between gap-4">
+          <h3 className="text-sm font-semibold text-(--ui-text-primary)">Approval modes</h3>
+          <span className="font-mono text-[0.6875rem] text-(--ui-text-tertiary)">{profiles.size}</span>
+        </div>
+        <p className="mt-1 max-w-3xl text-xs leading-relaxed text-(--ui-text-tertiary)">
+          UNKNOWN means this Desktop window has not confirmed that profile's mode; it is not silently treated as Smart.
+        </p>
+        <div className="mt-2 divide-y divide-(--ui-stroke-tertiary)">
+          {[...profiles].sort().map(profile => (
+            <FoundationRow
+              detail={
+                approvalModes[profile]
+                  ? approvalModes[profile] === 'manual'
+                    ? 'Flagged operations require a human decision.'
+                    : approvalModes[profile] === 'smart'
+                      ? 'Hermes may assess flagged terminal operations; requests that reach this inbox still require human input.'
+                      : 'Standard terminal approval prompting is disabled for this profile.'
+                  : 'No confirmed approval-mode value is cached in this Desktop window.'
+              }
+              icon="verified"
+              key={profile}
+              label={profile}
+              state={(approvalModes[profile] || 'unknown').toUpperCase()}
+            />
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <div className="flex items-baseline justify-between gap-4">
+          <h3 className="text-sm font-semibold text-(--ui-text-primary)">Pending approval provenance</h3>
+          <span className="font-mono text-[0.6875rem] text-(--ui-text-tertiary)">{approvals.length}</span>
+        </div>
+        {approvals.length === 0 ? (
+          <p className="mt-2 text-xs text-(--ui-text-tertiary)">No command approval is currently waiting.</p>
+        ) : (
+          <div className="mt-2 divide-y divide-(--ui-stroke-tertiary)">
+            {approvals.map(gate => {
+              const provenance = gate.approvalProvenance
+              const correlation = gateTaskCorrelation(gate, snapshot.snapshots)
+
+              return (
+                <div className="py-3" key={gate.id}>
+                  <div className="flex min-w-0 items-start gap-3">
+                    <Codicon className="mt-0.5 shrink-0 text-(--ui-text-tertiary)" name="shield" size="0.9rem" />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium text-(--ui-text-primary)">{gate.label}</div>
+                      <div className="mt-0.5 truncate text-xs text-(--ui-text-tertiary)">{gate.detail}</div>
+                      <div className="mt-2 grid gap-x-5 gap-y-1 text-[0.6875rem] sm:grid-cols-2">
+                        <span className="text-(--ui-text-tertiary)">Session: {gate.sessionLabel}</span>
+                        <span className="text-(--ui-text-tertiary)">Profile: {provenance?.profile || 'unknown'}</span>
+                        <span className="text-(--ui-text-tertiary)">Mode: {(provenance?.mode || 'unknown').toUpperCase()}</span>
+                        <span className="text-(--ui-text-tertiary)">Tool: {provenance?.toolName || 'not provided'}</span>
+                        <span className="text-(--ui-text-tertiary)">Consent: {approvalScopeLabel(gate)}</span>
+                        <span className="text-(--ui-text-tertiary)">
+                          Rule: {provenance?.patternKeys.length ? provenance.patternKeys.join(', ') : 'not provided'}
+                        </span>
+                        <span className="text-(--ui-text-tertiary)">
+                          Smart deny: {provenance?.smartDenied ? 'YES — once/deny override only' : 'NO / not signaled'}
+                        </span>
+                        <span className="text-(--ui-text-tertiary)">
+                          Lineage:{' '}
+                          {correlation
+                            ? `${correlation.task.id}${correlation.task.runId != null ? ` / run ${correlation.task.runId}` : ''}`
+                            : 'no visible operations task match'}
+                        </span>
+                      </div>
+                    </div>
+                    <Button onClick={() => openHumanGateSession(gate)} size="sm" type="button" variant="text">
+                      Session
+                    </Button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </section>
     </div>
   )
 }
