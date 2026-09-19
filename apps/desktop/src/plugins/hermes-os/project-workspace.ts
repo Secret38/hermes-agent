@@ -165,6 +165,10 @@ export async function launchProjectWorkspaceSurface(
     return
   }
 
+  if (surface !== 'terminal') {
+    throw new Error(`Unsupported project workspace surface: ${surface}`)
+  }
+
   if (!revealDesktopPane('terminal')) {
     throw new Error('Hermes Terminal pane is unavailable.')
   }
