@@ -21,6 +21,35 @@ describe('Hermes OS project projection', () => {
     expect(projectOperationalTasks(snapshots, 'p_one').map(task => task.id)).toEqual(['a'])
   })
 
+  it('uses authoritative overview preview sessions when lanes are not hydrated', () => {
+    const session = {
+      ended_at: null,
+      id: 'preview',
+      input_tokens: 2,
+      is_active: false,
+      last_active: 25,
+      message_count: 1,
+      model: 'm',
+      output_tokens: 3,
+      preview: 'preview',
+      source: 'desktop',
+      started_at: 5,
+      title: 'Preview',
+      tool_call_count: 0
+    }
+
+    expect(
+      flattenProjectSessions({
+        id: 'p_preview',
+        label: 'Preview project',
+        path: '/preview',
+        repos: [],
+        sessionCount: 1,
+        previewSessions: [session]
+      }).map(item => item.id)
+    ).toEqual(['preview'])
+  })
+
   it('deduplicates compressed session lineage and sorts by activity', () => {
     const older = {
       ended_at: null,
