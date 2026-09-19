@@ -9,10 +9,12 @@ import {
   useValue
 } from '@hermes/plugin-sdk'
 
+import { useStore } from '@nanostores/react'
 import { useEffect, useState } from 'react'
 
 import type { SessionInfo } from '@/hermes'
 import type { SidebarProjectTree } from '@/app/chat/sidebar/projects/workspace-groups'
+import { $goalsBySession } from '@/store/goals'
 import { goToProject } from '@/store/projects'
 import {
   Sheet,
@@ -25,6 +27,7 @@ import {
 import { ExecutionInspector, type ExecutionInspectorSelection } from './execution-inspector'
 import { sourceForSnapshot } from './operations-data'
 import { flattenProjectSessions, projectOperationalTasks, readProjectWorkspace } from './project-data'
+import { projectGoalProjection } from './project-plan'
 import {
   launchProjectWorkspaceSurface,
   projectWorkspaceErrorMessage,
@@ -146,6 +149,7 @@ export function ProjectInspector({
 }) {
   const activeConnectionId = useValue(host.state.connectionId)
   const activeProfile = useValue(host.state.profile) || 'default'
+  const goalsBySession = useStore($goalsBySession)
   const [executionSelection, setExecutionSelection] = useState<ExecutionInspectorSelection | null>(null)
   const [workspaceSessionId, setWorkspaceSessionId] = useState<null | string>(null)
   const [workspaceBusy, setWorkspaceBusy] = useState<ProjectWorkspaceSurface | null>(null)
@@ -162,6 +166,11 @@ export function ProjectInspector({
   const hydrated = workspace.data ?? project
   const sessions = flattenProjectSessions(hydrated)
   const tasks = project ? projectOperationalTasks(snapshots, project.id) : []
+  const goals = projectGoalProjection(sessions, goalsBySession)
+  const taskStatusCounts = [...tasks.reduce((counts, task) => {
+    counts.set(task.status, (counts.get(task.status) ?? 0) + 1)
+    return counts
+  }, new Map<string, number>())].sort(([a], [b]) => a.localeCompare(b))
 
   useEffect(() => {
     if (!project) {
@@ -393,6 +402,88 @@ export function ProjectInspector({
                     Select or create a project session to activate workspace surfaces.
                   </p>
                 )}
+              </section>
+
+              <section className="border-t border-(--ui-stroke-tertiary) py-3">
+                <div className="flex items-baseline justify-between gap-3">
+                  <h3 className="text-xs font-semibold text-(--ui-text-primary)">Plan</h3>
+                  <span className="font-mono text-[0.625rem] text-(--ui-text-tertiary)">
+                    {goals.length} LIVE GOAL{goals.length === 1 ? '' : 'S'}
+                  </span>
+                </div>
+                <p className="mt-1 text-[0.6875rem] leading-relaxed text-(--ui-text-tertiary)">
+                  Goals are projected from Hermes' live per-session goal store. Tasks remain owned by the operational
+                  source; this view does not create a second planner or hydrate dormant sessions in the background.
+                </p>
+
+                {goals.length ? (
+                  <div className="mt-3 divide-y divide-(--ui-stroke-tertiary)">
+                    {goals.map(item => {
+                      const owner = canOpenProjectSession(item.session, activeConnectionId, activeProfile, routes)
+
+                      return (
+                        <div className="flex min-w-0 items-start gap-3 py-2.5" key={item.session._lineage_root_id || item.session.id}>
+                          <Codicon
+                            className="mt-0.5 shrink-0 text-(--ui-text-tertiary)"
+                            name={
+                              item.goal.status === 'done'
+                                ? 'pass'
+                                : item.goal.status === 'waiting'
+                                  ? 'watch'
+                                  : item.goal.status === 'paused'
+                                    ? 'debug-pause'
+                                    : 'target'
+                            }
+                            size="0.85rem"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-xs font-medium text-(--ui-text-primary)">
+                              {item.goal.title}
+                            </div>
+                            <div className="mt-0.5 truncate text-[0.6875rem] text-(--ui-text-tertiary)">
+                              {item.goal.status.toUpperCase()} · {sessionTitle(item.session)}
+                            </div>
+                            {item.goal.detail ? (
+                              <div className="mt-1 line-clamp-2 text-[0.6875rem] text-(--ui-text-quaternary)">
+                                {item.goal.detail}
+                              </div>
+                            ) : null}
+                          </div>
+                          {owner.allowed ? (
+                            <Button
+                              onClick={() => openHermesSession(item.session.id, owner.route)}
+                              size="sm"
+                              type="button"
+                              variant="text"
+                            >
+                              Session
+                            </Button>
+                          ) : null}
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <p className="mt-2 text-xs text-(--ui-text-tertiary)">
+                    No live Hermes goal is currently cached for this project's sessions.
+                  </p>
+                )}
+
+                {taskStatusCounts.length ? (
+                  <div className="mt-3">
+                    <div className="text-[0.625rem] uppercase tracking-wide text-(--ui-text-quaternary)">Task state</div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {taskStatusCounts.map(([status, count]) => (
+                        <span
+                          className="rounded-sm border border-(--ui-stroke-tertiary) px-2 py-1 font-mono text-[0.625rem] text-(--ui-text-secondary)"
+                          key={status}
+                        >
+                          {status.toUpperCase()} {count}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </section>
 
               <section className="border-t border-(--ui-stroke-tertiary) py-3">
