@@ -1,6 +1,8 @@
 import { Button, Codicon, host, useQuery, useValue } from '@hermes/plugin-sdk'
 import type { ReactNode } from 'react'
 
+import { activeRunCount, activeRunIds } from './selectors'
+
 export type HermesOsSection = 'mission' | 'attention' | 'projects' | 'fleet' | 'timeline' | 'security'
 
 interface SectionDefinition {
@@ -98,7 +100,7 @@ function useOperationsSnapshot() {
   })
 
   return {
-    activeRuns: Object.values(busyBySession).filter(Boolean).length,
+    activeRuns: activeRunCount(busyBySession),
     busyBySession,
     cwd,
     gateway,
@@ -150,13 +152,9 @@ function MissionControl() {
       <section>
         <div className="flex items-baseline justify-between gap-4">
           <h2 className="text-sm font-semibold text-(--ui-text-primary)">Active run IDs</h2>
-          <button
-            className="text-xs text-(--ui-text-tertiary) hover:text-(--ui-text-primary)"
-            onClick={() => host.navigate('/hermes-os/timeline')}
-            type="button"
-          >
+          <Button onClick={() => host.navigate('/hermes-os/timeline')} size="inline" type="button" variant="text">
             Open timeline
-          </button>
+          </Button>
         </div>
         {snapshot.activeRuns === 0 ? (
           <p className="mt-2 text-xs leading-relaxed text-(--ui-text-tertiary)">
@@ -164,9 +162,7 @@ function MissionControl() {
           </p>
         ) : (
           <div className="mt-2 divide-y divide-(--ui-stroke-tertiary)">
-            {Object.entries(snapshot.busyBySession)
-              .filter(([, busy]) => busy)
-              .map(([sessionId]) => (
+            {activeRunIds(snapshot.busyBySession).map(sessionId => (
                 <FoundationRow
                   detail="Runtime session currently executing a turn."
                   icon="loading"
@@ -234,7 +230,7 @@ function FleetPage() {
 
 function TimelinePage() {
   const snapshot = useOperationsSnapshot()
-  const running = Object.entries(snapshot.busyBySession).filter(([, busy]) => busy)
+  const running = activeRunIds(snapshot.busyBySession)
 
   return (
     <div className="space-y-5">
@@ -253,7 +249,7 @@ function TimelinePage() {
         <p className="text-xs text-(--ui-text-tertiary)">No runs are executing right now.</p>
       ) : (
         <div className="divide-y divide-(--ui-stroke-tertiary)">
-          {running.map(([sessionId]) => (
+          {running.map(sessionId => (
             <FoundationRow
               detail="Live runtime session; task/run metadata will be joined in the Kanban binding slice."
               icon="pulse"
