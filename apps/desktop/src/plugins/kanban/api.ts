@@ -13,6 +13,7 @@ import {
   atom,
   type PluginOs,
   type PluginRestOptions,
+  type OperationsTaskSnapshot,
   type PluginStorage,
   type PluginTranslate,
   queryClient
@@ -185,6 +186,48 @@ export const fetchProfiles = () => call<{ profiles: KanbanProfile[] }>('/profile
 export const fetchProjects = () => call<{ projects: KanbanProject[] }>('/projects')
 
 export const fetchOrchestration = () => call<OrchestrationSettings>('/orchestration')
+
+/** Read-only normalized projection for Mission Control and other operations
+ * surfaces. Kanban remains authoritative for persistence and workflow rules. */
+export async function fetchOperationsSnapshot(): Promise<OperationsTaskSnapshot> {
+  const [board, boards, projects] = await Promise.all([fetchBoard(false), fetchBoards(), fetchProjects()])
+  const current = boards.boards.find(item => item.slug === boards.current)
+  const projectById = new Map(projects.projects.map(project => [project.id, project]))
+  const boardProject = current?.project_id ? projectById.get(current.project_id) : undefined
+
+  return {
+    sourceId: 'kanban',
+    sourceLabel: 'Kanban',
+    scopeLabel: current?.name || current?.slug || boards.current || 'Current board',
+    observedAt: board.now * 1000,
+    projects: projects.projects.map(project => ({
+      id: project.id,
+      name: project.name,
+      slug: project.slug,
+      path: project.primary_path
+    })),
+    tasks: board.columns.flatMap(column =>
+      column.tasks.map(task => {
+        const project = task.project_id ? projectById.get(task.project_id) : boardProject
+
+        return {
+          id: task.id,
+          title: task.title,
+          status: task.status || column.name,
+          assignee: task.assignee,
+          priority: task.priority,
+          projectId: task.project_id || current?.project_id,
+          projectName: project?.name || current?.project_name,
+          startedAt: task.started_at,
+          lastHeartbeatAt: task.last_heartbeat_at,
+          warning: task.warnings
+            ? { count: task.warnings.count, severity: task.warnings.highest_severity }
+            : null
+        }
+      })
+    )
+  }
+}
 
 // ── writes ────────────────────────────────────────────────────────────────────
 
