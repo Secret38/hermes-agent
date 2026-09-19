@@ -11,7 +11,7 @@ describe('hermes-os plugin shell', () => {
     const contributions = registerMany.mock.calls[0]?.[0] ?? []
     const routes = contributions.filter((entry: { area?: string }) => entry.area === 'routes')
     const nav = contributions.filter((entry: { area?: string }) => entry.area === 'sidebar.nav')
-    const palette = contributions.filter((entry: { area?: string }) => entry.area === 'commandPalette')
+    const palette = contributions.filter((entry: { area?: string }) => entry.area === 'palette')
 
     expect(routes.map((entry: { data?: { path?: string } }) => entry.data?.path)).toEqual([
       '/hermes-os',
