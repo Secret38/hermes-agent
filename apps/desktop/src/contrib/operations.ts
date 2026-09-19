@@ -20,6 +20,8 @@ export interface OperationsTask {
   priority?: number
   projectId?: null | string
   projectName?: null | string
+  /** Durable originating Hermes session when the producer has one. Not a worker runtime id. */
+  originSessionId?: null | string
   startedAt?: null | number
   lastHeartbeatAt?: null | number
   warning?: null | OperationsTaskWarning
