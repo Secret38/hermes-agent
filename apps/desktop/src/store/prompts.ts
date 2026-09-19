@@ -381,7 +381,7 @@ export async function resolveApprovalRequest(
   void replayPendingApproval(gateway, request.sessionId).catch(() => undefined)
 
   return true
-
+}
 
 /** The prompt request for one specific session — the tile counterpart of the
  *  active-session `$*Request` views (same map, fixed key). */
