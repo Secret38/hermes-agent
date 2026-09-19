@@ -18,6 +18,12 @@ export function runningOperationalTasks(snapshots: readonly OperationsTaskSnapsh
   return allOperationalTasks(snapshots).filter(task => task.status === 'running')
 }
 
+export function executionOperationalTasks(snapshots: readonly OperationsTaskSnapshot[]): OperationsTask[] {
+  return allOperationalTasks(snapshots)
+    .filter(task => task.runId != null || Boolean(task.workerSessionId) || task.startedAt != null)
+    .sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0))
+}
+
 /** Mechanical attention candidates only — no inference about user intent.
  * Blocked/review states and explicit diagnostics are all producer-authored. */
 export function attentionOperationalTasks(snapshots: readonly OperationsTaskSnapshot[]): OperationsTask[] {
