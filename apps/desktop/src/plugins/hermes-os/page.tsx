@@ -289,40 +289,114 @@ function ProjectsPage() {
 
 function FleetPage() {
   const snapshot = useHermesOperations()
+  const liveFleet = useLiveFleet()
   const routes = snapshot.routes.data ?? []
+  const sessions = liveFleet.data?.sessions ?? []
 
   return (
-    <div className="space-y-5">
-      <div>
+    <div className="space-y-6">
+      <section>
+        <div className="flex items-center gap-2">
+          <Codicon className="text-(--ui-text-secondary)" name="pulse" size="1rem" />
+          <h2 className="text-base font-semibold text-(--ui-text-primary)">Live gateway sessions</h2>
+        </div>
+        <p className="mt-1 max-w-3xl text-sm leading-relaxed text-(--ui-text-tertiary)">
+          Sessions currently resident in the active Hermes gateway. Subagents come from each session's own delegation
+          registry; observing this page does not cold-start other profile routes.
+        </p>
+
+        {liveFleet.isError ? (
+          <p className="mt-3 text-xs text-(--ui-text-tertiary)">Live gateway fleet is unavailable.</p>
+        ) : sessions.length === 0 ? (
+          <p className="mt-3 text-xs text-(--ui-text-tertiary)">No live gateway sessions are resident right now.</p>
+        ) : (
+          <div className="mt-3 divide-y divide-(--ui-stroke-tertiary)">
+            {sessions.map(session => (
+              <div className="py-3" key={session.id}>
+                <div className="flex min-w-0 items-center gap-3">
+                  <Codicon
+                    className="shrink-0 text-(--ui-text-tertiary)"
+                    name={session.status === 'working' || session.status === 'streaming' ? 'sync' : 'circle-filled'}
+                    size="0.8rem"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium text-(--ui-text-primary)">
+                      {session.title || session.id}
+                    </div>
+                    <div className="truncate text-xs text-(--ui-text-tertiary)">
+                      {session.model || 'model unresolved'} · {session.id}
+                    </div>
+                  </div>
+                  <div className="shrink-0 font-mono text-[0.6875rem] text-(--ui-text-secondary)">
+                    {session.status.toUpperCase()}
+                  </div>
+                </div>
+
+                {session.subagents.length > 0 ? (
+                  <div className="ml-7 mt-2 border-l border-(--ui-stroke-tertiary) pl-3">
+                    {session.subagents.map(child => (
+                      <div className="flex min-w-0 items-center gap-3 py-1.5" key={child.subagent_id}>
+                        <Codicon className="shrink-0 text-(--ui-text-tertiary)" name="git-branch" size="0.7rem" />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-xs font-medium text-(--ui-text-primary)">
+                            {child.goal || child.subagent_id}
+                          </div>
+                          <div className="truncate text-[0.6875rem] text-(--ui-text-tertiary)">
+                            {child.model || 'model unresolved'}
+                            {child.last_tool ? ' · ' + child.last_tool : ''}
+                          </div>
+                        </div>
+                        <div className="shrink-0 font-mono text-[0.625rem] text-(--ui-text-secondary)">
+                          {(child.status || 'unknown').toUpperCase()}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section>
         <div className="flex items-center gap-2">
           <Codicon className="text-(--ui-text-secondary)" name="hubot" size="1rem" />
           <h2 className="text-base font-semibold text-(--ui-text-primary)">Registered execution routes</h2>
         </div>
         <p className="mt-1 max-w-3xl text-sm leading-relaxed text-(--ui-text-tertiary)">
-          One row is one connection-qualified Hermes profile route. This is identity topology, not a guessed online state.
+          Connection-qualified profile routes describe where agents can execute. They are topology, not a guessed online
+          state.
         </p>
-      </div>
 
-      {snapshot.routes.isLoading ? (
-        <p className="text-xs text-(--ui-text-tertiary)">Loading fleet registry…</p>
-      ) : snapshot.routes.isError ? (
-        <p className="text-xs text-(--ui-text-tertiary)">The current desktop connection registry could not be read.</p>
-      ) : routes.length === 0 ? (
-        <p className="text-xs text-(--ui-text-tertiary)">No registered profile routes are available.</p>
-      ) : (
-        <div className="divide-y divide-(--ui-stroke-tertiary)">
-          {routes.map(route => (
-            <div className="grid min-w-0 gap-2 py-3 sm:grid-cols-[minmax(0,1fr)_8rem_10rem]" key={`${route.connectionId}:${route.profile}`}>
-              <div className="min-w-0">
-                <div className="truncate text-sm font-medium text-(--ui-text-primary)">{route.profile}</div>
-                <div className="truncate font-mono text-[0.6875rem] text-(--ui-text-tertiary)">{route.connectionId}</div>
+        {snapshot.routes.isLoading ? (
+          <p className="mt-3 text-xs text-(--ui-text-tertiary)">Loading fleet registry…</p>
+        ) : snapshot.routes.isError ? (
+          <p className="mt-3 text-xs text-(--ui-text-tertiary)">The current desktop connection registry could not be read.</p>
+        ) : routes.length === 0 ? (
+          <p className="mt-3 text-xs text-(--ui-text-tertiary)">No registered profile routes are available.</p>
+        ) : (
+          <div className="mt-3 divide-y divide-(--ui-stroke-tertiary)">
+            {routes.map(route => (
+              <div
+                className="grid min-w-0 gap-2 py-3 sm:grid-cols-[minmax(0,1fr)_8rem_10rem]"
+                key={route.connectionId + ':' + route.profile}
+              >
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium text-(--ui-text-primary)">{route.profile}</div>
+                  <div className="truncate font-mono text-[0.6875rem] text-(--ui-text-tertiary)">
+                    {route.connectionId}
+                  </div>
+                </div>
+                <div className="font-mono text-xs text-(--ui-text-secondary)">{route.mode.toUpperCase()}</div>
+                <div className="truncate text-xs text-(--ui-text-tertiary)">
+                  target {route.targetProfile || route.profile}
+                </div>
               </div>
-              <div className="font-mono text-xs text-(--ui-text-secondary)">{route.mode.toUpperCase()}</div>
-              <div className="truncate text-xs text-(--ui-text-tertiary)">target {route.targetProfile || route.profile}</div>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   )
 }
