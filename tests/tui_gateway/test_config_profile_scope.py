@@ -111,3 +111,52 @@ def test_config_set_without_profile_still_writes_launch_home(tmp_path, monkeypat
     assert resp["result"]["value"] == "interrupt"
     assert _read_yaml(launch)["display"]["busy_input_mode"] == "interrupt"
     assert _read_yaml(worker)["display"]["busy_input_mode"] == "queue"
+
+
+def test_computer_use_security_getter_is_profile_scoped_and_sanitized(tmp_path, monkeypatch):
+    launch, worker = _homes(tmp_path)
+    manifest = worker / "private" / "capabilities.yaml"
+    manifest.parent.mkdir()
+    manifest.write_text("version: 3\napps: []\n", encoding="utf-8")
+
+    launch_cfg = _read_yaml(launch)
+    launch_cfg["computer_use"] = {"permission_mode": "standard", "cua_telemetry": False}
+    (launch / "config.yaml").write_text(yaml.safe_dump(launch_cfg), encoding="utf-8")
+
+    worker_cfg = _read_yaml(worker)
+    worker_cfg["computer_use"] = {
+        "permission_mode": "bounded",
+        "capability_manifest": str(manifest),
+        "cua_telemetry": True,
+    }
+    (worker / "config.yaml").write_text(yaml.safe_dump(worker_cfg), encoding="utf-8")
+
+    _bind_homes(monkeypatch, launch, worker)
+
+    launch_resp = _get({"key": "computer_use.security"})
+    assert launch_resp["result"] == {
+        "permission_mode": "standard",
+        "telemetry_enabled": False,
+        "manifest": {
+            "configured": False,
+            "readable": False,
+            "version": None,
+            "mode_independent": False,
+            "required": False,
+        },
+    }
+
+    _reset_cfg_cache()
+    worker_resp = _get({"key": "computer_use.security", "profile": "code"})
+    assert worker_resp["result"] == {
+        "permission_mode": "bounded",
+        "telemetry_enabled": True,
+        "manifest": {
+            "configured": True,
+            "readable": True,
+            "version": 3,
+            "mode_independent": True,
+            "required": True,
+        },
+    }
+    assert str(manifest) not in repr(worker_resp)
