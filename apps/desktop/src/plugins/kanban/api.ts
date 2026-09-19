@@ -147,9 +147,8 @@ function call<T>(path: string, opts?: PluginRestOptions): Promise<T> {
 }
 
 /** Append the selected board (and other params) to a path. */
-function withBoard(path: string, params: Record<string, string> = {}): string {
+function withBoardScope(path: string, slug: null | string | undefined, params: Record<string, string> = {}): string {
   const search = new URLSearchParams(params)
-  const slug = $boardSlug.get()
 
   if (slug) {
     search.set('board', slug)
@@ -158,6 +157,10 @@ function withBoard(path: string, params: Record<string, string> = {}): string {
   const qs = search.toString()
 
   return qs ? `${path}?${qs}` : path
+}
+
+function withBoard(path: string, params: Record<string, string> = {}): string {
+  return withBoardScope(path, $boardSlug.get(), params)
 }
 
 // ── query keys (all board-scoped so switching boards is a clean cache miss) ──
@@ -176,6 +179,8 @@ export const fetchBoard = (archived: boolean) =>
   call<KanbanBoard>(withBoard('/board', archived ? { include_archived: 'true' } : {}))
 
 export const fetchTask = (id: string) => call<KanbanTaskDetail>(withBoard(`/tasks/${id}`))
+const fetchTaskInScope = (id: string, scopeKey?: null | string) =>
+  call<KanbanTaskDetail>(withBoardScope(`/tasks/${id}`, scopeKey))
 
 export const fetchRunInspection = (id: number | string) =>
   call<{
@@ -188,6 +193,18 @@ export const fetchRunInspection = (id: number | string) =>
     memory_rss_bytes?: null | number
     num_threads?: null | number
   }>(withBoard(`/runs/${id}/inspect`))
+
+const fetchRunInspectionInScope = (id: number | string, scopeKey?: null | string) =>
+  call<{
+    run_id: number | string
+    alive: boolean
+    reason?: null | string
+    pid?: null | number
+    status?: null | string
+    cpu_percent?: null | number
+    memory_rss_bytes?: null | number
+    num_threads?: null | number
+  }>(withBoardScope(`/runs/${id}/inspect`, scopeKey))
 
 export function toOperationsTaskExecution(detail: KanbanTaskDetail): OperationsTaskExecution {
   return {
@@ -216,8 +233,11 @@ export function toOperationsTaskExecution(detail: KanbanTaskDetail): OperationsT
   }
 }
 
-export async function fetchOperationsTaskExecution(id: string): Promise<OperationsTaskExecution> {
-  return toOperationsTaskExecution(await fetchTask(id))
+export async function fetchOperationsTaskExecution(
+  id: string,
+  snapshot: OperationsTaskSnapshot
+): Promise<OperationsTaskExecution> {
+  return toOperationsTaskExecution(await fetchTaskInScope(id, snapshot.scopeKey))
 }
 
 export function toOperationsRunInspection(inspection: {
@@ -242,8 +262,11 @@ export function toOperationsRunInspection(inspection: {
   }
 }
 
-export async function fetchOperationsRunInspection(id: number | string): Promise<OperationsRunInspection> {
-  return toOperationsRunInspection(await fetchRunInspection(id))
+export async function fetchOperationsRunInspection(
+  id: number | string,
+  snapshot: OperationsTaskSnapshot
+): Promise<OperationsRunInspection> {
+  return toOperationsRunInspection(await fetchRunInspectionInScope(id, snapshot.scopeKey))
 }
 
 /** Worker stdout/stderr tail (last 16 KiB — plenty for the drawer). */
@@ -263,7 +286,8 @@ export const fetchOrchestration = () => call<OrchestrationSettings>('/orchestrat
 export function toOperationsSnapshot(
   board: KanbanBoard,
   boards: BoardsResponse,
-  projects: readonly KanbanProject[]
+  projects: readonly KanbanProject[],
+  scopeKey?: null | string
 ): OperationsTaskSnapshot {
   const current = boards.boards.find(item => item.slug === boards.current)
   const projectById = new Map(projects.map(project => [project.id, project]))
@@ -272,6 +296,7 @@ export function toOperationsSnapshot(
   return {
     sourceId: 'kanban',
     sourceLabel: 'Kanban',
+    scopeKey: scopeKey || boards.current || null,
     scopeLabel: current?.name || current?.slug || boards.current || 'Current board',
     observedAt: board.now * 1000,
     projects: projects.map(project => ({
@@ -307,9 +332,10 @@ export function toOperationsSnapshot(
 }
 
 export async function fetchOperationsSnapshot(): Promise<OperationsTaskSnapshot> {
+  const scopeKey = $boardSlug.get()
   const [board, boards, projects] = await Promise.all([fetchBoard(false), fetchBoards(), fetchProjects()])
 
-  return toOperationsSnapshot(board, boards, projects.projects)
+  return toOperationsSnapshot(board, boards, projects.projects, scopeKey || boards.current)
 }
 
 // ── writes ────────────────────────────────────────────────────────────────────
