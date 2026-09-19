@@ -32,7 +32,15 @@ import {
   useValue
 } from '@hermes/plugin-sdk'
 
-import { $boardSlug, bindApi, boardKey, fetchBoard, fetchOperationsSnapshot } from './api'
+import {
+  $boardSlug,
+  bindApi,
+  boardKey,
+  fetchBoard,
+  fetchOperationsRunInspection,
+  fetchOperationsSnapshot,
+  fetchOperationsTaskExecution
+} from './api'
 import { KanbanBoardPage } from './board'
 import { KANBAN_LOCALES } from './i18n'
 import { $newTaskLane, useKanban } from './ui'
@@ -113,6 +121,8 @@ const plugin: HermesPlugin = {
           id: 'kanban',
           label: 'Kanban',
           queryKey: ['operations', 'kanban'],
+          readRunInspection: fetchOperationsRunInspection,
+          readTaskExecution: fetchOperationsTaskExecution,
           readSnapshot: async () => {
             const connectionId = host.state.connectionId.get()
             const profile = host.state.profile.get()
