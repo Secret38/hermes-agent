@@ -42,7 +42,7 @@ describe('Kanban operations execution projection', () => {
         branch_name: 'agent/t_1'
       },
       comments: [],
-      events: [],
+      events: [{ id: 3, kind: 'worker_completed', payload: { ok: true }, created_at: 265 }],
       links: { parents: [], children: [] },
       attachments: [{ id: 7, filename: 'report.json', size: 2048 }],
       runs: [
@@ -79,7 +79,7 @@ describe('Kanban operations execution projection', () => {
       workspacePath: '/work/project',
       branchName: 'agent/t_1',
       artifacts: [{ id: 7, name: 'report.json', sizeBytes: 2048 }],
-      events: [],
+      events: [{ id: 3, kind: 'worker_completed', createdAt: 265, detail: '{"ok":true}' }],
       runs: [
         {
           id: 10,
