@@ -160,3 +160,54 @@ def test_computer_use_security_getter_is_profile_scoped_and_sanitized(tmp_path, 
         },
     }
     assert str(manifest) not in repr(worker_resp)
+
+
+def test_telemetry_security_getter_is_profile_scoped_and_sanitized(tmp_path, monkeypatch):
+    launch, worker = _homes(tmp_path)
+
+    launch_cfg = _read_yaml(launch)
+    launch_cfg["telemetry"] = {
+        "shared_metrics": {
+            "enabled": False,
+            "send": True,
+            "endpoint": "http://metrics.example.invalid/private/path",
+        }
+    }
+    (launch / "config.yaml").write_text(yaml.safe_dump(launch_cfg), encoding="utf-8")
+
+    worker_cfg = _read_yaml(worker)
+    worker_cfg["telemetry"] = {
+        "shared_metrics": {
+            "enabled": True,
+            "send": True,
+            "endpoint": "https://metrics.example.internal/v1/private",
+        }
+    }
+    (worker / "config.yaml").write_text(yaml.safe_dump(worker_cfg), encoding="utf-8")
+
+    _bind_homes(monkeypatch, launch, worker)
+
+    launch_resp = _get({"key": "telemetry.security"})
+    assert launch_resp["result"] == {
+        "shared_metrics": {
+            "collection_enabled": False,
+            "transmission_requested": True,
+            "transmission_enabled": False,
+            "destination": "blocked",
+        }
+    }
+    assert "metrics.example.invalid" not in repr(launch_resp)
+    assert "/private/path" not in repr(launch_resp)
+
+    _reset_cfg_cache()
+    worker_resp = _get({"key": "telemetry.security", "profile": "code"})
+    assert worker_resp["result"] == {
+        "shared_metrics": {
+            "collection_enabled": True,
+            "transmission_requested": True,
+            "transmission_enabled": True,
+            "destination": "custom_https",
+        }
+    }
+    assert "metrics.example.internal" not in repr(worker_resp)
+    assert "/v1/private" not in repr(worker_resp)
