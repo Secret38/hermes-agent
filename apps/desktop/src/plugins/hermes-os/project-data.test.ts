@@ -72,6 +72,6 @@ describe('Hermes OS project projection', () => {
       sessionCount: 3
     })
 
-    expect(sessions.map(session => session.id)).toEqual(['separate', 'old-tip'])
+    expect(sessions.map(session => session.id)).toEqual(['new-tip', 'separate'])
   })
 })
