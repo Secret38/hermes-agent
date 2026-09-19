@@ -647,13 +647,18 @@ function FleetPage() {
   return (
     <div className="space-y-6">
       <section>
-        <div className="flex items-center gap-2">
-          <Codicon className="text-(--ui-text-secondary)" name="pulse" size="1rem" />
-          <h2 className="text-base font-semibold text-(--ui-text-primary)">Live gateway sessions</h2>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Codicon className="text-(--ui-text-secondary)" name="pulse" size="1rem" />
+            <h2 className="text-base font-semibold text-(--ui-text-primary)">Live gateway sessions</h2>
+          </div>
+          <Button onClick={() => host.navigate('/agents')} size="sm" type="button" variant="text">
+            Agents details
+          </Button>
         </div>
         <p className="mt-1 max-w-3xl text-sm leading-relaxed text-(--ui-text-tertiary)">
-          Sessions currently resident in the active Hermes gateway. Subagents come from each session's own delegation
-          registry; observing this page does not cold-start other profile routes.
+          Sessions currently resident in the active Hermes gateway. Subagent details are projected from Hermes'
+          event-driven Agents store; Fleet no longer issues a subagent-list request per session.
         </p>
 
         {liveFleet.isError ? (
@@ -693,8 +698,18 @@ function FleetPage() {
                             {child.goal || child.subagent_id}
                           </div>
                           <div className="truncate text-[0.6875rem] text-(--ui-text-tertiary)">
-                            {child.model || 'model unresolved'}
-                            {child.last_tool ? ' · ' + child.last_tool : ''}
+                            {[
+                              child.model || 'model unresolved',
+                              child.last_tool,
+                              child.tool_count ? `${child.tool_count} tools` : null,
+                              (child.input_tokens ?? 0) + (child.output_tokens ?? 0) > 0
+                                ? `${((child.input_tokens ?? 0) + (child.output_tokens ?? 0)).toLocaleString()} tokens`
+                                : null,
+                              child.files_read.length + child.files_written.length > 0
+                                ? `${child.files_read.length + child.files_written.length} files`
+                                : null,
+                              child.cost_usd ? `${child.cost_usd.toFixed(2)}` : null
+                            ].filter(Boolean).join(' · ')}
                           </div>
                         </div>
                         <div className="shrink-0 font-mono text-[0.625rem] text-(--ui-text-secondary)">
