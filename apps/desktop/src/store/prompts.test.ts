@@ -13,6 +13,7 @@ import {
   clearSudoRequest,
   receiveApprovalRequest,
   replayPendingApproval,
+  resolveApprovalRequest,
   sessionApprovalRequests,
   setApprovalRequest,
   setSecretRequest,
@@ -81,6 +82,19 @@ describe('approval prompt store', () => {
     expect($approvalRequest.get()?.requestId).toBe('r1')
     clearApprovalRequest('s1', 'r1')
     expect($approvalRequest.get()).toBeNull()
+  })
+
+  it('refuses to resolve an approval that is no longer queued', async () => {
+    const request = vi.fn(async () => ({ ok: true }))
+    const approval = {
+      command: 'echo stale',
+      description: 'stale approval',
+      requestId: 'stale',
+      sessionId: 's1'
+    }
+
+    await expect(resolveApprovalRequest({ request }, approval, 'once')).resolves.toBe(false)
+    expect(request).not.toHaveBeenCalled()
   })
 
   it('acknowledges an approval only after parking it', async () => {
