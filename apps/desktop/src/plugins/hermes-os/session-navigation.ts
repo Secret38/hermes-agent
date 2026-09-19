@@ -3,13 +3,18 @@ import { host } from '@hermes/plugin-sdk'
 import { openSession } from '@/app/open-session'
 import { storedSessionIdForRuntimeId } from '@/store/session-states'
 
-export function openHermesSession(sessionId: string): void {
+export function storedHermesSessionId(sessionId: string): string {
   const id = sessionId.trim()
 
-  if (!id) {
+  return id ? (storedSessionIdForRuntimeId(id) ?? id) : ''
+}
+
+export function openHermesSession(sessionId: string): void {
+  const storedId = storedHermesSessionId(sessionId)
+
+  if (!storedId) {
     return
   }
 
-  const storedId = storedSessionIdForRuntimeId(id) ?? id
   openSession(storedId, to => host.navigate(to), 'stack')
 }
