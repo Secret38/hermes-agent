@@ -15,6 +15,7 @@ import {
   type PluginRestOptions,
   type OperationsRunInspection,
   type OperationsTaskExecution,
+  type OperationsTaskLog,
   type OperationsTaskSnapshot,
   type PluginStorage,
   type PluginTranslate,
@@ -218,6 +219,17 @@ export function toOperationsTaskExecution(detail: KanbanTaskDetail): OperationsT
       name: attachment.filename,
       sizeBytes: attachment.size
     })),
+    events: detail.events.map(event => ({
+      id: event.id,
+      kind: event.kind,
+      createdAt: event.created_at,
+      detail:
+        typeof event.payload === 'string'
+          ? event.payload
+          : event.payload == null
+            ? null
+            : JSON.stringify(event.payload)
+    })),
     runs: detail.runs.map(run => ({
       id: run.id,
       status: run.status,
@@ -269,8 +281,26 @@ export async function fetchOperationsRunInspection(
   return toOperationsRunInspection(await fetchRunInspectionInScope(id, snapshot.scopeKey))
 }
 
+export function toOperationsTaskLog(log: WorkerLog): OperationsTaskLog {
+  return {
+    exists: log.exists,
+    sizeBytes: log.size_bytes,
+    content: log.content,
+    truncated: log.truncated
+  }
+}
+
+export async function fetchOperationsTaskLog(
+  id: string,
+  snapshot: OperationsTaskSnapshot
+): Promise<OperationsTaskLog> {
+  return toOperationsTaskLog(await fetchLogInScope(id, snapshot.scopeKey))
+}
+
 /** Worker stdout/stderr tail (last 16 KiB — plenty for the drawer). */
 export const fetchLog = (id: string) => call<WorkerLog>(withBoard(`/tasks/${id}/log`, { tail: '16384' }))
+const fetchLogInScope = (id: string, scopeKey?: null | string) =>
+  call<WorkerLog>(withBoardScope(`/tasks/${id}/log`, scopeKey, { tail: '16384' }))
 
 export const fetchBoards = () => call<BoardsResponse>('/boards')
 
