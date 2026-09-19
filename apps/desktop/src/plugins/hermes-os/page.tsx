@@ -1,7 +1,7 @@
 import { Button, Codicon, host, type OperationsTask, type OperationsTaskSnapshot, type OperationsTaskSource } from '@hermes/plugin-sdk'
 import type { ReactNode } from 'react'
 
-import { sourceForSnapshot, useHermesOperations } from './operations-data'
+import { sourceForSnapshot, useHermesOperations, useLiveFleet } from './operations-data'
 import {
   activeRunIds,
   attentionOperationalTasks,
@@ -110,7 +110,8 @@ function taskDetail(task: OperationsTask): string {
   const parts = [
     task.projectName,
     task.assignee ? `agent ${task.assignee}` : null,
-    task.originSessionId ? `origin ${task.originSessionId}` : null,
+    task.workerSessionId ? `worker ${task.workerSessionId}` : task.originSessionId ? `origin ${task.originSessionId}` : null,
+    task.runId != null ? `run ${task.runId}` : null,
     task.warning?.count ? `${task.warning.count} diagnostic${task.warning.count === 1 ? '' : 's'}` : null
   ].filter(Boolean)
 
