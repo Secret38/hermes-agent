@@ -1,6 +1,7 @@
 import { Button, Codicon, host, type OperationsTask, type OperationsTaskSnapshot, type OperationsTaskSource } from '@hermes/plugin-sdk'
 import type { ReactNode } from 'react'
 
+import { openHumanGateSession, useHumanGates, type HumanGate } from './human-gates'
 import { sourceForSnapshot, useHermesOperations, useLiveFleet } from './operations-data'
 import {
   activeRunIds,
@@ -27,7 +28,7 @@ const SECTIONS: Record<HermesOsSection, SectionDefinition> = {
     path: '/hermes-os'
   },
   attention: {
-    description: 'Producer-authored blockers, review states, and diagnostics that warrant inspection.',
+    description: 'Human approvals, questions, credentials, review states, blockers, and diagnostics that need you.'
     icon: 'bell',
     label: 'What Needs Me',
     path: '/hermes-os/attention'
@@ -151,6 +152,41 @@ function OperationalTaskRows({
   )
 }
 
+function humanGateIcon(gate: HumanGate): string {
+  switch (gate.kind) {
+    case 'approval':
+      return 'shield'
+    case 'clarify':
+      return 'question'
+    case 'sudo':
+      return 'key'
+    case 'secret':
+      return 'lock'
+    case 'vault-unlock':
+    case 'vault-save':
+      return 'archive'
+    case 'vault-code':
+      return 'verified'
+  }
+}
+
+function HumanGateRows({ gates }: { gates: readonly HumanGate[] }) {
+  return (
+    <div className="divide-y divide-(--ui-stroke-tertiary)">
+      {gates.map(gate => (
+        <FoundationRow
+          action={() => openHumanGateSession(gate)}
+          detail={gate.sessionLabel + ' · ' + gate.detail}
+          icon={humanGateIcon(gate)}
+          key={gate.id}
+          label={gate.label}
+          state={gate.state}
+        />
+      ))}
+    </div>
+  )
+}
+
 function NoTaskSource() {
   return (
     <div className="border-t border-(--ui-stroke-tertiary) pt-4">
@@ -167,6 +203,7 @@ function MissionControl() {
   const snapshot = useHermesOperations()
   const runningTasks = runningOperationalTasks(snapshot.snapshots)
   const attention = attentionOperationalTasks(snapshot.snapshots)
+  const humanGates = useHumanGates()
   const projects = uniqueOperationalProjects(snapshot.snapshots)
 
   return (
@@ -175,7 +212,7 @@ function MissionControl() {
         <div className="grid grid-cols-2 gap-x-6 border-b border-(--ui-stroke-tertiary) sm:grid-cols-4">
           <Metric label="Tasks running" value={snapshot.sources.length ? String(runningTasks.length) : '—'} />
           <Metric label="Active runs" value={String(snapshot.activeRuns)} />
-          <Metric label="Needs attention" value={snapshot.sources.length ? String(attention.length) : '—'} />
+          <Metric label="Needs attention" value={String(humanGates.length + attention.length)} />
           <Metric label="Projects" value={snapshot.sources.length ? String(projects.length) : '—'} />
         </div>
       </section>
@@ -223,29 +260,60 @@ function MissionControl() {
 function AttentionPage() {
   const snapshot = useHermesOperations()
   const tasks = attentionOperationalTasks(snapshot.snapshots)
+  const humanGates = useHumanGates()
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <div>
         <div className="flex items-center gap-2">
           <Codicon className="text-(--ui-text-secondary)" name="bell" size="1rem" />
-          <h2 className="text-base font-semibold text-(--ui-text-primary)">Attention queue</h2>
+          <h2 className="text-base font-semibold text-(--ui-text-primary)">What Needs Me</h2>
         </div>
         <p className="mt-1 max-w-3xl text-sm leading-relaxed text-(--ui-text-tertiary)">
-          No intent is inferred here: entries appear only from explicit blocked/review states or diagnostics published by
-          the authoritative task source.
+          Human gates come directly from Hermes' existing per-session prompt stores. Task entries remain producer-authored
+          blocked, review, or diagnostic states. Nothing here infers urgency from message text.
         </p>
       </div>
 
-      {!snapshot.sources.length ? (
-        <NoTaskSource />
-      ) : snapshot.query.isError ? (
-        <p className="text-xs text-(--ui-text-tertiary)">The task source could not be read.</p>
-      ) : tasks.length ? (
-        <OperationalTaskRows snapshots={snapshot.snapshots} sources={snapshot.sources} tasks={tasks} />
-      ) : (
-        <p className="text-xs text-(--ui-text-tertiary)">No blocked, review, or diagnosed task currently needs inspection.</p>
-      )}
+      <section>
+        <div className="flex items-baseline justify-between gap-4">
+          <h3 className="text-sm font-semibold text-(--ui-text-primary)">Human gates</h3>
+          <span className="font-mono text-[0.6875rem] text-(--ui-text-tertiary)">{humanGates.length}</span>
+        </div>
+        <p className="mt-1 max-w-3xl text-xs leading-relaxed text-(--ui-text-tertiary)">
+          Approvals, clarification questions, elevated access, credentials, password-manager prompts, and verification
+          codes. Open a row to answer it in the canonical session UI.
+        </p>
+        {humanGates.length ? (
+          <div className="mt-2">
+            <HumanGateRows gates={humanGates} />
+          </div>
+        ) : (
+          <p className="mt-2 text-xs text-(--ui-text-tertiary)">No Hermes session is currently waiting on human input.</p>
+        )}
+      </section>
+
+      <section>
+        <div className="flex items-baseline justify-between gap-4">
+          <h3 className="text-sm font-semibold text-(--ui-text-primary)">Task attention</h3>
+          <span className="font-mono text-[0.6875rem] text-(--ui-text-tertiary)">{tasks.length}</span>
+        </div>
+        {!snapshot.sources.length ? (
+          <div className="mt-2">
+            <NoTaskSource />
+          </div>
+        ) : snapshot.query.isError ? (
+          <p className="mt-2 text-xs text-(--ui-text-tertiary)">The task source could not be read.</p>
+        ) : tasks.length ? (
+          <div className="mt-2">
+            <OperationalTaskRows snapshots={snapshot.snapshots} sources={snapshot.sources} tasks={tasks} />
+          </div>
+        ) : (
+          <p className="mt-2 text-xs text-(--ui-text-tertiary)">
+            No blocked, review, or diagnosed task currently needs inspection.
+          </p>
+        )}
+      </section>
     </div>
   )
 }
