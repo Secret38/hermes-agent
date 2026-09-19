@@ -1,8 +1,52 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildHumanGates } from './human-gates'
+import { approvalProvenanceFor, buildHumanGates } from './human-gates'
 
 describe('Hermes OS human gates', () => {
+  it('keeps approval mode unknown until a profile mode is actually confirmed', () => {
+    expect(
+      approvalProvenanceFor(
+        {
+          allowPermanent: false,
+          allowSession: true,
+          command: 'git clean -fdx',
+          description: 'destructive clean',
+          patternKey: 'git.clean',
+          patternKeys: ['git.clean', 'filesystem.delete'],
+          sessionId: 'unlisted-runtime',
+          smartDenied: true,
+          toolName: 'terminal'
+        },
+        'unlisted-runtime'
+      )
+    ).toMatchObject({
+      allowPermanent: false,
+      allowSession: true,
+      mode: 'unknown',
+      patternKeys: ['git.clean', 'filesystem.delete'],
+      profile: 'default',
+      smartDenied: true,
+      toolName: 'terminal'
+    })
+  })
+
+  it('uses a confirmed mode resolver without changing policy provenance', () => {
+    const provenance = approvalProvenanceFor(
+      {
+        command: 'rm build.log',
+        description: 'delete file',
+        patternKey: 'filesystem.delete',
+        sessionId: 'runtime'
+      },
+      'runtime',
+      () => 'manual'
+    )
+
+    expect(provenance.mode).toBe('manual')
+    expect(provenance.patternKeys).toEqual(['filesystem.delete'])
+  })
+
+
   it('projects every existing blocking prompt family without inventing state', () => {
     const gates = buildHumanGates(
       {
