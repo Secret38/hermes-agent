@@ -1,7 +1,9 @@
 import { Button, Codicon, host, type OperationsTask, type OperationsTaskSnapshot, type OperationsTaskSource } from '@hermes/plugin-sdk'
 import type { ReactNode } from 'react'
 
-import { openHumanGateSession, useHumanGates, type HumanGate } from './human-gates'
+import { openHumanGateSession, resolveHumanGateApproval, useHumanGates, type HumanGate } from './human-gates'
+import { notifyError } from '@/store/notifications'
+
 import { sourceForSnapshot, useHermesOperations, useLiveFleet } from './operations-data'
 import {
   activeRunIds,
@@ -171,18 +173,49 @@ function humanGateIcon(gate: HumanGate): string {
 }
 
 function HumanGateRows({ gates }: { gates: readonly HumanGate[] }) {
+  const answer = (gate: HumanGate, choice: 'deny' | 'once') => {
+    void resolveHumanGateApproval(gate, choice).catch(error => {
+      notifyError(error, 'Could not answer approval')
+    })
+  }
+
   return (
     <div className="divide-y divide-(--ui-stroke-tertiary)">
-      {gates.map(gate => (
-        <FoundationRow
-          action={() => openHumanGateSession(gate)}
-          detail={gate.sessionLabel + ' · ' + gate.detail}
-          icon={humanGateIcon(gate)}
-          key={gate.id}
-          label={gate.label}
-          state={gate.state}
-        />
-      ))}
+      {gates.map(gate =>
+        gate.kind === 'approval' ? (
+          <div className="flex min-w-0 items-center gap-3 py-2.5" key={gate.id}>
+            <button
+              className="flex min-w-0 flex-1 items-center gap-3 text-left hover:text-foreground"
+              onClick={() => openHumanGateSession(gate)}
+              type="button"
+            >
+              <Codicon className="shrink-0 text-(--ui-text-tertiary)" name={humanGateIcon(gate)} size="0.9rem" />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-medium text-(--ui-text-primary)">{gate.label}</div>
+                <div className="truncate text-xs text-(--ui-text-tertiary)">
+                  {gate.sessionLabel + ' · ' + gate.detail}
+                </div>
+              </div>
+              <div className="shrink-0 font-mono text-[0.6875rem] text-(--ui-text-secondary)">{gate.state}</div>
+            </button>
+            <Button onClick={() => answer(gate, 'deny')} size="sm" type="button" variant="text">
+              Deny
+            </Button>
+            <Button onClick={() => answer(gate, 'once')} size="sm" type="button" variant="secondary">
+              Run once
+            </Button>
+          </div>
+        ) : (
+          <FoundationRow
+            action={() => openHumanGateSession(gate)}
+            detail={gate.sessionLabel + ' · ' + gate.detail}
+            icon={humanGateIcon(gate)}
+            key={gate.id}
+            label={gate.label}
+            state={gate.state}
+          />
+        )
+      )}
     </div>
   )
 }
