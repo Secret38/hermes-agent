@@ -1,7 +1,25 @@
-import { Button, Codicon, host, useQuery, useValue } from '@hermes/plugin-sdk'
+import {
+  Button,
+  Codicon,
+  host,
+  OPERATIONS_TASK_SOURCES_AREA,
+  type OperationsTask,
+  type OperationsTaskSnapshot,
+  type OperationsTaskSource,
+  useContributions,
+  useQuery,
+  useValue
+} from '@hermes/plugin-sdk'
 import type { ReactNode } from 'react'
 
-import { activeRunCount, activeRunIds } from './selectors'
+import {
+  activeRunCount,
+  activeRunIds,
+  attentionOperationalTasks,
+  runningOperationalTasks,
+  taskCountForProject,
+  uniqueOperationalProjects
+} from './selectors'
 
 export type HermesOsSection = 'mission' | 'attention' | 'projects' | 'fleet' | 'timeline' | 'security'
 
@@ -20,13 +38,13 @@ const SECTIONS: Record<HermesOsSection, SectionDefinition> = {
     path: '/hermes-os'
   },
   attention: {
-    description: 'Human decisions only: approvals, blockers, questions, failures, and security requests.',
+    description: 'Producer-authored blockers, review states, and diagnostics that warrant inspection.',
     icon: 'bell',
     label: 'What Needs Me',
     path: '/hermes-os/attention'
   },
   projects: {
-    description: 'Goal-linked workspaces that connect tasks, sessions, files, artifacts, and execution environments.',
+    description: 'Project-linked operational work projected from existing Hermes authorities.',
     icon: 'project',
     label: 'Projects',
     path: '/hermes-os/projects'
@@ -38,13 +56,13 @@ const SECTIONS: Record<HermesOsSection, SectionDefinition> = {
     path: '/hermes-os/fleet'
   },
   timeline: {
-    description: 'Run-level observability across queueing, execution, approvals, retries, and completion.',
+    description: 'Live runtime sessions and task execution, joined without duplicating source state.',
     icon: 'graph',
     label: 'Timeline',
     path: '/hermes-os/timeline'
   },
   security: {
-    description: 'Project-scoped autonomy, capability policies, approvals, and execution boundaries.',
+    description: 'Current execution boundary; policy editing follows after the task/run model is complete.',
     icon: 'shield',
     label: 'Security',
     path: '/hermes-os/security'
@@ -63,26 +81,62 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function FoundationRow({
+  action,
   detail,
   icon,
   label,
   state
 }: {
+  action?: () => void
   detail: string
   icon: string
   label: string
   state: string
 }) {
-  return (
-    <div className="flex min-w-0 items-center gap-3 py-2.5">
+  const body = (
+    <>
       <Codicon className="shrink-0 text-(--ui-text-tertiary)" name={icon} size="0.9rem" />
-      <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium text-(--ui-text-primary)">{label}</div>
+      <div className="min-w-0 flex-1 text-left">
+        <div className="truncate text-sm font-medium text-(--ui-text-primary)">{label}</div>
         <div className="truncate text-xs text-(--ui-text-tertiary)">{detail}</div>
       </div>
       <div className="shrink-0 font-mono text-[0.6875rem] text-(--ui-text-secondary)">{state}</div>
-    </div>
+    </>
   )
+
+  return action ? (
+    <button
+      className="flex w-full min-w-0 items-center gap-3 py-2.5 hover:bg-(--chrome-action-hover)"
+      onClick={action}
+      type="button"
+    >
+      {body}
+    </button>
+  ) : (
+    <div className="flex min-w-0 items-center gap-3 py-2.5">{body}</div>
+  )
+}
+
+function useTaskSources() {
+  const contributions = useContributions(OPERATIONS_TASK_SOURCES_AREA)
+  const sources = contributions
+    .map(contribution => contribution.data as OperationsTaskSource | undefined)
+    .filter((source): source is OperationsTaskSource => Boolean(source?.id && source.readSnapshot))
+
+  const query = useQuery({
+    enabled: sources.length > 0,
+    queryFn: () => Promise.all(sources.map(source => source.readSnapshot())),
+    queryKey: ['hermes-os', 'task-sources', ...sources.map(source => source.id).sort()],
+    refetchInterval: 8_000,
+    refetchOnWindowFocus: true,
+    staleTime: 2_000
+  })
+
+  return {
+    query,
+    snapshots: query.data ?? ([] as OperationsTaskSnapshot[]),
+    sources
+  }
 }
 
 function useOperationsSnapshot() {
@@ -91,6 +145,7 @@ function useOperationsSnapshot() {
   const profile = useValue(host.state.profile)
   const model = useValue(host.state.model)
   const cwd = useValue(host.state.cwd)
+  const taskSources = useTaskSources()
 
   const routes = useQuery({
     queryKey: ['hermes-os', 'profile-routes'],
@@ -106,74 +161,190 @@ function useOperationsSnapshot() {
     gateway,
     model,
     profile,
-    routes
+    routes,
+    ...taskSources
   }
+}
+
+function sourceForTask(sources: readonly OperationsTaskSource[], snapshot: OperationsTaskSnapshot) {
+  return sources.find(source => source.id === snapshot.sourceId)
+}
+
+function taskDetail(task: OperationsTask): string {
+  const parts = [
+    task.projectName,
+    task.assignee ? `agent ${task.assignee}` : null,
+    task.warning?.count ? `${task.warning.count} diagnostic${task.warning.count === 1 ? '' : 's'}` : null
+  ].filter(Boolean)
+
+  return parts.join(' · ') || 'Operational task'
+}
+
+function OperationalTaskRows({
+  snapshots,
+  sources,
+  tasks
+}: {
+  snapshots: readonly OperationsTaskSnapshot[]
+  sources: readonly OperationsTaskSource[]
+  tasks: readonly OperationsTask[]
+}) {
+  const owner = (task: OperationsTask) =>
+    snapshots.find(snapshot => snapshot.tasks.some(candidate => candidate.id === task.id)) ?? null
+
+  return (
+    <div className="divide-y divide-(--ui-stroke-tertiary)">
+      {tasks.map(task => {
+        const snapshot = owner(task)
+        const source = snapshot ? sourceForTask(sources, snapshot) : undefined
+
+        return (
+          <FoundationRow
+            action={source?.openTask ? () => source.openTask?.(task.id) : undefined}
+            detail={taskDetail(task)}
+            icon={task.status === 'blocked' ? 'error' : task.status === 'review' ? 'eye' : 'pulse'}
+            key={`${snapshot?.sourceId ?? 'source'}:${task.id}`}
+            label={task.title}
+            state={(task.warning?.severity || task.status).toUpperCase()}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
+function NoTaskSource() {
+  return (
+    <div className="border-t border-(--ui-stroke-tertiary) pt-4">
+      <div className="text-xs font-medium text-(--ui-text-secondary)">No operational task source active</div>
+      <p className="mt-1 max-w-2xl text-xs leading-relaxed text-(--ui-text-tertiary)">
+        Enable the Kanban plugin to project its existing tasks and projects into Hermes OS. Hermes OS does not create a
+        second task database.
+      </p>
+    </div>
+  )
 }
 
 function MissionControl() {
   const snapshot = useOperationsSnapshot()
-  const routeCount = snapshot.routes.data?.length
+  const runningTasks = runningOperationalTasks(snapshot.snapshots)
+  const attention = attentionOperationalTasks(snapshot.snapshots)
+  const projects = uniqueOperationalProjects(snapshot.snapshots)
 
   return (
     <div className="space-y-6">
       <section>
         <div className="grid grid-cols-2 gap-x-6 border-b border-(--ui-stroke-tertiary) sm:grid-cols-4">
+          <Metric label="Tasks running" value={snapshot.sources.length ? String(runningTasks.length) : '—'} />
           <Metric label="Active runs" value={String(snapshot.activeRuns)} />
-          <Metric label="Agent routes" value={routeCount === undefined ? '—' : String(routeCount)} />
-          <Metric label="Gateway" value={snapshot.gateway || 'unknown'} />
-          <Metric label="Profile" value={snapshot.profile || 'default'} />
+          <Metric label="Needs attention" value={snapshot.sources.length ? String(attention.length) : '—'} />
+          <Metric label="Projects" value={snapshot.sources.length ? String(projects.length) : '—'} />
         </div>
       </section>
 
       <section>
         <h2 className="text-sm font-semibold text-(--ui-text-primary)">Current execution context</h2>
         <div className="mt-2 divide-y divide-(--ui-stroke-tertiary)">
+          <FoundationRow detail="Live Hermes gateway transport state." icon="radio-tower" label="Gateway" state={snapshot.gateway || 'UNKNOWN'} />
+          <FoundationRow detail="The model selected by the live Hermes session surface." icon="symbol-method" label="Model" state={snapshot.model || 'UNRESOLVED'} />
+          <FoundationRow detail={snapshot.cwd || 'No workspace directory is currently attached.'} icon="folder" label="Workspace" state={snapshot.cwd ? 'ATTACHED' : 'DETACHED'} />
           <FoundationRow
-            detail="The model selected by the live Hermes session surface."
-            icon="symbol-method"
-            label="Model"
-            state={snapshot.model || 'UNRESOLVED'}
-          />
-          <FoundationRow
-            detail={snapshot.cwd || 'No workspace directory is currently attached.'}
-            icon="folder"
-            label="Workspace"
-            state={snapshot.cwd ? 'ATTACHED' : 'DETACHED'}
-          />
-          <FoundationRow
-            detail="Profile routes are read from the existing desktop connection registry; credentials never cross this boundary."
+            detail={`${snapshot.routes.data?.length ?? 0} connection-qualified profile route(s)`}
             icon="server-environment"
             label="Fleet registry"
             state={snapshot.routes.isError ? 'DEGRADED' : snapshot.routes.isFetching ? 'SYNCING' : 'LIVE'}
+          />
+          <FoundationRow
+            detail={snapshot.sources.map(source => source.label).join(', ') || 'No task source registered'}
+            icon="project"
+            label="Operational sources"
+            state={snapshot.query.isError ? 'DEGRADED' : snapshot.query.isFetching ? 'SYNCING' : snapshot.sources.length ? 'LIVE' : 'NONE'}
           />
         </div>
       </section>
 
       <section>
         <div className="flex items-baseline justify-between gap-4">
-          <h2 className="text-sm font-semibold text-(--ui-text-primary)">Active run IDs</h2>
+          <h2 className="text-sm font-semibold text-(--ui-text-primary)">Running work</h2>
           <Button onClick={() => host.navigate('/hermes-os/timeline')} size="inline" type="button" variant="text">
             Open timeline
           </Button>
         </div>
-        {snapshot.activeRuns === 0 ? (
-          <p className="mt-2 text-xs leading-relaxed text-(--ui-text-tertiary)">
-            No focused or background Hermes session is currently mid-turn.
-          </p>
+        {!snapshot.sources.length ? (
+          <NoTaskSource />
+        ) : runningTasks.length ? (
+          <OperationalTaskRows snapshots={snapshot.snapshots} sources={snapshot.sources} tasks={runningTasks} />
         ) : (
-          <div className="mt-2 divide-y divide-(--ui-stroke-tertiary)">
-            {activeRunIds(snapshot.busyBySession).map(sessionId => (
-                <FoundationRow
-                  detail="Runtime session currently executing a turn."
-                  icon="loading"
-                  key={sessionId}
-                  label={sessionId}
-                  state="RUNNING"
-                />
-              ))}
-          </div>
+          <p className="mt-2 text-xs text-(--ui-text-tertiary)">No operational task is currently in the running state.</p>
         )}
       </section>
+    </div>
+  )
+}
+
+function AttentionPage() {
+  const snapshot = useOperationsSnapshot()
+  const tasks = attentionOperationalTasks(snapshot.snapshots)
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <div className="flex items-center gap-2">
+          <Codicon className="text-(--ui-text-secondary)" name="bell" size="1rem" />
+          <h2 className="text-base font-semibold text-(--ui-text-primary)">Attention queue</h2>
+        </div>
+        <p className="mt-1 max-w-3xl text-sm leading-relaxed text-(--ui-text-tertiary)">
+          No intent is inferred here: entries appear only from explicit blocked/review states or diagnostics published by
+          the authoritative task source.
+        </p>
+      </div>
+
+      {!snapshot.sources.length ? (
+        <NoTaskSource />
+      ) : snapshot.query.isError ? (
+        <p className="text-xs text-(--ui-text-tertiary)">The task source could not be read.</p>
+      ) : tasks.length ? (
+        <OperationalTaskRows snapshots={snapshot.snapshots} sources={snapshot.sources} tasks={tasks} />
+      ) : (
+        <p className="text-xs text-(--ui-text-tertiary)">No blocked, review, or diagnosed task currently needs inspection.</p>
+      )}
+    </div>
+  )
+}
+
+function ProjectsPage() {
+  const snapshot = useOperationsSnapshot()
+  const projects = uniqueOperationalProjects(snapshot.snapshots)
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <div className="flex items-center gap-2">
+          <Codicon className="text-(--ui-text-secondary)" name="project" size="1rem" />
+          <h2 className="text-base font-semibold text-(--ui-text-primary)">Operational projects</h2>
+        </div>
+        <p className="mt-1 max-w-3xl text-sm leading-relaxed text-(--ui-text-tertiary)">
+          Projects are projected from the source that already owns them; Hermes OS adds no project persistence.
+        </p>
+      </div>
+
+      {!snapshot.sources.length ? (
+        <NoTaskSource />
+      ) : projects.length ? (
+        <div className="divide-y divide-(--ui-stroke-tertiary)">
+          {projects.map(project => (
+            <FoundationRow
+              detail={project.path || project.slug || project.id}
+              icon="repo"
+              key={project.id}
+              label={project.name}
+              state={`${taskCountForProject(snapshot.snapshots, project.id)} ACTIVE`}
+            />
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-(--ui-text-tertiary)">The active task source has no project records.</p>
+      )}
     </div>
   )
 }
@@ -190,20 +361,14 @@ function FleetPage() {
           <h2 className="text-base font-semibold text-(--ui-text-primary)">Registered execution routes</h2>
         </div>
         <p className="mt-1 max-w-3xl text-sm leading-relaxed text-(--ui-text-tertiary)">
-          One row is one connection-qualified Hermes profile route. This is identity and reachability topology, not a
-          guessed online/offline agent state.
+          One row is one connection-qualified Hermes profile route. This is identity topology, not a guessed online state.
         </p>
       </div>
 
       {snapshot.routes.isLoading ? (
         <p className="text-xs text-(--ui-text-tertiary)">Loading fleet registry…</p>
       ) : snapshot.routes.isError ? (
-        <div className="border-t border-(--ui-stroke-tertiary) pt-4">
-          <div className="text-xs font-medium text-destructive">Fleet registry unavailable</div>
-          <p className="mt-1 text-xs text-(--ui-text-tertiary)">
-            The current desktop connection registry could not be read. Existing Hermes work remains unaffected.
-          </p>
-        </div>
+        <p className="text-xs text-(--ui-text-tertiary)">The current desktop connection registry could not be read.</p>
       ) : routes.length === 0 ? (
         <p className="text-xs text-(--ui-text-tertiary)">No registered profile routes are available.</p>
       ) : (
@@ -212,14 +377,10 @@ function FleetPage() {
             <div className="grid min-w-0 gap-2 py-3 sm:grid-cols-[minmax(0,1fr)_8rem_10rem]" key={`${route.connectionId}:${route.profile}`}>
               <div className="min-w-0">
                 <div className="truncate text-sm font-medium text-(--ui-text-primary)">{route.profile}</div>
-                <div className="truncate font-mono text-[0.6875rem] text-(--ui-text-tertiary)">
-                  {route.connectionId}
-                </div>
+                <div className="truncate font-mono text-[0.6875rem] text-(--ui-text-tertiary)">{route.connectionId}</div>
               </div>
               <div className="font-mono text-xs text-(--ui-text-secondary)">{route.mode.toUpperCase()}</div>
-              <div className="truncate text-xs text-(--ui-text-tertiary)">
-                target {route.targetProfile || route.profile}
-              </div>
+              <div className="truncate text-xs text-(--ui-text-tertiary)">target {route.targetProfile || route.profile}</div>
             </div>
           ))}
         </div>
@@ -230,36 +391,34 @@ function FleetPage() {
 
 function TimelinePage() {
   const snapshot = useOperationsSnapshot()
-  const running = activeRunIds(snapshot.busyBySession)
+  const runtimeRuns = activeRunIds(snapshot.busyBySession)
+  const tasks = runningOperationalTasks(snapshot.snapshots)
 
   return (
-    <div className="space-y-5">
-      <div>
-        <div className="flex items-center gap-2">
-          <Codicon className="text-(--ui-text-secondary)" name="graph" size="1rem" />
-          <h2 className="text-base font-semibold text-(--ui-text-primary)">Live execution</h2>
-        </div>
-        <p className="mt-1 max-w-3xl text-sm leading-relaxed text-(--ui-text-tertiary)">
-          V1 begins with Hermes' authoritative mid-turn state. Durable run spans, retries, approvals, and task links will
-          layer onto this surface rather than replacing it.
-        </p>
-      </div>
+    <div className="space-y-6">
+      <section>
+        <h2 className="text-sm font-semibold text-(--ui-text-primary)">Running tasks</h2>
+        {!snapshot.sources.length ? (
+          <NoTaskSource />
+        ) : tasks.length ? (
+          <OperationalTaskRows snapshots={snapshot.snapshots} sources={snapshot.sources} tasks={tasks} />
+        ) : (
+          <p className="mt-2 text-xs text-(--ui-text-tertiary)">No task source reports running work.</p>
+        )}
+      </section>
 
-      {running.length === 0 ? (
-        <p className="text-xs text-(--ui-text-tertiary)">No runs are executing right now.</p>
-      ) : (
-        <div className="divide-y divide-(--ui-stroke-tertiary)">
-          {running.map(sessionId => (
-            <FoundationRow
-              detail="Live runtime session; task/run metadata will be joined in the Kanban binding slice."
-              icon="pulse"
-              key={sessionId}
-              label={sessionId}
-              state="RUNNING"
-            />
-          ))}
-        </div>
-      )}
+      <section>
+        <h2 className="text-sm font-semibold text-(--ui-text-primary)">Runtime sessions</h2>
+        {runtimeRuns.length === 0 ? (
+          <p className="mt-2 text-xs text-(--ui-text-tertiary)">No Hermes session is currently mid-turn.</p>
+        ) : (
+          <div className="mt-2 divide-y divide-(--ui-stroke-tertiary)">
+            {runtimeRuns.map(sessionId => (
+              <FoundationRow detail="Hermes runtime session currently executing a turn." icon="pulse" key={sessionId} label={sessionId} state="RUNNING" />
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   )
 }
@@ -275,8 +434,8 @@ function SecurityPage() {
           <h2 className="text-base font-semibold text-(--ui-text-primary)">Current boundary</h2>
         </div>
         <p className="mt-1 max-w-3xl text-sm leading-relaxed text-(--ui-text-tertiary)">
-          This first read-only view reports the execution context already known to Hermes. Capability manifests and
-          project-scoped policy editing come after the task/run model is connected.
+          This read-only view reports the execution context already known to Hermes. Capability manifests and
+          project-scoped policy editing are intentionally not invented ahead of their backend authority.
         </p>
       </div>
 
@@ -284,61 +443,23 @@ function SecurityPage() {
         <FoundationRow detail="Live gateway transport state." icon="radio-tower" label="Gateway" state={snapshot.gateway || 'UNKNOWN'} />
         <FoundationRow detail="Current Hermes profile scope." icon="account" label="Profile" state={snapshot.profile || 'default'} />
         <FoundationRow detail={snapshot.cwd || 'No workspace attached.'} icon="folder" label="Workspace scope" state={snapshot.cwd ? 'BOUND' : 'NONE'} />
+        <FoundationRow detail={`${snapshot.sources.length} registered read-only source(s)`} icon="lock" label="Operations data" state="READ ONLY" />
       </div>
-    </div>
-  )
-}
-
-function FoundationPage({
-  children,
-  section
-}: {
-  children?: ReactNode
-  section: 'attention' | 'projects'
-}) {
-  const definition = SECTIONS[section]
-
-  return (
-    <div className="space-y-5">
-      <div>
-        <div className="flex items-center gap-2">
-          <Codicon className="text-(--ui-text-secondary)" name={definition.icon} size="1rem" />
-          <h2 className="text-base font-semibold text-(--ui-text-primary)">{definition.label}</h2>
-        </div>
-        <p className="mt-1 max-w-3xl text-sm leading-relaxed text-(--ui-text-tertiary)">{definition.description}</p>
-      </div>
-
-      {children ?? (
-        <div className="border-t border-(--ui-stroke-tertiary) pt-4">
-          <div className="text-xs font-medium text-(--ui-text-secondary)">V1 data binding pending</div>
-          <p className="mt-1 max-w-2xl text-xs leading-relaxed text-(--ui-text-tertiary)">
-            This surface will be connected to existing Hermes authorities only. No second task, project, approval, or
-            session database will be introduced.
-          </p>
-        </div>
-      )}
     </div>
   )
 }
 
 function PageBody({ section }: { section: HermesOsSection }) {
-  if (section === 'mission') {
-    return <MissionControl />
+  const pages: Record<HermesOsSection, ReactNode> = {
+    mission: <MissionControl />,
+    attention: <AttentionPage />,
+    projects: <ProjectsPage />,
+    fleet: <FleetPage />,
+    timeline: <TimelinePage />,
+    security: <SecurityPage />
   }
 
-  if (section === 'fleet') {
-    return <FleetPage />
-  }
-
-  if (section === 'timeline') {
-    return <TimelinePage />
-  }
-
-  if (section === 'security') {
-    return <SecurityPage />
-  }
-
-  return <FoundationPage section={section} />
+  return pages[section]
 }
 
 export function HermesOsPage({ section }: { section: HermesOsSection }) {
