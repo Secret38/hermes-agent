@@ -17,6 +17,7 @@ describe('Kanban operations projection', () => {
               status: 'running',
               assignee: 'worker',
               project_id: 'project-1',
+              session_id: 'session-origin',
               warnings: { count: 2, highest_severity: 'warning' },
               started_at: 100,
               last_heartbeat_at: 120
@@ -72,6 +73,7 @@ describe('Kanban operations projection', () => {
           priority: undefined,
           projectId: 'project-1',
           projectName: 'Hermes OS',
+          originSessionId: 'session-origin',
           startedAt: 100,
           lastHeartbeatAt: 120,
           warning: { count: 2, severity: 'warning' }
