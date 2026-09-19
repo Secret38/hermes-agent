@@ -1,7 +1,7 @@
 import { useStore } from '@nanostores/react'
 import { useEffect } from 'react'
 
-import type { OperationsTask, OperationsTaskSnapshot } from '@hermes/plugin-sdk'
+import { host, type OperationsTask, type OperationsTaskSnapshot, useValue } from '@hermes/plugin-sdk'
 import type { SessionInfo } from '@/hermes'
 import {
   $projectTree,
@@ -25,20 +25,24 @@ export function flattenProjectSessions(project: SidebarProjectTree | null | unde
 
   const newestByLineage = new Map<string, SessionInfo>()
 
-  for (const repo of project.repos) {
-    for (const group of repo.groups) {
-      for (const session of group.sessions) {
-        const key = session._lineage_root_id || session.id
-        const current = newestByLineage.get(key)
-        const activity = session.last_active || session.started_at || 0
-        const currentActivity = current ? current.last_active || current.started_at || 0 : -1
+  const consider = (session: SessionInfo) => {
+    const key = session._lineage_root_id || session.id
+    const current = newestByLineage.get(key)
+    const activity = session.last_active || session.started_at || 0
+    const currentActivity = current ? current.last_active || current.started_at || 0 : -1
 
-        if (!current || activity > currentActivity) {
-          newestByLineage.set(key, session)
-        }
-      }
+    if (!current || activity > currentActivity) {
+      newestByLineage.set(key, session)
     }
   }
+
+  for (const repo of project.repos) {
+    for (const group of repo.groups) {
+      group.sessions.forEach(consider)
+    }
+  }
+
+  project.previewSessions?.forEach(consider)
 
   return [...newestByLineage.values()].sort(
     (a, b) => (b.last_active || b.started_at || 0) - (a.last_active || a.started_at || 0)
@@ -48,10 +52,12 @@ export function flattenProjectSessions(project: SidebarProjectTree | null | unde
 export function useHermesProjects() {
   const projects = useStore($projectTree)
   const loading = useStore($projectTreeLoading)
+  const connectionId = useValue(host.state.connectionId)
+  const profile = useValue(host.state.profile)
 
   useEffect(() => {
     void refreshProjectTree()
-  }, [])
+  }, [connectionId, profile])
 
   return { loading, projects }
 }
