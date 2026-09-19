@@ -861,6 +861,7 @@ function SecurityPage() {
   const humanGates = useHumanGates()
   const approvalModes = useStore($approvalModes)
   const computerUse = useComputerUseSecurity()
+  const telemetry = useTelemetrySecurity()
   const approvals = humanGates.filter(gate => gate.kind === 'approval')
   const profiles = new Set([
     snapshot.profile || 'default',
@@ -888,6 +889,71 @@ function SecurityPage() {
           <FoundationRow detail={snapshot.cwd || 'No workspace attached.'} icon="folder" label="Workspace scope" state={snapshot.cwd ? 'BOUND' : 'NONE'} />
           <FoundationRow detail={`${snapshot.sources.length} registered read-only source(s)`} icon="lock" label="Operations data" state="READ ONLY" />
         </div>
+      </section>
+
+      <section>
+        <div className="flex items-baseline justify-between gap-4">
+          <h3 className="text-sm font-semibold text-(--ui-text-primary)">Privacy & telemetry boundary</h3>
+          <span className="font-mono text-[0.6875rem] text-(--ui-text-tertiary)">
+            {telemetry.data
+              ? telemetry.data.shared_metrics.transmission_enabled
+                ? 'TRANSMITTING'
+                : 'NO TRANSMISSION'
+              : telemetry.isError
+                ? 'UNAVAILABLE'
+                : 'LOADING'}
+          </span>
+        </div>
+        <p className="mt-1 max-w-3xl text-xs leading-relaxed text-(--ui-text-tertiary)">
+          Local, profile-scoped Hermes shared-metrics configuration only. Raw telemetry endpoints are not exposed here,
+          and this status does not describe model-provider, MCP, browser, update, or other tool network traffic.
+        </p>
+        {telemetry.isError ? (
+          <p className="mt-2 text-xs text-(--ui-text-tertiary)">
+            This backend does not expose the narrow telemetry security summary.
+          </p>
+        ) : telemetry.data ? (
+          <div className="mt-2 divide-y divide-(--ui-stroke-tertiary)">
+            <FoundationRow
+              detail={
+                telemetry.data.shared_metrics.collection_enabled
+                  ? 'Hermes shared-metrics collection is enabled for this profile.'
+                  : 'Hermes shared-metrics collection is disabled for this profile.'
+              }
+              icon="graph"
+              label="Shared metrics collection"
+              state={telemetry.data.shared_metrics.collection_enabled ? 'ENABLED' : 'DISABLED'}
+            />
+            <FoundationRow
+              detail={
+                telemetry.data.shared_metrics.transmission_enabled
+                  ? 'Shared metrics are effectively permitted to leave Hermes under the current configuration.'
+                  : telemetry.data.shared_metrics.transmission_requested
+                    ? 'Transmission was requested, but current collection or endpoint-safety rules prevent effective sending.'
+                    : 'Shared-metrics transmission is not requested.'
+              }
+              icon="cloud-upload"
+              label="Shared metrics transmission"
+              state={telemetry.data.shared_metrics.transmission_enabled ? 'ENABLED' : 'DISABLED'}
+            />
+            <FoundationRow
+              detail={
+                telemetry.data.shared_metrics.destination === 'nous'
+                  ? 'Configured destination is the built-in Nous telemetry endpoint class.'
+                  : telemetry.data.shared_metrics.destination === 'loopback'
+                    ? 'Configured destination resolves to a loopback-only endpoint.'
+                    : telemetry.data.shared_metrics.destination === 'custom_https'
+                      ? 'Configured destination is a custom HTTPS endpoint; the raw address stays hidden.'
+                      : 'Configured destination is not eligible for transmission under Hermes endpoint-safety rules.'
+              }
+              icon="globe"
+              label="Telemetry destination"
+              state={telemetry.data.shared_metrics.destination.toUpperCase()}
+            />
+          </div>
+        ) : (
+          <p className="mt-2 text-xs text-(--ui-text-tertiary)">Reading Hermes telemetry configuration…</p>
+        )}
       </section>
 
       <section>
