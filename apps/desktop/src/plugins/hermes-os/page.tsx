@@ -190,7 +190,7 @@ function OperationalTaskRows({
   tasks: readonly OperationsTask[]
 }) {
   const owner = (task: OperationsTask) =>
-    snapshots.find(snapshot => snapshot.tasks.some(candidate => candidate.id === task.id)) ?? null
+    snapshots.find(snapshot => snapshot.tasks.some(candidate => candidate === task)) ?? null
 
   return (
     <div className="divide-y divide-(--ui-stroke-tertiary)">
