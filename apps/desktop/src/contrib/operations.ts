@@ -39,6 +39,10 @@ export interface OperationsProject {
 export interface OperationsTaskSnapshot {
   sourceId: string
   sourceLabel: string
+  /** Registry connection that produced this snapshot, when known. */
+  connectionId?: null | string
+  /** Active/source profile when the producer was read. */
+  profile?: null | string
   tasks: OperationsTask[]
   projects: OperationsProject[]
   scopeLabel?: null | string
