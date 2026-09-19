@@ -9,6 +9,11 @@ import {
 } from '@hermes/plugin-sdk'
 import { useStore } from '@nanostores/react'
 
+import {
+  $liveSessionSnapshots,
+  liveSessionScopeKey,
+  type LiveSessionSnapshotItem
+} from '@/store/live-sessions'
 import { $subagentsBySession, type SubagentProgress } from '@/store/subagents'
 
 import { activeRunCount } from './selectors'
@@ -124,36 +129,43 @@ export function projectLiveSubagent(item: SubagentProgress): LiveFleetSubagent {
   }
 }
 
-async function readLiveFleetSessions(): Promise<LiveFleetSession[]> {
-  if (!host.getGateway()) {
-    return []
+export function projectLiveFleetSession(item: LiveSessionSnapshotItem): LiveFleetSession {
+  return {
+    current: Boolean(item.current),
+    id: item.id,
+    last_active: item.last_active ?? 0,
+    message_count: item.message_count ?? 0,
+    model: item.model ?? '',
+    preview: item.preview ?? '',
+    session_key: item.session_key,
+    started_at: item.started_at ?? 0,
+    status: item.status ?? 'idle',
+    title: item.title ?? ''
   }
-
-  const active = await host.request<{ sessions: LiveFleetSession[] }>('session.active_list', {})
-
-  return active.sessions ?? []
 }
 
 export function useLiveFleet() {
+  const liveSessionSnapshots = useStore($liveSessionSnapshots)
   const subagentsBySession = useStore($subagentsBySession)
   const connectionId = useValue(host.state.connectionId)
   const profile = useValue(host.state.profile)
-  const query = useQuery({
-    queryFn: readLiveFleetSessions,
-    queryKey: ['hermes-os', 'live-fleet', connectionId, profile],
-    refetchInterval: 4_000,
-    refetchOnWindowFocus: true,
-    retry: false,
-    staleTime: 1_000
-  })
+  const scopeKey = liveSessionScopeKey(connectionId, profile)
+  const snapshot = liveSessionSnapshots[scopeKey]
+  const sessions = snapshot?.sessions ?? []
 
   return {
-    ...query,
     data: {
-      sessions: (query.data ?? []).map(session => ({
-        ...session,
-        subagents: (subagentsBySession[session.id] ?? []).map(projectLiveSubagent)
-      }))
-    } satisfies LiveFleetSnapshot
+      sessions: sessions.map(item => {
+        const session = projectLiveFleetSession(item)
+
+        return {
+          ...session,
+          subagents: (subagentsBySession[session.id] ?? []).map(projectLiveSubagent)
+        }
+      })
+    } satisfies LiveFleetSnapshot,
+    isError: false,
+    isLoading: false,
+    updatedAt: snapshot?.updatedAt ?? 0
   }
 }
