@@ -13,6 +13,7 @@ import { activeRunCount } from './selectors'
 export function useHermesOperations() {
   const busyBySession = useValue(host.state.busyBySession)
   const gateway = useValue(host.state.gateway)
+  const connectionId = useValue(host.state.connectionId)
   const profile = useValue(host.state.profile)
   const model = useValue(host.state.model)
   const cwd = useValue(host.state.cwd)
@@ -25,7 +26,7 @@ export function useHermesOperations() {
   const taskQuery = useQuery({
     enabled: sources.length > 0,
     queryFn: () => Promise.all(sources.map(source => source.readSnapshot())),
-    queryKey: ['hermes-os', 'task-sources', ...sources.map(source => source.id).sort()],
+    queryKey: ['hermes-os', 'task-sources', connectionId, profile, ...sources.map(source => source.id).sort()],
     refetchInterval: 8_000,
     refetchOnWindowFocus: true,
     staleTime: 2_000
@@ -41,6 +42,7 @@ export function useHermesOperations() {
   return {
     activeRuns: activeRunCount(busyBySession),
     busyBySession,
+    connectionId,
     cwd,
     gateway,
     model,
