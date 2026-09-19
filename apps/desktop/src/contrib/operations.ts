@@ -36,6 +36,47 @@ export interface OperationsProject {
   path?: null | string
 }
 
+export interface OperationsRun {
+  id: number | string
+  status: string
+  outcome?: null | string
+  profile?: null | string
+  workerSessionId?: null | string
+  workerPid?: null | number
+  startedAt?: null | number
+  endedAt?: null | number
+  summary?: null | string
+  error?: null | string
+}
+
+export interface OperationsArtifact {
+  id: number | string
+  name: string
+  sizeBytes?: null | number
+}
+
+export interface OperationsTaskExecution {
+  taskId: string
+  result?: null | string
+  lastFailureError?: null | string
+  workspacePath?: null | string
+  branchName?: null | string
+  runs: OperationsRun[]
+  artifacts: OperationsArtifact[]
+}
+
+export interface OperationsRunInspection {
+  runId: number | string
+  alive: boolean
+  reason?: null | string
+  pid?: null | number
+  status?: null | string
+  cpuPercent?: null | number
+  memoryRssBytes?: null | number
+  numThreads?: null | number
+}
+
+
 export interface OperationsTaskSnapshot {
   sourceId: string
   sourceLabel: string
@@ -54,6 +95,10 @@ export interface OperationsTaskSource {
   label: string
   queryKey: readonly unknown[]
   readSnapshot: () => Promise<OperationsTaskSnapshot>
+  /** Optional read-only execution history. The producer remains authoritative. */
+  readTaskExecution?: (taskId: string) => Promise<OperationsTaskExecution>
+  /** Optional live process inspection for an individual run. */
+  readRunInspection?: (runId: number | string) => Promise<OperationsRunInspection>
   /** Optional deep link into the producer's native UI. */
   openTask?: (taskId: string) => void
 }
