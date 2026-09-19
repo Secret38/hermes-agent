@@ -221,6 +221,15 @@ function InspectorBody({
     staleTime: 1_500
   })
 
+  const log = useQuery({
+    enabled: Boolean(source.readTaskLog),
+    queryFn: () => source.readTaskLog!(task.id, snapshot),
+    queryKey: ['hermes-os', 'task-log', source.id, task.id, snapshot.scopeKey],
+    refetchInterval: task.status === 'running' ? 4_000 : false,
+    retry: false,
+    staleTime: 1_500
+  })
+
   return (
     <>
       <SheetHeader className="border-b border-(--ui-stroke-tertiary) pr-10">
@@ -308,6 +317,39 @@ function InspectorBody({
 
             <section className="border-t border-(--ui-stroke-tertiary) py-3">
               <div className="flex items-baseline justify-between gap-3">
+                <h3 className="text-xs font-semibold text-(--ui-text-primary)">Event chronology</h3>
+                <span className="font-mono text-[0.625rem] text-(--ui-text-tertiary)">
+                  {execution.data.events.length}
+                </span>
+              </div>
+              {execution.data.events.length ? (
+                <div className="mt-2 divide-y divide-(--ui-stroke-tertiary)">
+                  {[...execution.data.events].reverse().map(event => (
+                    <div className="py-2" key={String(event.id)}>
+                      <div className="flex min-w-0 items-center gap-3">
+                        <Codicon className="shrink-0 text-(--ui-text-tertiary)" name="circle-small-filled" size="0.7rem" />
+                        <span className="min-w-0 flex-1 truncate text-xs font-medium text-(--ui-text-secondary)">
+                          {event.kind}
+                        </span>
+                        <span className="shrink-0 font-mono text-[0.625rem] text-(--ui-text-quaternary)">
+                          {formatTimestamp(event.createdAt)}
+                        </span>
+                      </div>
+                      {event.detail ? (
+                        <div className="ml-5 mt-1 max-h-24 overflow-auto whitespace-pre-wrap text-[0.6875rem] leading-relaxed text-(--ui-text-tertiary)">
+                          {event.detail}
+                        </div>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-2 text-xs text-(--ui-text-tertiary)">No task events recorded.</p>
+              )}
+            </section>
+
+            <section className="border-t border-(--ui-stroke-tertiary) py-3">
+              <div className="flex items-baseline justify-between gap-3">
                 <h3 className="text-xs font-semibold text-(--ui-text-primary)">Artifacts</h3>
                 <span className="font-mono text-[0.625rem] text-(--ui-text-tertiary)">
                   {execution.data.artifacts.length}
@@ -329,6 +371,31 @@ function InspectorBody({
                 <p className="mt-2 text-xs text-(--ui-text-tertiary)">No task artifacts recorded.</p>
               )}
             </section>
+
+            {source.readTaskLog ? (
+              <section className="border-t border-(--ui-stroke-tertiary) py-3">
+                <div className="flex items-baseline justify-between gap-3">
+                  <h3 className="text-xs font-semibold text-(--ui-text-primary)">Worker log</h3>
+                  {log.data ? (
+                    <span className="font-mono text-[0.625rem] text-(--ui-text-tertiary)">
+                      {formatBytes(log.data.sizeBytes)}
+                      {log.data.truncated ? ' · tail' : ''}
+                    </span>
+                  ) : null}
+                </div>
+                {log.isError ? (
+                  <p className="mt-2 text-xs text-(--ui-text-tertiary)">Worker log is unavailable.</p>
+                ) : log.data?.exists ? (
+                  <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded bg-(--ui-bg-secondary) p-2 font-mono text-[0.6875rem] leading-relaxed text-(--ui-text-secondary)">
+                    {log.data.content || '(empty log)'}
+                  </pre>
+                ) : log.data ? (
+                  <p className="mt-2 text-xs text-(--ui-text-tertiary)">No worker log file recorded.</p>
+                ) : (
+                  <p className="mt-2 text-xs text-(--ui-text-tertiary)">Loading worker log…</p>
+                )}
+              </section>
+            ) : null}
           </>
         )}
       </div>
