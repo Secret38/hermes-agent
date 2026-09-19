@@ -139,10 +139,20 @@ function OperationalTaskRows({
   sources: readonly OperationsTaskSource[]
   tasks: readonly OperationsTask[]
 }) {
-  const [inspection, setInspection] = useState<ExecutionInspectorSelection | null>(null)
+  const [inspectionKey, setInspectionKey] = useState<null | { sourceId: string; taskId: string }>(null)
 
   const owner = (task: OperationsTask) =>
     snapshots.find(snapshot => snapshot.tasks.some(candidate => candidate === task)) ?? null
+
+  const inspectionSnapshot = inspectionKey
+    ? snapshots.find(snapshot => snapshot.sourceId === inspectionKey.sourceId && snapshot.tasks.some(task => task.id === inspectionKey.taskId))
+    : undefined
+  const inspectionTask = inspectionSnapshot?.tasks.find(task => task.id === inspectionKey?.taskId)
+  const inspectionSource = inspectionSnapshot ? sourceForSnapshot(sources, inspectionSnapshot) : undefined
+  const inspection: ExecutionInspectorSelection | null =
+    inspectionSnapshot && inspectionTask && inspectionSource
+      ? { snapshot: inspectionSnapshot, source: inspectionSource, task: inspectionTask }
+      : null
 
   return (
     <>
@@ -154,7 +164,9 @@ function OperationalTaskRows({
           const canInspect = Boolean(snapshot && source?.readTaskExecution)
           const canOpenWorker = Boolean(task.workerSessionId && route)
           const inspectAction =
-            canInspect && snapshot && source ? () => setInspection({ snapshot, source, task }) : undefined
+            canInspect && snapshot && source
+              ? () => setInspectionKey({ sourceId: snapshot.sourceId, taskId: task.id })
+              : undefined
           const taskAction = source?.openTask ? () => source.openTask?.(task.id) : inspectAction
 
           if (canInspect || canOpenWorker) {
@@ -220,7 +232,7 @@ function OperationalTaskRows({
       <ExecutionInspector
         onOpenChange={open => {
           if (!open) {
-            setInspection(null)
+            setInspectionKey(null)
           }
         }}
         open={inspection !== null}
