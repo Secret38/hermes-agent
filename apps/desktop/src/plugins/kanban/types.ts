@@ -13,6 +13,8 @@ export interface KanbanTask {
   tenant?: null | string
   project_id?: null | string
   session_id?: null | string
+  current_run_id?: null | number
+  worker_session_id?: null | string
   created_at?: number
   latest_summary?: null | string
   comment_count?: number
@@ -69,6 +71,7 @@ export interface KanbanRun {
   error?: null | string
   metadata?: null | Record<string, unknown> | string
   worker_pid?: null | number
+  worker_session_id?: null | string
   started_at?: null | number
   ended_at?: null | number
 }
