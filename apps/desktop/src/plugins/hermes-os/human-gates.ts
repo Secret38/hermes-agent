@@ -2,14 +2,20 @@ import { host } from '@hermes/plugin-sdk'
 import { useStore } from '@nanostores/react'
 
 import { openSession } from '@/app/open-session'
-import { $clarifyRequests } from '@/store/clarify'
+import { $clarifyRequests, type ClarifyRequest } from '@/store/clarify'
 import {
   $approvalRequestQueues,
   $secretRequests,
   $sudoRequests,
   $vaultCodeRequests,
   $vaultSaveLoginRequests,
-  $vaultUnlockRequests
+  $vaultUnlockRequests,
+  type ApprovalRequest,
+  type SecretRequest,
+  type SudoRequest,
+  type VaultCodeRequest,
+  type VaultSaveLoginRequest,
+  type VaultUnlockRequest
 } from '@/store/prompts'
 import { ownerLookupSessionRows, sessionMatchesStoredId } from '@/store/session'
 import { storedSessionIdForRuntimeId } from '@/store/session-states'
@@ -49,32 +55,39 @@ export function openHumanGateSession(gate: Pick<HumanGate, 'runtimeSessionId'>):
   openSession(storedId, to => host.navigate(to), 'stack')
 }
 
-export function useHumanGates(): HumanGate[] {
-  const approvals = useStore($approvalRequestQueues)
-  const clarify = useStore($clarifyRequests)
-  const sudo = useStore($sudoRequests)
-  const secrets = useStore($secretRequests)
-  const vaultUnlock = useStore($vaultUnlockRequests)
-  const vaultSave = useStore($vaultSaveLoginRequests)
-  const vaultCode = useStore($vaultCodeRequests)
+export interface HumanGatePromptMaps {
+  approvals: Readonly<Record<string, readonly ApprovalRequest[]>>
+  clarify: Readonly<Record<string, ClarifyRequest>>
+  secrets: Readonly<Record<string, SecretRequest>>
+  sudo: Readonly<Record<string, SudoRequest>>
+  vaultCode: Readonly<Record<string, VaultCodeRequest>>
+  vaultSave: Readonly<Record<string, VaultSaveLoginRequest>>
+  vaultUnlock: Readonly<Record<string, VaultUnlockRequest>>
+}
 
+export function buildHumanGates(
+  maps: HumanGatePromptMaps,
+  sessionLabel: (runtimeSessionId: string) => string = labelForSession
+): HumanGate[] {
   const gates: HumanGate[] = []
 
-  for (const [sessionId, queue] of Object.entries(approvals)) {
+  for (const [sessionId, queue] of Object.entries(maps.approvals)) {
     for (const request of queue) {
+      const runtimeSessionId = request.sessionId || sessionId
+
       gates.push({
         detail: clipped(request.command, request.description || 'Command requires approval'),
         id: `approval:${sessionId}:${request.requestId ?? request.serverRequestId ?? gates.length}`,
         kind: 'approval',
         label: request.description?.trim() || 'Command approval',
-        runtimeSessionId: request.sessionId || sessionId,
-        sessionLabel: labelForSession(request.sessionId || sessionId),
+        runtimeSessionId,
+        sessionLabel: sessionLabel(runtimeSessionId),
         state: queue.length > 1 ? `APPROVAL · ${queue.length} QUEUED` : 'APPROVAL'
       })
     }
   }
 
-  for (const [sessionId, request] of Object.entries(clarify)) {
+  for (const [sessionId, request] of Object.entries(maps.clarify)) {
     const runtimeSessionId = request.sessionId || sessionId
     const questionCount = request.questions?.length ?? 1
 
@@ -84,12 +97,12 @@ export function useHumanGates(): HumanGate[] {
       kind: 'clarify',
       label: questionCount > 1 ? `${questionCount} clarification questions` : 'Clarification requested',
       runtimeSessionId,
-      sessionLabel: labelForSession(runtimeSessionId),
+      sessionLabel: sessionLabel(runtimeSessionId),
       state: 'QUESTION'
     })
   }
 
-  for (const [sessionId, request] of Object.entries(sudo)) {
+  for (const [sessionId, request] of Object.entries(maps.sudo)) {
     const runtimeSessionId = request.sessionId || sessionId
 
     gates.push({
@@ -98,12 +111,12 @@ export function useHumanGates(): HumanGate[] {
       kind: 'sudo',
       label: 'Elevated access requested',
       runtimeSessionId,
-      sessionLabel: labelForSession(runtimeSessionId),
+      sessionLabel: sessionLabel(runtimeSessionId),
       state: 'SUDO'
     })
   }
 
-  for (const [sessionId, request] of Object.entries(secrets)) {
+  for (const [sessionId, request] of Object.entries(maps.secrets)) {
     const runtimeSessionId = request.sessionId || sessionId
 
     gates.push({
@@ -112,12 +125,12 @@ export function useHumanGates(): HumanGate[] {
       kind: 'secret',
       label: 'Credential input requested',
       runtimeSessionId,
-      sessionLabel: labelForSession(runtimeSessionId),
+      sessionLabel: sessionLabel(runtimeSessionId),
       state: 'SECRET'
     })
   }
 
-  for (const [sessionId, request] of Object.entries(vaultUnlock)) {
+  for (const [sessionId, request] of Object.entries(maps.vaultUnlock)) {
     const runtimeSessionId = request.sessionId || sessionId
 
     gates.push({
@@ -126,12 +139,12 @@ export function useHumanGates(): HumanGate[] {
       kind: 'vault-unlock',
       label: 'Password manager unlock',
       runtimeSessionId,
-      sessionLabel: labelForSession(runtimeSessionId),
+      sessionLabel: sessionLabel(runtimeSessionId),
       state: 'VAULT'
     })
   }
 
-  for (const [sessionId, request] of Object.entries(vaultSave)) {
+  for (const [sessionId, request] of Object.entries(maps.vaultSave)) {
     const runtimeSessionId = request.sessionId || sessionId
 
     gates.push({
@@ -140,12 +153,12 @@ export function useHumanGates(): HumanGate[] {
       kind: 'vault-save',
       label: 'Save login decision',
       runtimeSessionId,
-      sessionLabel: labelForSession(runtimeSessionId),
+      sessionLabel: sessionLabel(runtimeSessionId),
       state: 'VAULT'
     })
   }
 
-  for (const [sessionId, request] of Object.entries(vaultCode)) {
+  for (const [sessionId, request] of Object.entries(maps.vaultCode)) {
     const runtimeSessionId = request.sessionId || sessionId
 
     gates.push({
@@ -154,10 +167,22 @@ export function useHumanGates(): HumanGate[] {
       kind: 'vault-code',
       label: 'Verification code requested',
       runtimeSessionId,
-      sessionLabel: labelForSession(runtimeSessionId),
+      sessionLabel: sessionLabel(runtimeSessionId),
       state: '2FA'
     })
   }
 
   return gates
+}
+
+export function useHumanGates(): HumanGate[] {
+  return buildHumanGates({
+    approvals: useStore($approvalRequestQueues),
+    clarify: useStore($clarifyRequests),
+    secrets: useStore($secretRequests),
+    sudo: useStore($sudoRequests),
+    vaultCode: useStore($vaultCodeRequests),
+    vaultSave: useStore($vaultSaveLoginRequests),
+    vaultUnlock: useStore($vaultUnlockRequests)
+  })
 }
