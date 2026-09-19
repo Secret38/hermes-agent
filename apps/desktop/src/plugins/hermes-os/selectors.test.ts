@@ -4,6 +4,7 @@ import {
   activeRunCount,
   activeRunIds,
   attentionOperationalTasks,
+  exactWorkerRoute,
   runningOperationalTasks,
   taskCountForProject,
   uniqueOperationalProjects
@@ -48,6 +49,34 @@ describe('Hermes OS selectors', () => {
   it('derives running and attention work from producer-authored task state', () => {
     expect(runningOperationalTasks(snapshots).map(task => task.id)).toEqual(['a'])
     expect(attentionOperationalTasks(snapshots).map(task => task.id)).toEqual(['b', 'c', 'd'])
+  })
+
+  it('resolves a worker route only when source connection and assignee are unique', () => {
+    const task = {
+      assignee: 'worker',
+      id: 'run-1',
+      status: 'running',
+      title: 'Run',
+      workerSessionId: 'session-1'
+    }
+    const snapshot = {
+      connectionId: 'source-a',
+      observedAt: 1,
+      projects: [],
+      sourceId: 'kanban',
+      sourceLabel: 'Kanban',
+      tasks: [task]
+    }
+    const route = {
+      connectionId: 'source-a',
+      mode: 'remote' as const,
+      profile: 'worker',
+      targetProfile: 'worker'
+    }
+
+    expect(exactWorkerRoute(task, snapshot, [route])).toEqual(route)
+    expect(exactWorkerRoute(task, snapshot, [{ ...route, connectionId: 'source-b' }])).toBeNull()
+    expect(exactWorkerRoute(task, snapshot, [route, { ...route }])).toBeNull()
   })
 
   it('deduplicates projects and excludes completed tasks from active project counts', () => {
