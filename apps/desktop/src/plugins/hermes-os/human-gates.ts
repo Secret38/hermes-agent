@@ -10,19 +10,23 @@ import {
   $vaultCodeRequests,
   $vaultSaveLoginRequests,
   $vaultUnlockRequests,
+  type ApprovalChoice,
   type ApprovalRequest,
   type SecretRequest,
   type SudoRequest,
   type VaultCodeRequest,
   type VaultSaveLoginRequest,
-  type VaultUnlockRequest
+  type VaultUnlockRequest,
+  resolveApprovalRequest
 } from '@/store/prompts'
+import { $gateway } from '@/store/gateway'
 import { ownerLookupSessionRows, sessionMatchesStoredId } from '@/store/session'
 import { storedSessionIdForRuntimeId } from '@/store/session-states'
 
 export type HumanGateKind = 'approval' | 'clarify' | 'secret' | 'sudo' | 'vault-code' | 'vault-save' | 'vault-unlock'
 
 export interface HumanGate {
+  approvalRequest?: ApprovalRequest
   detail: string
   id: string
   kind: HumanGateKind
@@ -55,6 +59,23 @@ export function openHumanGateSession(gate: Pick<HumanGate, 'runtimeSessionId'>):
   openSession(storedId, to => host.navigate(to), 'stack')
 }
 
+export async function resolveHumanGateApproval(
+  gate: Pick<HumanGate, 'approvalRequest' | 'kind'>,
+  choice: Extract<ApprovalChoice, 'deny' | 'once'>
+): Promise<boolean> {
+  if (gate.kind !== 'approval' || !gate.approvalRequest) {
+    return false
+  }
+
+  const gateway = $gateway.get()
+
+  if (!gateway) {
+    throw new Error('Hermes gateway is not connected')
+  }
+
+  return resolveApprovalRequest(gateway, gate.approvalRequest, choice)
+}
+
 export interface HumanGatePromptMaps {
   approvals: Readonly<Record<string, readonly ApprovalRequest[]>>
   clarify: Readonly<Record<string, ClarifyRequest>>
@@ -76,6 +97,7 @@ export function buildHumanGates(
       const runtimeSessionId = request.sessionId || sessionId
 
       gates.push({
+        approvalRequest: request,
         detail: clipped(request.command, request.description || 'Command requires approval'),
         id: `approval:${sessionId}:${request.requestId ?? request.serverRequestId ?? gates.length}`,
         kind: 'approval',
