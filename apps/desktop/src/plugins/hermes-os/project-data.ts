@@ -1,7 +1,6 @@
+import { host, type OperationsTask, type OperationsTaskSnapshot, useValue } from '@hermes/plugin-sdk'
 import { useStore } from '@nanostores/react'
 import { useEffect } from 'react'
-
-import { host, type OperationsTask, type OperationsTaskSnapshot, useValue } from '@hermes/plugin-sdk'
 import type { SessionInfo } from '@/hermes'
 import {
   $projectTree,
