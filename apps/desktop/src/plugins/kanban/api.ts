@@ -13,6 +13,8 @@ import {
   atom,
   type PluginOs,
   type PluginRestOptions,
+  type OperationsRunInspection,
+  type OperationsTaskExecution,
   type OperationsTaskSnapshot,
   type PluginStorage,
   type PluginTranslate,
@@ -174,6 +176,62 @@ export const fetchBoard = (archived: boolean) =>
   call<KanbanBoard>(withBoard('/board', archived ? { include_archived: 'true' } : {}))
 
 export const fetchTask = (id: string) => call<KanbanTaskDetail>(withBoard(`/tasks/${id}`))
+
+export const fetchRunInspection = (id: number | string) =>
+  call<{
+    run_id: number | string
+    alive: boolean
+    reason?: null | string
+    pid?: null | number
+    status?: null | string
+    cpu_percent?: null | number
+    memory_rss_bytes?: null | number
+    num_threads?: null | number
+  }>(withBoard(`/runs/${id}/inspect`))
+
+export async function fetchOperationsTaskExecution(id: string): Promise<OperationsTaskExecution> {
+  const detail = await fetchTask(id)
+
+  return {
+    taskId: id,
+    result: detail.task.result,
+    lastFailureError: detail.task.last_failure_error,
+    workspacePath: detail.task.workspace_path,
+    branchName: detail.task.branch_name,
+    artifacts: (detail.attachments ?? []).map(attachment => ({
+      id: attachment.id,
+      name: attachment.filename,
+      sizeBytes: attachment.size
+    })),
+    runs: detail.runs.map(run => ({
+      id: run.id,
+      status: run.status,
+      outcome: run.outcome,
+      profile: run.profile,
+      workerSessionId: run.worker_session_id,
+      workerPid: run.worker_pid,
+      startedAt: run.started_at,
+      endedAt: run.ended_at,
+      summary: run.summary,
+      error: run.error
+    }))
+  }
+}
+
+export async function fetchOperationsRunInspection(id: number | string): Promise<OperationsRunInspection> {
+  const inspection = await fetchRunInspection(id)
+
+  return {
+    runId: inspection.run_id,
+    alive: inspection.alive,
+    reason: inspection.reason,
+    pid: inspection.pid,
+    status: inspection.status,
+    cpuPercent: inspection.cpu_percent,
+    memoryRssBytes: inspection.memory_rss_bytes,
+    numThreads: inspection.num_threads
+  }
+}
 
 /** Worker stdout/stderr tail (last 16 KiB — plenty for the drawer). */
 export const fetchLog = (id: string) => call<WorkerLog>(withBoard(`/tasks/${id}/log`, { tail: '16384' }))
