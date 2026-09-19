@@ -13,6 +13,7 @@ import { useState } from 'react'
 
 import type { SessionInfo } from '@/hermes'
 import type { SidebarProjectTree } from '@/app/chat/sidebar/projects/workspace-groups'
+import { goToProject } from '@/store/projects'
 import {
   Sheet,
   SheetContent,
@@ -161,6 +162,19 @@ export function ProjectInspector({
                 Hermes Project authority · {project.sessionCount} session{project.sessionCount === 1 ? '' : 's'} ·{' '}
                 {tasks.length} task{tasks.length === 1 ? '' : 's'}
               </SheetDescription>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Button onClick={() => goToProject(project.id)} size="sm" type="button" variant="text">
+                  Open project
+                </Button>
+                <Button
+                  onClick={() => goToProject(project.id, { newSession: true })}
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                >
+                  New session
+                </Button>
+              </div>
             </SheetHeader>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
