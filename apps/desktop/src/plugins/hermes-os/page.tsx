@@ -1,19 +1,8 @@
-import {
-  Button,
-  Codicon,
-  host,
-  OPERATIONS_TASK_SOURCES_AREA,
-  type OperationsTask,
-  type OperationsTaskSnapshot,
-  type OperationsTaskSource,
-  useContributions,
-  useQuery,
-  useValue
-} from '@hermes/plugin-sdk'
+import { Button, Codicon, host, type OperationsTask, type OperationsTaskSnapshot, type OperationsTaskSource } from '@hermes/plugin-sdk'
 import type { ReactNode } from 'react'
 
+import { sourceForSnapshot, useHermesOperations } from './operations-data'
 import {
-  activeRunCount,
   activeRunIds,
   attentionOperationalTasks,
   runningOperationalTasks,
@@ -117,59 +106,6 @@ function FoundationRow({
   )
 }
 
-function useTaskSources() {
-  const contributions = useContributions(OPERATIONS_TASK_SOURCES_AREA)
-  const sources = contributions
-    .map(contribution => contribution.data as OperationsTaskSource | undefined)
-    .filter((source): source is OperationsTaskSource => Boolean(source?.id && source.readSnapshot))
-
-  const query = useQuery({
-    enabled: sources.length > 0,
-    queryFn: () => Promise.all(sources.map(source => source.readSnapshot())),
-    queryKey: ['hermes-os', 'task-sources', ...sources.map(source => source.id).sort()],
-    refetchInterval: 8_000,
-    refetchOnWindowFocus: true,
-    staleTime: 2_000
-  })
-
-  return {
-    query,
-    snapshots: query.data ?? ([] as OperationsTaskSnapshot[]),
-    sources
-  }
-}
-
-function useOperationsSnapshot() {
-  const busyBySession = useValue(host.state.busyBySession)
-  const gateway = useValue(host.state.gateway)
-  const profile = useValue(host.state.profile)
-  const model = useValue(host.state.model)
-  const cwd = useValue(host.state.cwd)
-  const taskSources = useTaskSources()
-
-  const routes = useQuery({
-    queryKey: ['hermes-os', 'profile-routes'],
-    queryFn: () => host.profileRoutes(),
-    staleTime: 30_000,
-    refetchOnWindowFocus: true
-  })
-
-  return {
-    activeRuns: activeRunCount(busyBySession),
-    busyBySession,
-    cwd,
-    gateway,
-    model,
-    profile,
-    routes,
-    ...taskSources
-  }
-}
-
-function sourceForTask(sources: readonly OperationsTaskSource[], snapshot: OperationsTaskSnapshot) {
-  return sources.find(source => source.id === snapshot.sourceId)
-}
-
 function taskDetail(task: OperationsTask): string {
   const parts = [
     task.projectName,
@@ -196,7 +132,7 @@ function OperationalTaskRows({
     <div className="divide-y divide-(--ui-stroke-tertiary)">
       {tasks.map(task => {
         const snapshot = owner(task)
-        const source = snapshot ? sourceForTask(sources, snapshot) : undefined
+        const source = snapshot ? sourceForSnapshot(sources, snapshot) : undefined
 
         return (
           <FoundationRow
@@ -226,7 +162,7 @@ function NoTaskSource() {
 }
 
 function MissionControl() {
-  const snapshot = useOperationsSnapshot()
+  const snapshot = useHermesOperations()
   const runningTasks = runningOperationalTasks(snapshot.snapshots)
   const attention = attentionOperationalTasks(snapshot.snapshots)
   const projects = uniqueOperationalProjects(snapshot.snapshots)
@@ -283,7 +219,7 @@ function MissionControl() {
 }
 
 function AttentionPage() {
-  const snapshot = useOperationsSnapshot()
+  const snapshot = useHermesOperations()
   const tasks = attentionOperationalTasks(snapshot.snapshots)
 
   return (
@@ -313,7 +249,7 @@ function AttentionPage() {
 }
 
 function ProjectsPage() {
-  const snapshot = useOperationsSnapshot()
+  const snapshot = useHermesOperations()
   const projects = uniqueOperationalProjects(snapshot.snapshots)
 
   return (
@@ -350,7 +286,7 @@ function ProjectsPage() {
 }
 
 function FleetPage() {
-  const snapshot = useOperationsSnapshot()
+  const snapshot = useHermesOperations()
   const routes = snapshot.routes.data ?? []
 
   return (
@@ -390,7 +326,7 @@ function FleetPage() {
 }
 
 function TimelinePage() {
-  const snapshot = useOperationsSnapshot()
+  const snapshot = useHermesOperations()
   const runtimeRuns = activeRunIds(snapshot.busyBySession)
   const tasks = runningOperationalTasks(snapshot.snapshots)
 
@@ -424,7 +360,7 @@ function TimelinePage() {
 }
 
 function SecurityPage() {
-  const snapshot = useOperationsSnapshot()
+  const snapshot = useHermesOperations()
 
   return (
     <div className="space-y-5">
