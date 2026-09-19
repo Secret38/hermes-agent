@@ -89,6 +89,8 @@ export interface ApprovalRequest extends KeyedPrompt {
   smartDenied?: boolean
 }
 
+export type ApprovalChoice = 'always' | 'deny' | 'once' | 'session'
+
 interface ApprovalGateway {
   request: (method: string, params: Record<string, unknown>) => Promise<unknown>
 }
@@ -359,6 +361,27 @@ export async function answerApproval(
     session_id: request.sessionId ?? undefined
   })
 }
+
+/** Resolve one queued approval through the same stale-check / owner-routing /
+ * replay sequence used by every approval surface. Returns false when the
+ * request was already answered or withdrawn. */
+export async function resolveApprovalRequest(
+  gateway: ApprovalGateway | null,
+  request: ApprovalRequest,
+  choice: ApprovalChoice
+): Promise<boolean> {
+  const pending = sessionApprovalRequests(request.sessionId).get()
+
+  if (!pending.some(item => item.requestId === request.requestId)) {
+    return false
+  }
+
+  await answerApproval(gateway, request, choice)
+  clearApprovalRequest(request.sessionId, request.requestId)
+  void replayPendingApproval(gateway, request.sessionId).catch(() => undefined)
+
+  return true
+
 
 /** The prompt request for one specific session — the tile counterpart of the
  *  active-session `$*Request` views (same map, fixed key). */
