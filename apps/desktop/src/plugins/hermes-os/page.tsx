@@ -1,5 +1,5 @@
 import { Button, Codicon, host, type OperationsTask, type OperationsTaskSnapshot, type OperationsTaskSource } from '@hermes/plugin-sdk'
-import type { ReactNode } from 'react'
+import { type ReactNode, useState } from 'react'
 
 import { notifyError } from '@/store/notifications'
 
@@ -212,10 +212,26 @@ function humanGateIcon(gate: HumanGate): string {
 }
 
 function HumanGateRows({ gates }: { gates: readonly HumanGate[] }) {
+  const [submitting, setSubmitting] = useState<ReadonlySet<string>>(new Set())
+
   const answer = (gate: HumanGate, choice: 'deny' | 'once') => {
-    void resolveHumanGateApproval(gate, choice).catch(error => {
-      notifyError(error, 'Could not answer approval')
-    })
+    if (submitting.has(gate.id)) {
+      return
+    }
+
+    setSubmitting(current => new Set(current).add(gate.id))
+    void resolveHumanGateApproval(gate, choice)
+      .catch(error => {
+        notifyError(error, 'Could not answer approval')
+      })
+      .finally(() => {
+        setSubmitting(current => {
+          const next = new Set(current)
+          next.delete(gate.id)
+
+          return next
+        })
+      })
   }
 
   return (
@@ -237,10 +253,23 @@ function HumanGateRows({ gates }: { gates: readonly HumanGate[] }) {
               </div>
               <div className="shrink-0 font-mono text-[0.6875rem] text-(--ui-text-secondary)">{gate.state}</div>
             </button>
-            <Button onClick={() => answer(gate, 'deny')} size="sm" type="button" variant="text">
+            <Button
+              disabled={submitting.has(gate.id)}
+              onClick={() => answer(gate, 'deny')}
+              size="sm"
+              type="button"
+              variant="text"
+            >
               Deny
             </Button>
-            <Button onClick={() => answer(gate, 'once')} size="sm" type="button" variant="secondary">
+            <Button
+              disabled={submitting.has(gate.id)}
+              loading={submitting.has(gate.id)}
+              onClick={() => answer(gate, 'once')}
+              size="sm"
+              type="button"
+              variant="secondary"
+            >
               Run once
             </Button>
           </div>
