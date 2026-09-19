@@ -142,7 +142,16 @@ export function ProjectInspector({
   const tasks = project ? projectOperationalTasks(snapshots, project.id) : []
 
   return (
-    <Sheet onOpenChange={onOpenChange} open={open}>
+    <Sheet
+      onOpenChange={nextOpen => {
+        if (!nextOpen) {
+          setExecutionSelection(null)
+        }
+
+        onOpenChange(nextOpen)
+      }}
+      open={open}
+    >
       <SheetContent className="sm:max-w-2xl" side="right">
         {project ? (
           <>
