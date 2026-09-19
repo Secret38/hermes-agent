@@ -9,7 +9,7 @@ import {
   useValue
 } from '@hermes/plugin-sdk'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import type { SessionInfo } from '@/hermes'
 import type { SidebarProjectTree } from '@/app/chat/sidebar/projects/workspace-groups'
@@ -25,6 +25,11 @@ import {
 import { ExecutionInspector, type ExecutionInspectorSelection } from './execution-inspector'
 import { sourceForSnapshot } from './operations-data'
 import { flattenProjectSessions, projectOperationalTasks, readProjectWorkspace } from './project-data'
+import {
+  launchProjectWorkspaceSurface,
+  projectWorkspaceErrorMessage,
+  type ProjectWorkspaceSurface
+} from './project-workspace'
 import { exactOperationsRoute } from './selectors'
 import { openHermesSession } from './session-navigation'
 
@@ -67,11 +72,15 @@ function canOpenProjectSession(
 }
 
 function ProjectSessionRow({
+  onSelectWorkspace,
+  routes,
   session,
-  routes
+  workspaceSelected
 }: {
-  session: SessionInfo
+  onSelectWorkspace: () => void
   routes: readonly PluginProfileRoute[]
+  session: SessionInfo
+  workspaceSelected: boolean
 }) {
   const activeConnectionId = useValue(host.state.connectionId)
   const activeProfile = useValue(host.state.profile) || 'default'
@@ -95,14 +104,24 @@ function ProjectSessionRow({
         </div>
       </div>
       {owner.allowed ? (
-        <Button
-          onClick={() => openHermesSession(session.id, owner.route)}
-          size="sm"
-          type="button"
-          variant="text"
-        >
-          Open
-        </Button>
+        <div className="flex shrink-0 items-center gap-1">
+          <Button
+            onClick={onSelectWorkspace}
+            size="sm"
+            type="button"
+            variant={workspaceSelected ? 'secondary' : 'text'}
+          >
+            {workspaceSelected ? 'Workspace' : 'Use'}
+          </Button>
+          <Button
+            onClick={() => openHermesSession(session.id, owner.route)}
+            size="sm"
+            type="button"
+            variant="text"
+          >
+            Open
+          </Button>
+        </div>
       ) : (
         <span className="shrink-0 font-mono text-[0.625rem] text-(--ui-text-quaternary)">ROUTE UNKNOWN</span>
       )}
@@ -128,6 +147,8 @@ export function ProjectInspector({
   const activeConnectionId = useValue(host.state.connectionId)
   const activeProfile = useValue(host.state.profile) || 'default'
   const [executionSelection, setExecutionSelection] = useState<ExecutionInspectorSelection | null>(null)
+  const [workspaceSessionId, setWorkspaceSessionId] = useState<null | string>(null)
+  const [workspaceBusy, setWorkspaceBusy] = useState<ProjectWorkspaceSurface | null>(null)
 
   const workspace = useQuery({
     enabled: Boolean(project?.id),
@@ -142,11 +163,53 @@ export function ProjectInspector({
   const sessions = flattenProjectSessions(hydrated)
   const tasks = project ? projectOperationalTasks(snapshots, project.id) : []
 
+  useEffect(() => {
+    if (!project) {
+      setWorkspaceSessionId(null)
+      return
+    }
+
+    if (!sessions.some(session => session.id === workspaceSessionId)) {
+      setWorkspaceSessionId(sessions[0]?.id ?? null)
+    }
+  }, [project?.id, sessions, workspaceSessionId])
+
+  const workspaceSession = sessions.find(session => session.id === workspaceSessionId) ?? null
+  const workspaceOwner = workspaceSession
+    ? canOpenProjectSession(workspaceSession, activeConnectionId, activeProfile, routes)
+    : { allowed: false as const }
+
+  const launchWorkspaceSurface = async (surface: ProjectWorkspaceSurface) => {
+    if (!workspaceSession || !workspaceOwner.allowed || workspaceBusy) {
+      return
+    }
+
+    setWorkspaceBusy(surface)
+
+    try {
+      await launchProjectWorkspaceSurface(workspaceSession.id, workspaceOwner.route, surface)
+    } catch (error) {
+      host.notify({
+        kind: 'error',
+        message: projectWorkspaceErrorMessage(error),
+        title: 'Project workspace unavailable'
+      })
+    } finally {
+      setWorkspaceBusy(null)
+    }
+  }
+
+  const workspaceCost =
+    workspaceSession?.actual_cost_usd != null
+      ? workspaceSession.actual_cost_usd
+      : workspaceSession?.estimated_cost_usd
+
   return (
     <Sheet
       onOpenChange={nextOpen => {
         if (!nextOpen) {
           setExecutionSelection(null)
+          setWorkspaceBusy(null)
         }
 
         onOpenChange(nextOpen)
@@ -238,6 +301,102 @@ export function ProjectInspector({
 
               <section className="border-t border-(--ui-stroke-tertiary) py-3">
                 <div className="flex items-baseline justify-between gap-3">
+                  <h3 className="text-xs font-semibold text-(--ui-text-primary)">Project Workspace</h3>
+                  {workspaceBusy ? (
+                    <span className="font-mono text-[0.625rem] text-(--ui-text-tertiary)">
+                      OPENING {workspaceBusy.toUpperCase()}
+                    </span>
+                  ) : null}
+                </div>
+                <p className="mt-1 text-[0.6875rem] leading-relaxed text-(--ui-text-tertiary)">
+                  Hermes' canonical workspace panes are bound to one primary session. Select the session that owns the
+                  project context, then launch the existing Chat, Files, Changes, Browser, or Terminal surface.
+                </p>
+
+                {workspaceSession && workspaceOwner.allowed ? (
+                  <div className="mt-3 rounded-md border border-(--ui-stroke-tertiary) bg-(--ui-bg-secondary) p-3">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <Codicon className="mt-0.5 shrink-0 text-(--ui-text-tertiary)" name="layout" size="0.9rem" />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-xs font-medium text-(--ui-text-primary)">
+                          {sessionTitle(workspaceSession)}
+                        </div>
+                        <div className="mt-0.5 truncate text-[0.6875rem] text-(--ui-text-tertiary)">
+                          {[
+                            workspaceSession.model || 'model unresolved',
+                            workspaceSession.git_branch,
+                            workspaceSession.cwd
+                          ].filter(Boolean).join(' · ')}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-2 gap-x-5 gap-y-2 sm:grid-cols-4">
+                      <div>
+                        <div className="text-[0.625rem] uppercase tracking-wide text-(--ui-text-quaternary)">Tokens</div>
+                        <div className="mt-0.5 text-xs text-(--ui-text-secondary)">
+                          {compactNumber(workspaceSession.input_tokens + workspaceSession.output_tokens)}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[0.625rem] uppercase tracking-wide text-(--ui-text-quaternary)">Messages</div>
+                        <div className="mt-0.5 text-xs text-(--ui-text-secondary)">
+                          {compactNumber(workspaceSession.message_count)}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[0.625rem] uppercase tracking-wide text-(--ui-text-quaternary)">Tools</div>
+                        <div className="mt-0.5 text-xs text-(--ui-text-secondary)">
+                          {compactNumber(workspaceSession.tool_call_count)}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[0.625rem] uppercase tracking-wide text-(--ui-text-quaternary)">Cost</div>
+                        <div className="mt-0.5 text-xs text-(--ui-text-secondary)">
+                          {workspaceCost == null ? '—' : `${workspaceCost.toFixed(2)}`}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {(['chat', 'files', 'changes', 'browser', 'terminal'] as const).map(surface => {
+                        const needsWorkspace = surface === 'files' || surface === 'changes' || surface === 'terminal'
+                        const disabled = Boolean(workspaceBusy) || (needsWorkspace && !workspaceSession.cwd)
+
+                        return (
+                          <Button
+                            disabled={disabled}
+                            key={surface}
+                            onClick={() => void launchWorkspaceSurface(surface)}
+                            size="sm"
+                            type="button"
+                            variant={surface === 'chat' ? 'secondary' : 'text'}
+                          >
+                            {workspaceBusy === surface ? 'Opening…' : surface[0].toUpperCase() + surface.slice(1)}
+                          </Button>
+                        )
+                      })}
+                    </div>
+
+                    {!workspaceSession.cwd ? (
+                      <p className="mt-2 text-[0.625rem] text-(--ui-text-quaternary)">
+                        Files, Changes, and Terminal require this session to publish a workspace cwd.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : workspaceSession ? (
+                  <p className="mt-2 text-xs text-(--ui-text-tertiary)">
+                    This session's connection/profile owner cannot be resolved safely.
+                  </p>
+                ) : (
+                  <p className="mt-2 text-xs text-(--ui-text-tertiary)">
+                    Select or create a project session to activate workspace surfaces.
+                  </p>
+                )}
+              </section>
+
+              <section className="border-t border-(--ui-stroke-tertiary) py-3">
+                <div className="flex items-baseline justify-between gap-3">
                   <h3 className="text-xs font-semibold text-(--ui-text-primary)">Sessions</h3>
                   <span className="font-mono text-[0.625rem] text-(--ui-text-tertiary)">{sessions.length}</span>
                 </div>
@@ -250,7 +409,13 @@ export function ProjectInspector({
                 ) : sessions.length ? (
                   <div className="mt-2 divide-y divide-(--ui-stroke-tertiary)">
                     {sessions.map(session => (
-                      <ProjectSessionRow key={session._lineage_root_id || session.id} routes={routes} session={session} />
+                      <ProjectSessionRow
+                        key={session._lineage_root_id || session.id}
+                        onSelectWorkspace={() => setWorkspaceSessionId(session.id)}
+                        routes={routes}
+                        session={session}
+                        workspaceSelected={session.id === workspaceSessionId}
+                      />
                     ))}
                   </div>
                 ) : (
