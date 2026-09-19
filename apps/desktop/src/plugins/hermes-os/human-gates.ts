@@ -1,5 +1,6 @@
 import { useStore } from '@nanostores/react'
 
+import { $approvalModes, approvalModeForProfile, type ApprovalMode } from '@/store/approval-mode'
 import { $clarifyRequests, type ClarifyRequest } from '@/store/clarify'
 import { $gateway } from '@/store/gateway'
 import {
@@ -18,13 +19,24 @@ import {
   type VaultUnlockRequest,
   resolveApprovalRequest
 } from '@/store/prompts'
-import { ownerLookupSessionRows, sessionMatchesStoredId } from '@/store/session'
+import { knownSessionProfile, ownerLookupSessionRows, sessionMatchesStoredId } from '@/store/session'
 
 import { openHermesSession, storedHermesSessionId } from './session-navigation'
 
 export type HumanGateKind = 'approval' | 'clarify' | 'secret' | 'sudo' | 'vault-code' | 'vault-save' | 'vault-unlock'
 
+export interface ApprovalProvenance {
+  allowPermanent: boolean
+  allowSession: boolean
+  mode: ApprovalMode
+  patternKeys: string[]
+  profile: string
+  smartDenied: boolean
+  toolName?: string
+}
+
 export interface HumanGate {
+  approvalProvenance?: ApprovalProvenance
   approvalRequest?: ApprovalRequest
   detail: string
   id: string
@@ -41,6 +53,34 @@ function labelForSession(runtimeSessionId: string): string {
 
   return row?.title?.trim() || row?.preview?.trim() || `Session #${storedId.slice(-6)}`
 }
+
+function profileForSession(runtimeSessionId: string): string {
+  const storedId = storedHermesSessionId(runtimeSessionId)
+  return knownSessionProfile(ownerLookupSessionRows(), storedId) || 'default'
+}
+
+export function approvalProvenanceFor(
+  request: ApprovalRequest,
+  runtimeSessionId: string,
+  modeForProfile: (profile: string) => ApprovalMode = approvalModeForProfile
+): ApprovalProvenance {
+  const profile = profileForSession(runtimeSessionId)
+  const patternKeys = [
+    ...(request.patternKey ? [request.patternKey] : []),
+    ...(request.patternKeys ?? [])
+  ].filter((value, index, values) => value && values.indexOf(value) === index)
+
+  return {
+    allowPermanent: request.allowPermanent !== false,
+    allowSession: request.allowSession !== false,
+    mode: modeForProfile(profile),
+    patternKeys,
+    profile,
+    smartDenied: request.smartDenied === true,
+    ...(request.toolName ? { toolName: request.toolName } : {})
+  }
+}
+
 
 function clipped(value: string | undefined, fallback: string): string {
   const text = value?.trim() || fallback
@@ -90,6 +130,7 @@ export function buildHumanGates(
       const runtimeSessionId = request.sessionId || sessionId
 
       gates.push({
+        approvalProvenance: approvalProvenanceFor(request, runtimeSessionId),
         approvalRequest: request,
         detail: clipped(request.command, request.description || 'Command requires approval'),
         id: `approval:${sessionId}:${request.requestId ?? request.serverRequestId ?? gates.length}`,
@@ -191,6 +232,8 @@ export function buildHumanGates(
 }
 
 export function useHumanGates(): HumanGate[] {
+  useStore($approvalModes)
+
   return buildHumanGates({
     approvals: useStore($approvalRequestQueues),
     clarify: useStore($clarifyRequests),
