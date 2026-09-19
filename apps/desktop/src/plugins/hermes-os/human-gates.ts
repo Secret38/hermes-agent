@@ -1,7 +1,5 @@
-import { host } from '@hermes/plugin-sdk'
 import { useStore } from '@nanostores/react'
 
-import { openSession } from '@/app/open-session'
 import { $clarifyRequests, type ClarifyRequest } from '@/store/clarify'
 import { $gateway } from '@/store/gateway'
 import {
@@ -21,7 +19,8 @@ import {
   resolveApprovalRequest
 } from '@/store/prompts'
 import { ownerLookupSessionRows, sessionMatchesStoredId } from '@/store/session'
-import { storedSessionIdForRuntimeId } from '@/store/session-states'
+
+import { openHermesSession } from './session-navigation'
 
 export type HumanGateKind = 'approval' | 'clarify' | 'secret' | 'sudo' | 'vault-code' | 'vault-save' | 'vault-unlock'
 
@@ -36,12 +35,8 @@ export interface HumanGate {
   state: string
 }
 
-function storedIdFor(runtimeSessionId: string): string {
-  return storedSessionIdForRuntimeId(runtimeSessionId) ?? runtimeSessionId
-}
-
 function labelForSession(runtimeSessionId: string): string {
-  const storedId = storedIdFor(runtimeSessionId)
+  const storedId = runtimeSessionId
   const row = ownerLookupSessionRows().find(session => sessionMatchesStoredId(session, storedId))
 
   return row?.title?.trim() || row?.preview?.trim() || `Session #${storedId.slice(-6)}`
@@ -54,9 +49,7 @@ function clipped(value: string | undefined, fallback: string): string {
 }
 
 export function openHumanGateSession(gate: Pick<HumanGate, 'runtimeSessionId'>): void {
-  const storedId = storedIdFor(gate.runtimeSessionId)
-
-  openSession(storedId, to => host.navigate(to), 'stack')
+  openHermesSession(gate.runtimeSessionId)
 }
 
 export async function resolveHumanGateApproval(
