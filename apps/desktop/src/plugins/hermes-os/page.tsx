@@ -361,6 +361,39 @@ function FleetPage() {
 
       <section>
         <div className="flex items-center gap-2">
+          <Codicon className="text-(--ui-text-secondary)" name="server-process" size="1rem" />
+          <h2 className="text-base font-semibold text-(--ui-text-primary)">Kanban worker sessions</h2>
+        </div>
+        <p className="mt-1 max-w-3xl text-sm leading-relaxed text-(--ui-text-tertiary)">
+          Dispatcher workers are separate Hermes CLI processes, so they do not belong to the gateway live-session list.
+          They are shown from Kanban's exact run-to-worker-session binding instead.
+        </p>
+
+        {runningOperationalTasks(snapshot.snapshots).filter(task => task.workerSessionId).length === 0 ? (
+          <p className="mt-3 text-xs text-(--ui-text-tertiary)">No running Kanban worker has bound a Hermes session yet.</p>
+        ) : (
+          <div className="mt-3 divide-y divide-(--ui-stroke-tertiary)">
+            {runningOperationalTasks(snapshot.snapshots)
+              .filter(task => task.workerSessionId)
+              .map(task => (
+                <FoundationRow
+                  detail={[
+                    task.assignee ? 'agent ' + task.assignee : null,
+                    task.runId != null ? 'run ' + task.runId : null,
+                    task.projectName
+                  ].filter(Boolean).join(' · ')}
+                  icon="terminal"
+                  key={'kanban-worker:' + task.id}
+                  label={task.title}
+                  state={task.workerSessionId || 'UNBOUND'}
+                />
+              ))}
+          </div>
+        )}
+      </section>
+
+      <section>
+        <div className="flex items-center gap-2">
           <Codicon className="text-(--ui-text-secondary)" name="hubot" size="1rem" />
           <h2 className="text-base font-semibold text-(--ui-text-primary)">Registered execution routes</h2>
         </div>
