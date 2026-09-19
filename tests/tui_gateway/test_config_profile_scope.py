@@ -211,3 +211,28 @@ def test_telemetry_security_getter_is_profile_scoped_and_sanitized(tmp_path, mon
     }
     assert "metrics.example.internal" not in repr(worker_resp)
     assert "/v1/private" not in repr(worker_resp)
+
+
+def test_telemetry_security_getter_handles_malformed_endpoint(tmp_path, monkeypatch):
+    launch, worker = _homes(tmp_path)
+    launch_cfg = _read_yaml(launch)
+    launch_cfg["telemetry"] = {
+        "shared_metrics": {
+            "enabled": True,
+            "send": True,
+            "endpoint": "http://[broken",
+        }
+    }
+    (launch / "config.yaml").write_text(yaml.safe_dump(launch_cfg), encoding="utf-8")
+    _bind_homes(monkeypatch, launch, worker)
+
+    resp = _get({"key": "telemetry.security"})
+
+    assert resp["result"] == {
+        "shared_metrics": {
+            "collection_enabled": True,
+            "transmission_requested": True,
+            "transmission_enabled": False,
+            "destination": "blocked",
+        }
+    }
