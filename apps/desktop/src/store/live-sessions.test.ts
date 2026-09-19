@@ -14,28 +14,40 @@ describe('live session snapshot authority', () => {
   it('isolates identical profile names across connections', () => {
     publishLiveSessionSnapshot('conn-a', 'default', [
       { id: 'runtime-a', session_key: 'stored-a', status: 'working' }
-    ])
+    ], 10)
     publishLiveSessionSnapshot('conn-b', 'default', [
-      { id: 'runtime-b', session_key: 'stored-b', status: 'idle' }
-    ])
+      { id: 'runtime-b', session_key: 'stored-b', status: 'waiting' }
+    ], 20)
 
-    expect($liveSessionSnapshots.get()[liveSessionScopeKey('conn-a', 'default')]?.sessions[0]?.id).toBe('runtime-a')
-    expect($liveSessionSnapshots.get()[liveSessionScopeKey('conn-b', 'default')]?.sessions[0]?.id).toBe('runtime-b')
+    const snapshots = $liveSessionSnapshots.get()
+
+    expect(snapshots[liveSessionScopeKey('conn-a', 'default')]).toMatchObject({
+      connectionId: 'conn-a',
+      profile: 'default',
+      updatedAt: 10,
+      sessions: [{ id: 'runtime-a', session_key: 'stored-a', status: 'working' }]
+    })
+    expect(snapshots[liveSessionScopeKey('conn-b', 'default')]).toMatchObject({
+      connectionId: 'conn-b',
+      profile: 'default',
+      updatedAt: 20,
+      sessions: [{ id: 'runtime-b', session_key: 'stored-b', status: 'waiting' }]
+    })
   })
 
-  it('drops malformed rows rather than publishing ambiguous identity', () => {
+  it('normalizes ids and drops unusable rows', () => {
     publishLiveSessionSnapshot('conn-a', 'worker', [
-      { id: '', session_key: 'stored-a', status: 'working' },
-      { id: 'runtime-b', session_key: '', status: 'working' },
-      { id: ' runtime-c ', session_key: ' stored-c ', status: 'streaming' }
+      { id: ' runtime-a ', session_key: ' stored-a ', status: 'idle' },
+      { id: '', session_key: 'stored-b', status: 'working' },
+      { id: 'runtime-c', session_key: '', status: 'working' }
     ])
 
-    expect($liveSessionSnapshots.get()[liveSessionScopeKey('conn-a', 'worker')]?.sessions).toEqual([
-      { id: 'runtime-c', session_key: 'stored-c', status: 'streaming' }
-    ])
+    expect(
+      $liveSessionSnapshots.get()[liveSessionScopeKey('conn-a', 'worker')]?.sessions
+    ).toEqual([{ id: 'runtime-a', session_key: 'stored-a', status: 'idle' }])
   })
 
-  it('clears only the requested scope', () => {
+  it('clears only the requested connection/profile scope', () => {
     publishLiveSessionSnapshot('conn-a', 'default', [{ id: 'a', session_key: 'sa' }])
     publishLiveSessionSnapshot('conn-b', 'default', [{ id: 'b', session_key: 'sb' }])
 
