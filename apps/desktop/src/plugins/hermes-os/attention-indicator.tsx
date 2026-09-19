@@ -1,4 +1,4 @@
-import { cn, Codicon, host, STATUSBAR_AREAS, Tip } from '@hermes/plugin-sdk'
+import { cn, Codicon, host, Tip } from '@hermes/plugin-sdk'
 
 import { useHermesOperations } from './operations-data'
 import { attentionOperationalTasks } from './selectors'
@@ -28,4 +28,3 @@ export function HermesOsAttentionIndicator() {
   )
 }
 
-export const HERMES_OS_STATUSBAR_AREA = STATUSBAR_AREAS.right
