@@ -110,6 +110,7 @@ function taskDetail(task: OperationsTask): string {
   const parts = [
     task.projectName,
     task.assignee ? `agent ${task.assignee}` : null,
+    task.originSessionId ? `origin ${task.originSessionId}` : null,
     task.warning?.count ? `${task.warning.count} diagnostic${task.warning.count === 1 ? '' : 's'}` : null
   ].filter(Boolean)
 
