@@ -220,6 +220,7 @@ export interface VaultCodeRequest extends KeyedPrompt {
 
 const vaultCode = keyedPromptStore<VaultCodeRequest>()
 
+export const $approvalRequestQueues = computed($approvalQueues, queues => queues)
 export const $approvalRequests = approval.$all
 export const $approvalRequest = computed(
   [approval.$all, $activeSessionId],
