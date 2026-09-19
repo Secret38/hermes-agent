@@ -1,4 +1,4 @@
-import { Button, Codicon, host } from '@hermes/plugin-sdk'
+import { Button, Codicon, host, useQuery, useValue } from '@hermes/plugin-sdk'
 import type { ReactNode } from 'react'
 
 export type HermesOsSection = 'mission' | 'attention' | 'projects' | 'fleet' | 'timeline' | 'security'
@@ -30,7 +30,7 @@ const SECTIONS: Record<HermesOsSection, SectionDefinition> = {
     path: '/hermes-os/projects'
   },
   fleet: {
-    description: 'Persistent profiles and ephemeral workers with normalized runtime state.',
+    description: 'Persistent profiles and execution routes, with ephemeral workers added in the next runtime slice.',
     icon: 'hubot',
     label: 'Fleet',
     path: '/hermes-os/fleet'
@@ -55,7 +55,7 @@ function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 py-3">
       <div className="text-[0.6875rem] uppercase tracking-wide text-(--ui-text-tertiary)">{label}</div>
-      <div className="mt-1 text-lg font-medium tabular-nums text-(--ui-text-primary)">{value}</div>
+      <div className="mt-1 truncate text-lg font-medium tabular-nums text-(--ui-text-primary)">{value}</div>
     </div>
   )
 }
@@ -83,55 +83,212 @@ function FoundationRow({
   )
 }
 
+function useOperationsSnapshot() {
+  const busyBySession = useValue(host.state.busyBySession)
+  const gateway = useValue(host.state.gateway)
+  const profile = useValue(host.state.profile)
+  const model = useValue(host.state.model)
+  const cwd = useValue(host.state.cwd)
+
+  const routes = useQuery({
+    queryKey: ['hermes-os', 'profile-routes'],
+    queryFn: () => host.profileRoutes(),
+    staleTime: 30_000,
+    refetchOnWindowFocus: true
+  })
+
+  return {
+    activeRuns: Object.values(busyBySession).filter(Boolean).length,
+    busyBySession,
+    cwd,
+    gateway,
+    model,
+    profile,
+    routes
+  }
+}
+
 function MissionControl() {
+  const snapshot = useOperationsSnapshot()
+  const routeCount = snapshot.routes.data?.length
+
   return (
     <div className="space-y-6">
       <section>
         <div className="grid grid-cols-2 gap-x-6 border-b border-(--ui-stroke-tertiary) sm:grid-cols-4">
-          <Metric label="Agents active" value="—" />
-          <Metric label="Tasks running" value="—" />
-          <Metric label="Needs attention" value="—" />
-          <Metric label="Runs today" value="—" />
+          <Metric label="Active runs" value={String(snapshot.activeRuns)} />
+          <Metric label="Agent routes" value={routeCount === undefined ? '—' : String(routeCount)} />
+          <Metric label="Gateway" value={snapshot.gateway || 'unknown'} />
+          <Metric label="Profile" value={snapshot.profile || 'default'} />
         </div>
-        <p className="mt-3 max-w-3xl text-xs leading-relaxed text-(--ui-text-tertiary)">
-          The shell is live. These counters intentionally stay unbound until the next slice connects existing Hermes
-          fleet, session, Kanban, and gateway authorities instead of inventing a second state system.
-        </p>
       </section>
 
       <section>
-        <h2 className="text-sm font-semibold text-(--ui-text-primary)">Control-plane foundation</h2>
+        <h2 className="text-sm font-semibold text-(--ui-text-primary)">Current execution context</h2>
         <div className="mt-2 divide-y divide-(--ui-stroke-tertiary)">
           <FoundationRow
-            detail="Bundled plugin discovered by the existing desktop plugin loader."
-            icon="extensions"
-            label="Hermes OS plugin"
-            state="ACTIVE"
+            detail="The model selected by the live Hermes session surface."
+            icon="symbol-method"
+            label="Model"
+            state={snapshot.model || 'UNRESOLVED'}
           />
           <FoundationRow
-            detail="Six durable workspace destinations; no core route edits."
-            icon="link"
-            label="Navigation"
-            state="READY"
+            detail={snapshot.cwd || 'No workspace directory is currently attached.'}
+            icon="folder"
+            label="Workspace"
+            state={snapshot.cwd ? 'ATTACHED' : 'DETACHED'}
           />
           <FoundationRow
-            detail="Next: project existing Hermes truth into normalized operational selectors."
-            icon="pulse"
-            label="Data layer"
-            state="NEXT"
+            detail="Profile routes are read from the existing desktop connection registry; credentials never cross this boundary."
+            icon="server-environment"
+            label="Fleet registry"
+            state={snapshot.routes.isError ? 'DEGRADED' : snapshot.routes.isFetching ? 'SYNCING' : 'LIVE'}
           />
         </div>
       </section>
 
       <section>
-        <h2 className="text-sm font-semibold text-(--ui-text-primary)">Next bindings</h2>
-        <div className="mt-2 grid gap-x-8 sm:grid-cols-2">
-          <FoundationRow detail="$fleetRoster + profiles + subagents" icon="hubot" label="Agent fleet" state="SOURCE" />
-          <FoundationRow detail="Hermes Kanban plugin API" icon="project" label="Tasks" state="SOURCE" />
-          <FoundationRow detail="Sessions + working session state" icon="comment-discussion" label="Runs" state="SOURCE" />
-          <FoundationRow detail="Goals + projects + workspace ownership" icon="target" label="Projects" state="SOURCE" />
+        <div className="flex items-baseline justify-between gap-4">
+          <h2 className="text-sm font-semibold text-(--ui-text-primary)">Active run IDs</h2>
+          <button
+            className="text-xs text-(--ui-text-tertiary) hover:text-(--ui-text-primary)"
+            onClick={() => host.navigate('/hermes-os/timeline')}
+            type="button"
+          >
+            Open timeline
+          </button>
         </div>
+        {snapshot.activeRuns === 0 ? (
+          <p className="mt-2 text-xs leading-relaxed text-(--ui-text-tertiary)">
+            No focused or background Hermes session is currently mid-turn.
+          </p>
+        ) : (
+          <div className="mt-2 divide-y divide-(--ui-stroke-tertiary)">
+            {Object.entries(snapshot.busyBySession)
+              .filter(([, busy]) => busy)
+              .map(([sessionId]) => (
+                <FoundationRow
+                  detail="Runtime session currently executing a turn."
+                  icon="loading"
+                  key={sessionId}
+                  label={sessionId}
+                  state="RUNNING"
+                />
+              ))}
+          </div>
+        )}
       </section>
+    </div>
+  )
+}
+
+function FleetPage() {
+  const snapshot = useOperationsSnapshot()
+  const routes = snapshot.routes.data ?? []
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <div className="flex items-center gap-2">
+          <Codicon className="text-(--ui-text-secondary)" name="hubot" size="1rem" />
+          <h2 className="text-base font-semibold text-(--ui-text-primary)">Registered execution routes</h2>
+        </div>
+        <p className="mt-1 max-w-3xl text-sm leading-relaxed text-(--ui-text-tertiary)">
+          One row is one connection-qualified Hermes profile route. This is identity and reachability topology, not a
+          guessed online/offline agent state.
+        </p>
+      </div>
+
+      {snapshot.routes.isLoading ? (
+        <p className="text-xs text-(--ui-text-tertiary)">Loading fleet registry…</p>
+      ) : snapshot.routes.isError ? (
+        <div className="border-t border-(--ui-stroke-tertiary) pt-4">
+          <div className="text-xs font-medium text-destructive">Fleet registry unavailable</div>
+          <p className="mt-1 text-xs text-(--ui-text-tertiary)">
+            The current desktop connection registry could not be read. Existing Hermes work remains unaffected.
+          </p>
+        </div>
+      ) : routes.length === 0 ? (
+        <p className="text-xs text-(--ui-text-tertiary)">No registered profile routes are available.</p>
+      ) : (
+        <div className="divide-y divide-(--ui-stroke-tertiary)">
+          {routes.map(route => (
+            <div className="grid min-w-0 gap-2 py-3 sm:grid-cols-[minmax(0,1fr)_8rem_10rem]" key={`${route.connectionId}:${route.profile}`}>
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium text-(--ui-text-primary)">{route.profile}</div>
+                <div className="truncate font-mono text-[0.6875rem] text-(--ui-text-tertiary)">
+                  {route.connectionId}
+                </div>
+              </div>
+              <div className="font-mono text-xs text-(--ui-text-secondary)">{route.mode.toUpperCase()}</div>
+              <div className="truncate text-xs text-(--ui-text-tertiary)">
+                target {route.targetProfile || route.profile}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TimelinePage() {
+  const snapshot = useOperationsSnapshot()
+  const running = Object.entries(snapshot.busyBySession).filter(([, busy]) => busy)
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <div className="flex items-center gap-2">
+          <Codicon className="text-(--ui-text-secondary)" name="graph" size="1rem" />
+          <h2 className="text-base font-semibold text-(--ui-text-primary)">Live execution</h2>
+        </div>
+        <p className="mt-1 max-w-3xl text-sm leading-relaxed text-(--ui-text-tertiary)">
+          V1 begins with Hermes' authoritative mid-turn state. Durable run spans, retries, approvals, and task links will
+          layer onto this surface rather than replacing it.
+        </p>
+      </div>
+
+      {running.length === 0 ? (
+        <p className="text-xs text-(--ui-text-tertiary)">No runs are executing right now.</p>
+      ) : (
+        <div className="divide-y divide-(--ui-stroke-tertiary)">
+          {running.map(([sessionId]) => (
+            <FoundationRow
+              detail="Live runtime session; task/run metadata will be joined in the Kanban binding slice."
+              icon="pulse"
+              key={sessionId}
+              label={sessionId}
+              state="RUNNING"
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SecurityPage() {
+  const snapshot = useOperationsSnapshot()
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <div className="flex items-center gap-2">
+          <Codicon className="text-(--ui-text-secondary)" name="shield" size="1rem" />
+          <h2 className="text-base font-semibold text-(--ui-text-primary)">Current boundary</h2>
+        </div>
+        <p className="mt-1 max-w-3xl text-sm leading-relaxed text-(--ui-text-tertiary)">
+          This first read-only view reports the execution context already known to Hermes. Capability manifests and
+          project-scoped policy editing come after the task/run model is connected.
+        </p>
+      </div>
+
+      <div className="divide-y divide-(--ui-stroke-tertiary)">
+        <FoundationRow detail="Live gateway transport state." icon="radio-tower" label="Gateway" state={snapshot.gateway || 'UNKNOWN'} />
+        <FoundationRow detail="Current Hermes profile scope." icon="account" label="Profile" state={snapshot.profile || 'default'} />
+        <FoundationRow detail={snapshot.cwd || 'No workspace attached.'} icon="folder" label="Workspace scope" state={snapshot.cwd ? 'BOUND' : 'NONE'} />
+      </div>
     </div>
   )
 }
@@ -141,7 +298,7 @@ function FoundationPage({
   section
 }: {
   children?: ReactNode
-  section: Exclude<HermesOsSection, 'mission'>
+  section: 'attention' | 'projects'
 }) {
   const definition = SECTIONS[section]
 
@@ -159,8 +316,8 @@ function FoundationPage({
         <div className="border-t border-(--ui-stroke-tertiary) pt-4">
           <div className="text-xs font-medium text-(--ui-text-secondary)">V1 data binding pending</div>
           <p className="mt-1 max-w-2xl text-xs leading-relaxed text-(--ui-text-tertiary)">
-            This destination is deliberately present before its data adapter. The next implementation slice will read
-            existing Hermes authorities and normalize them for this surface without creating duplicate persistence.
+            This surface will be connected to existing Hermes authorities only. No second task, project, approval, or
+            session database will be introduced.
           </p>
         </div>
       )}
@@ -171,6 +328,18 @@ function FoundationPage({
 function PageBody({ section }: { section: HermesOsSection }) {
   if (section === 'mission') {
     return <MissionControl />
+  }
+
+  if (section === 'fleet') {
+    return <FleetPage />
+  }
+
+  if (section === 'timeline') {
+    return <TimelinePage />
+  }
+
+  if (section === 'security') {
+    return <SecurityPage />
   }
 
   return <FoundationPage section={section} />
