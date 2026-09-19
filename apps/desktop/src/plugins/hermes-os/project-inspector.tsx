@@ -9,6 +9,8 @@ import {
   useValue
 } from '@hermes/plugin-sdk'
 
+import { useState } from 'react'
+
 import type { SessionInfo } from '@/hermes'
 import type { SidebarProjectTree } from '@/app/chat/sidebar/projects/workspace-groups'
 import {
@@ -19,6 +21,7 @@ import {
   SheetTitle
 } from '@/components/ui/sheet'
 
+import { ExecutionInspector, type ExecutionInspectorSelection } from './execution-inspector'
 import { sourceForSnapshot } from './operations-data'
 import { flattenProjectSessions, projectOperationalTasks, readProjectWorkspace } from './project-data'
 import { exactOperationsRoute } from './selectors'
@@ -121,10 +124,14 @@ export function ProjectInspector({
   snapshots: readonly OperationsTaskSnapshot[]
   sources: readonly OperationsTaskSource[]
 }) {
+  const activeConnectionId = useValue(host.state.connectionId)
+  const activeProfile = useValue(host.state.profile) || 'default'
+  const [executionSelection, setExecutionSelection] = useState<ExecutionInspectorSelection | null>(null)
+
   const workspace = useQuery({
     enabled: Boolean(project?.id),
     queryFn: () => readProjectWorkspace(project!.id),
-    queryKey: ['hermes-os', 'project-workspace', project?.id],
+    queryKey: ['hermes-os', 'project-workspace', activeConnectionId, activeProfile, project?.id],
     refetchOnWindowFocus: true,
     retry: false,
     staleTime: 5_000
@@ -256,6 +263,16 @@ export function ProjectInspector({
                               {task.runId != null ? ' · run ' + task.runId : ''}
                             </div>
                           </div>
+                          {source?.readTaskExecution && snapshot ? (
+                            <Button
+                              onClick={() => setExecutionSelection({ snapshot, source, task })}
+                              size="sm"
+                              type="button"
+                              variant="secondary"
+                            >
+                              Inspect
+                            </Button>
+                          ) : null}
                           {source?.openTask ? (
                             <Button onClick={() => source.openTask?.(task.id)} size="sm" type="button" variant="text">
                               Task
@@ -273,6 +290,16 @@ export function ProjectInspector({
           </>
         ) : null}
       </SheetContent>
+      <ExecutionInspector
+        onOpenChange={nextOpen => {
+          if (!nextOpen) {
+            setExecutionSelection(null)
+          }
+        }}
+        open={executionSelection !== null}
+        routes={routes}
+        selection={executionSelection}
+      />
     </Sheet>
   )
 }
