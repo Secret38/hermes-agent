@@ -222,6 +222,8 @@ export function toOperationsSnapshot(
           projectId: task.project_id || current?.project_id,
           projectName: project?.name || current?.project_name,
           originSessionId: task.session_id,
+          runId: task.current_run_id,
+          workerSessionId: task.worker_session_id,
           startedAt: task.started_at,
           lastHeartbeatAt: task.last_heartbeat_at,
           warning: task.warnings
