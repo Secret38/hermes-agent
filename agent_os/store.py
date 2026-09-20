@@ -11,11 +11,17 @@ from typing import Any
 from hermes_cli.sqlite_util import open_db
 from hermes_constants import get_hermes_home
 
+from .agents.records import (
+    AgentInstanceRecord,
+    AgentInstanceState,
+    agent_is_terminal,
+    validate_agent_transition,
+)
 from .contracts import ActionRecord, TaskRecord, utc_now_iso
 from .events import EventRecord, EventType
 from .states import ActionState, TaskState, validate_action_transition, validate_task_transition
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def default_db_path() -> Path:
@@ -80,6 +86,28 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
             FOREIGN KEY(task_id) REFERENCES tasks(id),
             FOREIGN KEY(parent_action_id) REFERENCES actions(id)
         );
+        CREATE TABLE IF NOT EXISTS agent_instances (
+            id TEXT PRIMARY KEY,
+            task_id TEXT NOT NULL,
+            runtime TEXT NOT NULL,
+            goal TEXT NOT NULL,
+            state TEXT NOT NULL,
+            parent_agent_id TEXT,
+            role TEXT NOT NULL,
+            launch_spec_json TEXT NOT NULL DEFAULT '{}',
+            runtime_handle_json TEXT NOT NULL DEFAULT '{}',
+            restart_count INTEGER NOT NULL DEFAULT 0,
+            max_restarts INTEGER NOT NULL DEFAULT 1,
+            result_json TEXT NOT NULL DEFAULT '{}',
+            error TEXT,
+            diagnostic TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            started_at TEXT,
+            completed_at TEXT,
+            FOREIGN KEY(task_id) REFERENCES tasks(id),
+            FOREIGN KEY(parent_agent_id) REFERENCES agent_instances(id)
+        );
         CREATE TABLE IF NOT EXISTS events (
             sequence INTEGER PRIMARY KEY AUTOINCREMENT,
             id TEXT NOT NULL UNIQUE,
@@ -92,6 +120,8 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
             FOREIGN KEY(action_id) REFERENCES actions(id)
         );
         CREATE INDEX IF NOT EXISTS idx_actions_task ON actions(task_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_agents_task ON agent_instances(task_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_agents_state ON agent_instances(state, updated_at);
         CREATE INDEX IF NOT EXISTS idx_events_task_seq ON events(task_id, sequence);
         CREATE INDEX IF NOT EXISTS idx_events_action_seq ON events(action_id, sequence);
         """
@@ -104,7 +134,7 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
 
 
 class AgentOSStore:
-    """Canonical durable task/action/event ledger."""
+    """Canonical durable task/action/agent/event ledger."""
 
     def __init__(self, path: Path | str | None = None):
         self.path = Path(path) if path is not None else default_db_path()
@@ -388,6 +418,220 @@ class AgentOSStore:
         finally:
             conn.close()
 
+    def create_agent(self, agent: AgentInstanceRecord) -> AgentInstanceRecord:
+        conn = self._connect()
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            if conn.execute("SELECT 1 FROM tasks WHERE id = ?", (agent.task_id,)).fetchone() is None:
+                raise KeyError(f"unknown task: {agent.task_id}")
+            conn.execute(
+                """INSERT INTO agent_instances(
+                    id, task_id, runtime, goal, state, parent_agent_id, role,
+                    launch_spec_json, runtime_handle_json, restart_count, max_restarts,
+                    result_json, error, diagnostic, created_at, updated_at,
+                    started_at, completed_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    agent.id, agent.task_id, agent.runtime, agent.goal, agent.state.value,
+                    agent.parent_agent_id, agent.role, _json(agent.launch_spec),
+                    _json(agent.runtime_handle), agent.restart_count, agent.max_restarts,
+                    _json(agent.result), agent.error, agent.diagnostic, agent.created_at,
+                    agent.updated_at, agent.started_at, agent.completed_at,
+                ),
+            )
+            self._insert_event(
+                conn,
+                EventRecord.create(
+                    task_id=agent.task_id,
+                    type=EventType.AGENT_CREATED,
+                    payload={
+                        "agent_id": agent.id,
+                        "runtime": agent.runtime,
+                        "state": agent.state.value,
+                        "parent_agent_id": agent.parent_agent_id,
+                    },
+                ),
+            )
+            conn.commit()
+            return agent
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def get_agent(self, agent_id: str) -> AgentInstanceRecord | None:
+        conn = self._connect()
+        try:
+            row = conn.execute("SELECT * FROM agent_instances WHERE id = ?", (agent_id,)).fetchone()
+            return None if row is None else self._agent_from_row(row)
+        finally:
+            conn.close()
+
+    def list_agents(self, *, active_only: bool = False) -> list[AgentInstanceRecord]:
+        conn = self._connect()
+        try:
+            rows = conn.execute("SELECT * FROM agent_instances ORDER BY created_at").fetchall()
+            agents = [self._agent_from_row(row) for row in rows]
+            return [agent for agent in agents if not agent_is_terminal(agent.state)] if active_only else agents
+        finally:
+            conn.close()
+
+    def bind_agent_handle(
+        self,
+        agent_id: str,
+        runtime_handle: dict[str, Any],
+        *,
+        restarted: bool = False,
+        diagnostic: str | None = None,
+    ) -> AgentInstanceRecord:
+        conn = self._connect()
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute("SELECT * FROM agent_instances WHERE id = ?", (agent_id,)).fetchone()
+            if row is None:
+                raise KeyError(f"unknown agent: {agent_id}")
+            restart_count = int(row["restart_count"]) + (1 if restarted else 0)
+            now = utc_now_iso()
+            started_at = row["started_at"] or now
+            conn.execute(
+                """UPDATE agent_instances
+                   SET runtime_handle_json = ?, restart_count = ?, diagnostic = ?,
+                       started_at = ?, updated_at = ?
+                 WHERE id = ?""",
+                (_json(runtime_handle), restart_count, diagnostic, started_at, now, agent_id),
+            )
+            self._insert_event(
+                conn,
+                EventRecord.create(
+                    task_id=row["task_id"],
+                    type=EventType.AGENT_RESTARTED if restarted else EventType.AGENT_HANDLE_BOUND,
+                    payload={
+                        "agent_id": agent_id,
+                        "runtime": row["runtime"],
+                        "restart_count": restart_count,
+                    },
+                ),
+            )
+            conn.commit()
+            return replace(
+                self._agent_from_row(row),
+                runtime_handle=dict(runtime_handle),
+                restart_count=restart_count,
+                diagnostic=diagnostic,
+                started_at=started_at,
+                updated_at=now,
+            )
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def transition_agent(
+        self,
+        agent_id: str,
+        target: AgentInstanceState,
+        *,
+        result: dict[str, Any] | None = None,
+        error: str | None = None,
+        diagnostic: str | None = None,
+        payload: dict[str, Any] | None = None,
+    ) -> AgentInstanceRecord:
+        conn = self._connect()
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute("SELECT * FROM agent_instances WHERE id = ?", (agent_id,)).fetchone()
+            if row is None:
+                raise KeyError(f"unknown agent: {agent_id}")
+            current = AgentInstanceState(row["state"])
+            validate_agent_transition(current, target)
+            now = utc_now_iso()
+            next_result = _loads(row["result_json"]) if result is None else dict(result)
+            started_at = row["started_at"] or (now if target in {AgentInstanceState.STARTING, AgentInstanceState.RUNNING} else None)
+            completed_at = now if agent_is_terminal(target) else row["completed_at"]
+            conn.execute(
+                """UPDATE agent_instances
+                   SET state = ?, result_json = ?, error = ?, diagnostic = ?,
+                       started_at = ?, completed_at = ?, updated_at = ?
+                 WHERE id = ?""",
+                (
+                    target.value, _json(next_result), error, diagnostic, started_at,
+                    completed_at, now, agent_id,
+                ),
+            )
+            self._insert_event(
+                conn,
+                EventRecord.create(
+                    task_id=row["task_id"],
+                    type=EventType.AGENT_STATE_CHANGED,
+                    payload={
+                        "agent_id": agent_id,
+                        "from": current.value,
+                        "to": target.value,
+                        **dict(payload or {}),
+                    },
+                ),
+            )
+            conn.commit()
+            return replace(
+                self._agent_from_row(row),
+                state=target,
+                result=next_result,
+                error=error,
+                diagnostic=diagnostic,
+                started_at=started_at,
+                completed_at=completed_at,
+                updated_at=now,
+            )
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def record_agent_reconcile(
+        self,
+        agent_id: str,
+        *,
+        connected: bool,
+        runtime_state: str,
+        diagnostic: str | None,
+        safe_to_restart: bool,
+    ) -> AgentInstanceRecord:
+        conn = self._connect()
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute("SELECT * FROM agent_instances WHERE id = ?", (agent_id,)).fetchone()
+            if row is None:
+                raise KeyError(f"unknown agent: {agent_id}")
+            now = utc_now_iso()
+            conn.execute(
+                "UPDATE agent_instances SET diagnostic = ?, updated_at = ? WHERE id = ?",
+                (diagnostic, now, agent_id),
+            )
+            self._insert_event(
+                conn,
+                EventRecord.create(
+                    task_id=row["task_id"],
+                    type=EventType.AGENT_RECONCILED,
+                    payload={
+                        "agent_id": agent_id,
+                        "connected": connected,
+                        "runtime_state": runtime_state,
+                        "diagnostic": diagnostic,
+                        "safe_to_restart": safe_to_restart,
+                    },
+                ),
+            )
+            conn.commit()
+            return replace(self._agent_from_row(row), diagnostic=diagnostic, updated_at=now)
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
     def append_event(self, event: EventRecord) -> EventRecord:
         conn = self._connect()
         try:
@@ -439,6 +683,21 @@ class AgentOSStore:
             verification_result=_loads(row["verification_result_json"]),
             recovery_attempts=int(row["recovery_attempts"]), error=row["error"],
             created_at=row["created_at"], updated_at=row["updated_at"],
+        )
+
+    @staticmethod
+    def _agent_from_row(row: sqlite3.Row) -> AgentInstanceRecord:
+        return AgentInstanceRecord(
+            id=row["id"], task_id=row["task_id"], runtime=row["runtime"],
+            goal=row["goal"], state=AgentInstanceState(row["state"]),
+            parent_agent_id=row["parent_agent_id"], role=row["role"],
+            launch_spec=_loads(row["launch_spec_json"]),
+            runtime_handle=_loads(row["runtime_handle_json"]),
+            restart_count=int(row["restart_count"]), max_restarts=int(row["max_restarts"]),
+            result=_loads(row["result_json"]), error=row["error"],
+            diagnostic=row["diagnostic"], created_at=row["created_at"],
+            updated_at=row["updated_at"], started_at=row["started_at"],
+            completed_at=row["completed_at"],
         )
 
     @staticmethod

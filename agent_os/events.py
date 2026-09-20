@@ -21,6 +21,11 @@ class EventType(StrEnum):
     RECOVERY_ATTEMPTED = "recovery.attempted"
     CHECKPOINT_BOUND = "checkpoint.bound"
     ARTIFACT_RECORDED = "artifact.recorded"
+    AGENT_CREATED = "agent.created"
+    AGENT_STATE_CHANGED = "agent.state_changed"
+    AGENT_HANDLE_BOUND = "agent.handle_bound"
+    AGENT_RECONCILED = "agent.reconciled"
+    AGENT_RESTARTED = "agent.restarted"
 
 
 @dataclass(frozen=True, slots=True)
