@@ -113,11 +113,20 @@ def _require(getter: Callable, conn: sqlite3.Connection, ident, label: str):
     return obj
 
 
-def _run_aux(board: Optional[str], module: str, fn: str, task_id: str, author: Optional[str]) -> Any:
+def _run_aux(
+    board: Optional[str],
+    module: str,
+    fn: str,
+    task_id: str,
+    author: Optional[str],
+    **kwargs: Any,
+) -> Any:
     """Run a slow auxiliary-LLM task helper (``hermes_cli.<module>.<fn>``) with the board pinned;
     the module is imported lazily so a missing aux client can't break plugin load."""
     def _run():
-        return getattr(importlib.import_module(f"hermes_cli.{module}"), fn)(task_id, author=(author or None))
+        return getattr(importlib.import_module(f"hermes_cli.{module}"), fn)(
+            task_id, author=(author or None), **kwargs
+        )
     return _with_board_pinned(board, _run)
 
 
@@ -1570,13 +1579,22 @@ def auto_describe_profile(profile_name: str, payload: DescribeAutoBody):
 
 class DecomposeBody(BaseModel):
     author: Optional[str] = None
+    # None follows board config; False is the Hermes OS human-gate mode.
+    auto_promote: Optional[bool] = None
 
 
 @router.post("/tasks/{task_id}/decompose")
 def decompose_task_endpoint(task_id: str, payload: DecomposeBody, board: Optional[str] = Query(None)):
     """Fan a triage task out into child tasks via the auxiliary LLM (``hermes kanban decompose``).
     Non-OK is NOT an HTTP error. Sync ``def`` → runs in the threadpool."""
-    outcome = _run_aux(board, "kanban_decompose", "decompose_task", task_id, payload.author)
+    outcome = _run_aux(
+        board,
+        "kanban_decompose",
+        "decompose_task",
+        task_id,
+        payload.author,
+        auto_promote=payload.auto_promote,
+    )
     return {
         "ok": bool(outcome.ok), "task_id": outcome.task_id, "reason": outcome.reason,
         "fanout": bool(outcome.fanout), "child_ids": outcome.child_ids or [], "new_title": outcome.new_title}
