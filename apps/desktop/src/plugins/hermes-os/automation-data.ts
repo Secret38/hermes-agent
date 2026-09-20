@@ -1,4 +1,5 @@
 import { host, useQuery, useValue } from '@hermes/plugin-sdk'
+import { useEffect, useState } from 'react'
 
 export interface HermesCronJobSummary {
   enabled?: boolean
@@ -29,6 +30,15 @@ export function useAutomationSummary() {
   const connectionId = useValue(host.state.connectionId)
   const gateway = useValue(host.state.gateway)
   const profile = useValue(host.state.profile) || 'default'
+  const [revision, setRevision] = useState(0)
+
+  useEffect(
+    () =>
+      host.onEvent('cron.changed', () => {
+        setRevision(value => value + 1)
+      }),
+    [connectionId, profile]
+  )
 
   const query = useQuery({
     enabled: Boolean(gateway && host.getGateway()),
@@ -38,7 +48,7 @@ export function useAutomationSummary() {
         include_disabled: true,
         profile
       }),
-    queryKey: ['hermes-os', 'automations', connectionId, profile],
+    queryKey: ['hermes-os', 'automations', connectionId, profile, revision],
     refetchOnWindowFocus: true,
     retry: false,
     staleTime: 15_000
