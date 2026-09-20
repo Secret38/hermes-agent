@@ -57,12 +57,27 @@ def _connect(home: str | Path | None = None) -> sqlite3.Connection:
             request_id  TEXT,
             subject     TEXT,
             outcome     TEXT,
+            task_id     TEXT,
+            run_id      INTEGER,
+            project_id  TEXT,
             created_at  REAL NOT NULL
         )
         """
     )
+    # Additive migration for homes created before task/run/project correlation existed.
+    existing = {str(row["name"]) for row in conn.execute("PRAGMA table_info(audit_events)").fetchall()}
+    for name, sql_type in (
+        ("task_id", "TEXT"),
+        ("run_id", "INTEGER"),
+        ("project_id", "TEXT"),
+    ):
+        if name not in existing:
+            conn.execute(f"ALTER TABLE audit_events ADD COLUMN {name} {sql_type}")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_events_created ON audit_events(created_at DESC, id DESC)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_events_session ON audit_events(session_id, id DESC)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_events_task ON audit_events(task_id, id DESC)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_events_run ON audit_events(run_id, id DESC)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_events_project ON audit_events(project_id, id DESC)")
     return conn
 
 
@@ -85,6 +100,9 @@ def append_event(
     request_id: object = None,
     subject: object = None,
     outcome: object = None,
+    task_id: object = None,
+    run_id: object = None,
+    project_id: object = None,
     created_at: float | None = None,
     home: str | Path | None = None,
 ) -> int | None:
@@ -97,6 +115,9 @@ def append_event(
         _safe_scalar(request_id),
         _safe_scalar(subject, max_len=80),
         _safe_scalar(outcome, max_len=80),
+        _safe_scalar(task_id),
+        int(run_id) if run_id is not None else None,
+        _safe_scalar(project_id),
         float(created_at if created_at is not None else time.time()),
     )
     if not row[0] or not row[1]:
@@ -106,8 +127,9 @@ def append_event(
             cursor = conn.execute(
                 """
                 INSERT INTO audit_events
-                    (event, category, session_id, request_id, subject, outcome, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (event, category, session_id, request_id, subject, outcome,
+                     task_id, run_id, project_id, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 row,
             )
@@ -137,6 +159,9 @@ def list_events(
     limit: int = 200,
     before_id: int | None = None,
     session_id: str | None = None,
+    task_id: str | None = None,
+    run_id: int | None = None,
+    project_id: str | None = None,
     home: str | Path | None = None,
 ) -> list[dict[str, Any]]:
     """Newest-first metadata rows. No payload column exists to leak sensitive content."""
@@ -149,13 +174,23 @@ def list_events(
     if session_id:
         clauses.append("session_id = ?")
         args.append(str(session_id))
+    if task_id:
+        clauses.append("task_id = ?")
+        args.append(str(task_id))
+    if run_id is not None:
+        clauses.append("run_id = ?")
+        args.append(int(run_id))
+    if project_id:
+        clauses.append("project_id = ?")
+        args.append(str(project_id))
     where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
     args.append(bounded)
     try:
         with closing(_connect(home)) as conn:
             rows = conn.execute(
                 f"""
-                SELECT id, event, category, session_id, request_id, subject, outcome, created_at
+                SELECT id, event, category, session_id, request_id, subject, outcome,
+                       task_id, run_id, project_id, created_at
                 FROM audit_events
                 {where}
                 ORDER BY id DESC
