@@ -1,20 +1,18 @@
 import {
+  $liveSessionSnapshots,
+  $subagentsBySession,
   host,
+  liveSessionScopeKey,
   OPERATIONS_TASK_SOURCES_AREA,
+  type LiveSessionSnapshotItem,
   type OperationsTaskSnapshot,
   type OperationsTaskSource,
+  type SubagentProgress,
   useContributions,
   useQuery,
   useValue
 } from '@hermes/plugin-sdk'
 import { useStore } from '@nanostores/react'
-
-import {
-  $liveSessionSnapshots,
-  liveSessionScopeKey,
-  type LiveSessionSnapshotItem
-} from '@/store/live-sessions'
-import { $subagentsBySession, type SubagentProgress } from '@/store/subagents'
 
 import { activeRunCount } from './selectors'
 
