@@ -18,11 +18,8 @@ export function useHermesEstop() {
 
   useEffect(
     () =>
-      host.onEvent('audit.changed', event => {
-        const payload = event.payload as { event?: string } | undefined
-        if (payload?.event?.startsWith('system.estop.')) {
-          setRevision(value => value + 1)
-        }
+      host.onEvent('audit.changed', () => {
+        setRevision(value => value + 1)
       }),
     [connectionId]
   )
