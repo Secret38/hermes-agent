@@ -1,5 +1,6 @@
 import { cn, Codicon, host, Tip } from '@hermes/plugin-sdk'
 
+import { useAutomationSummary } from './automation-data'
 import { useHumanGates } from './human-gates'
 import { useHermesOperations } from './operations-data'
 import { attentionOperationalTasks } from './selectors'
@@ -7,8 +8,10 @@ import { attentionOperationalTasks } from './selectors'
 export function HermesOsAttentionIndicator() {
   const operations = useHermesOperations()
   const humanGates = useHumanGates()
+  const automations = useAutomationSummary()
   const taskAttention = attentionOperationalTasks(operations.snapshots).length
-  const count = humanGates.length + taskAttention
+  const automationAttention = automations.isError ? 0 : automations.failed.length
+  const count = humanGates.length + taskAttention + automationAttention
 
   if (count === 0) {
     return null
