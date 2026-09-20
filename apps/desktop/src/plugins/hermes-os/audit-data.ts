@@ -9,6 +9,9 @@ export interface HermesAuditEvent {
   request_id: string | null
   subject: string | null
   outcome: string | null
+  task_id: string | null
+  run_id: number | null
+  project_id: string | null
   created_at: number
 }
 
