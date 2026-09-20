@@ -83,8 +83,22 @@ jobs:
 
       - name: Install Python dependencies
         uses: ./.github/actions/retry
+        env:
+          # Desktop's managed-runtime resolver intentionally uses <repo>/venv,
+          # matching the production installer. A default uv sync would create
+          # .venv and make real-backend E2E fail with ENOENT.
+          UV_PROJECT_ENVIRONMENT: venv
         with:
           command: uv sync --locked --python 3.11 --extra all --extra dev
+
+      - name: Install Playwright Chromium
+        uses: ./.github/actions/retry
+        with:
+          # npm ci installs @playwright/test but does not download its browser
+          # payload. Standard GitHub-hosted runners do not preseed the matching
+          # revision, so provision it explicitly instead of depending on runner
+          # image cache state.
+          command: npx playwright install chromium
 
       # ── Build desktop app ─────────────────────────────────────────────
       # The Playwright step below runs `npm run build` before testing so
