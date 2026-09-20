@@ -20,7 +20,12 @@ describe('Kanban operations projection', () => {
               session_id: 'session-origin',
               current_run_id: 42,
               worker_session_id: 'worker-session',
-              warnings: { count: 2, highest_severity: 'warning' },
+              warnings: {
+                count: 2,
+                highest_severity: 'warning',
+                kinds: { repeated_failures: 2 },
+                latest_at: 150
+              },
               started_at: 100,
               last_heartbeat_at: 120
             }
@@ -80,7 +85,12 @@ describe('Kanban operations projection', () => {
           workerSessionId: 'worker-session',
           startedAt: 100,
           lastHeartbeatAt: 120,
-          warning: { count: 2, severity: 'warning' }
+          warning: {
+            count: 2,
+            severity: 'warning',
+            kinds: { repeated_failures: 2 },
+            latestAt: 150
+          }
         }
       ]
     })
