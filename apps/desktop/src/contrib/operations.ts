@@ -42,6 +42,13 @@ export interface OperationsShapeResult {
   title?: null | string
 }
 
+export interface OperationsPlanApprovalResult {
+  taskId: string
+  ok: boolean
+  promotedIds: string[]
+  heldIds: string[]
+}
+
 export interface OperationsCaptureSource {
   id: string
   label: string
@@ -51,6 +58,8 @@ export interface OperationsCaptureSource {
    * a plan may persist tasks, but may not promote them into executable lanes.
    */
   shapeCaptured?: (captured: OperationsCaptureResult) => Promise<OperationsShapeResult>
+  /** Approve a shaped plan through the producer's own dependency/policy rules. */
+  approveCapturedPlan?: (captured: OperationsCaptureResult) => Promise<OperationsPlanApprovalResult>
   /** Optional producer-owned navigation to the captured item. */
   openCapturedTask?: (taskId: string) => void
 }
