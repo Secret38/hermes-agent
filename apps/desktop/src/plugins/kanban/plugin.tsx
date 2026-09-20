@@ -43,7 +43,8 @@ import {
   fetchOperationsRunInspection,
   fetchOperationsSnapshot,
   fetchOperationsTaskExecution,
-  fetchOperationsTaskLog
+  fetchOperationsTaskLog,
+  toMissionCaptureTaskBody
 } from './api'
 import { KanbanBoardPage } from './board'
 import { KANBAN_LOCALES } from './i18n'
@@ -125,17 +126,7 @@ const plugin: HermesPlugin = {
           id: 'kanban',
           label: 'Kanban inbox',
           capture: async input => {
-            const title = input.title.trim()
-            if (!title) {
-              throw new Error('A title is required.')
-            }
-
-            const result = await createTask({
-              title,
-              body: input.body?.trim() || undefined,
-              triage: true,
-              ...(input.projectId ? { project_id: input.projectId } : {})
-            })
+            const result = await createTask(toMissionCaptureTaskBody(input))
             if (!result.task) {
               throw new Error('Kanban did not return the captured task.')
             }
