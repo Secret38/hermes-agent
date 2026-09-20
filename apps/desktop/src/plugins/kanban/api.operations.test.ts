@@ -5,6 +5,7 @@ import {
   toOperationsRunInspection,
   toOperationsSnapshot,
   toOperationsTaskExecution,
+  toMissionCaptureTaskBody,
   toOperationsTaskLog
 } from './api'
 
@@ -123,6 +124,29 @@ describe('Kanban operations execution projection', () => {
       content: 'worker output',
       truncated: true
     })
+  })
+
+  it('maps Mission Control capture into a non-executing triage task with exact project identity', () => {
+    expect(
+      toMissionCaptureTaskBody({
+        title: '  Ship dashboard  ',
+        body: '  Acceptance criteria  ',
+        projectId: 'project-123'
+      })
+    ).toEqual({
+      title: 'Ship dashboard',
+      body: 'Acceptance criteria',
+      triage: true,
+      project_id: 'project-123'
+    })
+
+    expect(toMissionCaptureTaskBody({ title: 'Inbox item' })).toEqual({
+      title: 'Inbox item',
+      body: undefined,
+      triage: true
+    })
+
+    expect(() => toMissionCaptureTaskBody({ title: '   ' })).toThrow('A title is required.')
   })
 
   it('projects live process inspection without inventing health state', () => {
