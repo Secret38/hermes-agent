@@ -28,3 +28,30 @@ jobs:
             apps/shared/src/gateway-contract.openrpc.json
           if-no-files-found: error
           retention-days: 1
+
+  apply:
+    needs: generate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: hermes-os-generated-contracts-${{ github.sha }}
+          path: generated
+      - name: Apply generated files
+        run: |
+          set -euo pipefail
+          cp generated/gateway-contract.generated.ts apps/shared/src/gateway-contract.generated.ts
+          cp generated/gateway-contract.openrpc.json apps/shared/src/gateway-contract.openrpc.json
+          if git diff --quiet -- apps/shared/src/gateway-contract.generated.ts apps/shared/src/gateway-contract.openrpc.json; then
+            echo "Generated contracts are already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add apps/shared/src/gateway-contract.generated.ts apps/shared/src/gateway-contract.openrpc.json
+          git commit -m "chore(gateway): regenerate wire contracts"
+          git push origin HEAD:hermes-os/v1-shell
