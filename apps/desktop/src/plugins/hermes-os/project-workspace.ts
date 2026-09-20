@@ -1,14 +1,12 @@
-import type { PluginProfileRoute } from '@hermes/plugin-sdk'
-
-import { revealDesktopPane } from '@/store/pane-focus'
-import { openBrowserTab } from '@/store/preview'
-import { revealReview } from '@/store/review'
 import {
-  $currentCwd,
   $resumeFailedSessionId,
-  $selectedStoredSessionId,
-  $workspaceCwdOwner
-} from '@/store/session'
+  $workspaceCwdOwner,
+  host,
+  openBrowserTab,
+  type PluginProfileRoute,
+  revealDesktopPane,
+  revealReview
+} from '@hermes/plugin-sdk'
 
 import { openHermesWorkspaceSession, storedHermesSessionId } from './session-navigation'
 
@@ -31,11 +29,11 @@ function targetStoredId(sessionId: string): string {
 }
 
 function selectedPrimarySession(target: string): boolean {
-  return $selectedStoredSessionId.get() === target
+  return host.state.focusedStoredSessionId.get() === target
 }
 
 function confirmedWorkspaceCwd(target: string): string | null {
-  const cwd = $currentCwd.get().trim()
+  const cwd = host.state.cwd.get().trim()
 
   return selectedPrimarySession(target) && $workspaceCwdOwner.get() === target && cwd ? cwd : null
 }
@@ -101,9 +99,9 @@ function waitForCondition<T>(
     }
 
     unsubs.push(
-      $selectedStoredSessionId.listen(check),
+      host.state.focusedStoredSessionId.listen(check),
       $workspaceCwdOwner.listen(check),
-      $currentCwd.listen(check),
+      host.state.cwd.listen(check),
       $resumeFailedSessionId.listen(check)
     )
 
