@@ -36,3 +36,22 @@ if ($plan.installer_url -ne "https://raw.githubusercontent.com/Secret38/hermes-a
 }
 
 Write-Host "OK: Hermes OS distribution repository and bootstrap contracts" -ForegroundColor Green
+
+# The selected distribution must also take ownership of an existing managed checkout.
+$tempRepo = Join-Path ([System.IO.Path]::GetTempPath()) ("hermes-origin-test-" + [Guid]::NewGuid().ToString("N"))
+try {
+    New-Item -ItemType Directory -Path $tempRepo -Force | Out-Null
+    & git -C $tempRepo init | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "git init failed" }
+    & git -C $tempRepo remote add origin "https://github.com/NousResearch/hermes-agent.git"
+    if ($LASTEXITCODE -ne 0) { throw "git remote add failed" }
+
+    . $installScript -RepoUrl $customRepo
+    Set-ManagedRepositoryOrigin -Repo $tempRepo -Url $customRepo
+    $origin = (& git -C $tempRepo remote get-url origin).Trim()
+    if ($origin -ne $customRepo) { throw "managed checkout origin was not switched: $origin" }
+} finally {
+    Remove-Item -LiteralPath $tempRepo -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+Write-Host "OK: existing managed checkout adopts selected distribution origin" -ForegroundColor Green
