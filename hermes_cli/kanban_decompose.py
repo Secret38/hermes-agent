@@ -230,7 +230,13 @@ def _apply_single(task: kb.Task, parsed: dict, routing: _Routing, author: str) -
         return DecomposeOutcome(task.id, False, "decomposer returned fanout=false with no title/body")
     with kbc.connect_closing() as conn:
         ok = kb.specify_triage_task(
-            conn, task.id, title=title_val, body=body_val, assignee=assignee_val, author=author,
+            conn,
+            task.id,
+            title=title_val,
+            body=body_val,
+            assignee=assignee_val,
+            author=author,
+            auto_promote_ready=routing.auto_promote,
         )
     if not ok:
         return DecomposeOutcome(task.id, False, "task moved out of triage before promotion")
