@@ -1,22 +1,19 @@
 import {
   Button,
   Codicon,
+  host,
   type OperationsRun,
   type OperationsTask,
   type OperationsTaskSnapshot,
   type OperationsTaskSource,
-  host,
   type PluginProfileRoute,
-  useQuery
-} from '@hermes/plugin-sdk'
-
-import {
   Sheet,
   SheetContent,
   SheetDescription,
   SheetHeader,
-  SheetTitle
-} from '@/components/ui/sheet'
+  SheetTitle,
+  useQuery
+} from '@hermes/plugin-sdk'
 
 import { exactOperationsRoute } from './selectors'
 import { openHermesSession } from './session-navigation'
