@@ -331,7 +331,21 @@ def _(rid, params: dict) -> dict:
     except (TypeError, ValueError):
         before_id = None
     session_id = str(params.get("session_id") or "").strip() or None
-    events = list_events(limit=limit, before_id=before_id, session_id=session_id)
+    task_id = str(params.get("task_id") or "").strip() or None
+    project_id = str(params.get("project_id") or "").strip() or None
+    run_id = params.get("run_id")
+    try:
+        run_id = int(run_id) if run_id is not None else None
+    except (TypeError, ValueError):
+        run_id = None
+    events = list_events(
+        limit=limit,
+        before_id=before_id,
+        session_id=session_id,
+        task_id=task_id,
+        run_id=run_id,
+        project_id=project_id,
+    )
     return _ok(rid, {"events": events})
 
 
