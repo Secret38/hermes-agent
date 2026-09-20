@@ -1,4 +1,4 @@
-import { Button, Codicon, host, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea, type OperationsCaptureResult, type OperationsTask, type OperationsTaskSnapshot, type OperationsTaskSource, type PluginProfileRoute } from '@hermes/plugin-sdk'
+import { Button, Codicon, host, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea, type OperationsCaptureResult, type OperationsShapeResult, type OperationsTask, type OperationsTaskSnapshot, type OperationsTaskSource, type PluginProfileRoute } from '@hermes/plugin-sdk'
 import { useStore } from '@nanostores/react'
 import { type ReactNode, useState } from 'react'
 
@@ -496,7 +496,9 @@ function MissionControl() {
   const [captureBody, setCaptureBody] = useState('')
   const [captureProjectId, setCaptureProjectId] = useState<string>('none')
   const [capturing, setCapturing] = useState(false)
+  const [shaping, setShaping] = useState(false)
   const [captured, setCaptured] = useState<OperationsCaptureResult | null>(null)
+  const [shaped, setShaped] = useState<OperationsShapeResult | null>(null)
 
   const captureMission = () => {
     const title = captureTitle.trim()
@@ -506,6 +508,7 @@ function MissionControl() {
 
     setCapturing(true)
     setCaptured(null)
+    setShaped(null)
     void captureSource
       .capture({
         title,
@@ -519,6 +522,20 @@ function MissionControl() {
       })
       .catch(error => notifyError(error, 'Could not capture mission'))
       .finally(() => setCapturing(false))
+  }
+
+  const shapeMission = () => {
+    if (!captureSource?.shapeCaptured || !captured || shaping) {
+      return
+    }
+
+    setShaping(true)
+    setShaped(null)
+    void captureSource
+      .shapeCaptured(captured)
+      .then(result => setShaped(result))
+      .catch(error => notifyError(error, 'Could not shape mission plan'))
+      .finally(() => setShaping(false))
   }
 
   const setNewWorkPaused = (engaged: boolean) => {
@@ -604,20 +621,55 @@ function MissionControl() {
               </Button>
             </div>
             {captured ? (
-              <div className="flex items-center justify-between gap-3 border-t border-(--ui-stroke-tertiary) pt-3">
-                <div className="min-w-0 text-xs text-(--ui-text-tertiary)">
-                  Captured <span className="font-mono">{captured.taskId}</span> · {captured.status.toUpperCase()}
-                  {captured.warning ? ` · ${captured.warning}` : ''}
+              <div className="space-y-2 border-t border-(--ui-stroke-tertiary) pt-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0 text-xs text-(--ui-text-tertiary)">
+                    Stage 01 · Captured <span className="font-mono">{captured.taskId}</span> · {captured.status.toUpperCase()}
+                    {captured.warning ? ` · ${captured.warning}` : ''}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {captureSource.shapeCaptured && captured.status === 'triage' ? (
+                      <Button
+                        disabled={shaping}
+                        loading={shaping}
+                        onClick={shapeMission}
+                        size="inline"
+                        type="button"
+                        variant="text"
+                      >
+                        Shape plan
+                      </Button>
+                    ) : null}
+                    {captureSource.openCapturedTask ? (
+                      <Button
+                        onClick={() => captureSource.openCapturedTask?.(captured.taskId)}
+                        size="inline"
+                        type="button"
+                        variant="text"
+                      >
+                        Open task
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
-                {captureSource.openCapturedTask ? (
-                  <Button
-                    onClick={() => captureSource.openCapturedTask?.(captured.taskId)}
-                    size="inline"
-                    type="button"
-                    variant="text"
-                  >
-                    Open task
-                  </Button>
+                {shaped ? (
+                  <div className="rounded border border-(--ui-stroke-tertiary) px-3 py-2 text-xs text-(--ui-text-tertiary)">
+                    <div className="font-medium text-(--ui-text-secondary)">
+                      {shaped.ok ? 'Stage 02 · Plan shaped — waiting for human review' : 'Plan shaping did not complete'}
+                    </div>
+                    <div className="mt-1">
+                      {shaped.ok
+                        ? shaped.fanout
+                          ? `${shaped.childIds.length} planned child task(s) created in non-executing lanes.`
+                          : 'Single-task plan specified in a non-executing lane.'
+                        : shaped.reason || 'The producer did not provide a reason.'}
+                    </div>
+                    {shaped.ok ? (
+                      <div className="mt-1 font-mono text-[0.6875rem]">
+                        EXECUTION GATE: CLOSED · no child was auto-promoted
+                      </div>
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
             ) : null}
