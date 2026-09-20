@@ -484,6 +484,7 @@ function MissionControl() {
   const runningTasks = runningOperationalTasks(snapshot.snapshots)
   const attention = attentionOperationalTasks(snapshot.snapshots)
   const humanGates = useHumanGates()
+  const automations = useAutomationSummary()
   const projects = uniqueOperationalProjects(snapshot.snapshots)
   const estop = useHermesEstop()
   const [changingEstop, setChangingEstop] = useState(false)
@@ -505,7 +506,10 @@ function MissionControl() {
         <div className="grid grid-cols-2 gap-x-6 border-b border-(--ui-stroke-tertiary) sm:grid-cols-4">
           <Metric label="Tasks running" value={snapshot.sources.length ? String(runningTasks.length) : '—'} />
           <Metric label="Active runs" value={String(snapshot.activeRuns)} />
-          <Metric label="Needs attention" value={String(humanGates.length + attention.length)} />
+          <Metric
+            label="Needs attention"
+            value={String(humanGates.length + attention.length + (automations.isError ? 0 : automations.failed.length))}
+          />
           <Metric label="Projects" value={snapshot.sources.length ? String(projects.length) : '—'} />
         </div>
       </section>
@@ -606,6 +610,7 @@ function AttentionPage() {
   const snapshot = useHermesOperations()
   const tasks = attentionOperationalTasks(snapshot.snapshots)
   const humanGates = useHumanGates()
+  const automations = useAutomationSummary()
 
   return (
     <div className="space-y-6">
@@ -635,6 +640,41 @@ function AttentionPage() {
           </div>
         ) : (
           <p className="mt-2 text-xs text-(--ui-text-tertiary)">No Hermes session is currently waiting on human input.</p>
+        )}
+      </section>
+
+      <section>
+        <div className="flex items-baseline justify-between gap-4">
+          <h3 className="text-sm font-semibold text-(--ui-text-primary)">Automation attention</h3>
+          <span className="font-mono text-[0.6875rem] text-(--ui-text-tertiary)">
+            {automations.isError ? '—' : automations.failed.length}
+          </span>
+        </div>
+        <p className="mt-1 max-w-3xl text-xs leading-relaxed text-(--ui-text-tertiary)">
+          Failed scheduled jobs come directly from Hermes cron state. Open Scheduled Jobs for canonical history,
+          repair, pause, or resume actions.
+        </p>
+        {automations.isError ? (
+          <p className="mt-2 text-xs text-(--ui-text-tertiary)">Automation state is unavailable for this backend.</p>
+        ) : automations.failed.length ? (
+          <div className="mt-2 divide-y divide-(--ui-stroke-tertiary)">
+            {automations.failed.map(job => (
+              <FoundationRow
+                action={() => host.navigate('/cron')}
+                detail={[
+                  job.schedule,
+                  job.last_run_at ? `last ${job.last_run_at}` : null,
+                  job.last_error || job.last_fire_error || job.last_delivery_error
+                ].filter(Boolean).join(' · ')}
+                icon="error"
+                key={job.job_id}
+                label={job.name || job.job_id}
+                state="FAILED"
+              />
+            ))}
+          </div>
+        ) : (
+          <p className="mt-2 text-xs text-(--ui-text-tertiary)">No scheduled job currently reports a failure.</p>
         )}
       </section>
 
