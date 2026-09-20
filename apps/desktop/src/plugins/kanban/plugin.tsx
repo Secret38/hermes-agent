@@ -38,12 +38,14 @@ import {
   $boardSlug,
   bindApi,
   boardKey,
-  createTask,
+  createTaskInScope,
   fetchBoard,
+  fetchBoards,
   fetchOperationsRunInspection,
   fetchOperationsSnapshot,
   fetchOperationsTaskExecution,
   fetchOperationsTaskLog,
+  shapeMissionTaskInScope,
   toMissionCaptureTaskBody
 } from './api'
 import { KanbanBoardPage } from './board'
@@ -126,7 +128,9 @@ const plugin: HermesPlugin = {
           id: 'kanban',
           label: 'Kanban inbox',
           capture: async input => {
-            const result = await createTask(toMissionCaptureTaskBody(input))
+            const selectedScope = $boardSlug.get()
+            const scopeKey = selectedScope || (await fetchBoards()).current
+            const result = await createTaskInScope(toMissionCaptureTaskBody(input), scopeKey)
             if (!result.task) {
               throw new Error('Kanban did not return the captured task.')
             }
@@ -135,7 +139,20 @@ const plugin: HermesPlugin = {
               sourceId: 'kanban',
               taskId: result.task.id,
               status: result.task.status,
+              scopeKey,
               warning: result.warning ?? null
+            }
+          },
+          shapeCaptured: async captured => {
+            const result = await shapeMissionTaskInScope(captured.taskId, captured.scopeKey)
+
+            return {
+              taskId: result.task_id,
+              ok: result.ok,
+              reason: result.reason ?? null,
+              fanout: result.fanout,
+              childIds: result.child_ids ?? [],
+              title: result.new_title ?? null
             }
           },
           openCapturedTask: () => host.navigate('/kanban')
