@@ -1,39 +1,35 @@
-import { atom } from 'nanostores'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const revealDesktopPane = vi.fn()
-const openBrowserTab = vi.fn()
-const revealReview = vi.fn()
-const openHermesWorkspaceSession = vi.fn()
-
-const selected = atom<null | string>(null)
-const cwd = atom('')
-const owner = atom<null | string>(null)
-const resumeFailed = atom<null | string>(null)
+const mocks = vi.hoisted(() => ({
+  revealDesktopPane: vi.fn(),
+  openBrowserTab: vi.fn(),
+  revealReview: vi.fn(),
+  openHermesWorkspaceSession: vi.fn()
+}))
 
 vi.mock('@/store/pane-focus', () => ({
-  revealDesktopPane: (...args: unknown[]) => revealDesktopPane(...args)
+  revealDesktopPane: (...args: unknown[]) => mocks.revealDesktopPane(...args)
 }))
 
 vi.mock('@/store/preview', () => ({
-  openBrowserTab: (...args: unknown[]) => openBrowserTab(...args)
+  openBrowserTab: (...args: unknown[]) => mocks.openBrowserTab(...args)
 }))
 
 vi.mock('@/store/review', () => ({
-  revealReview: (...args: unknown[]) => revealReview(...args)
-}))
-
-vi.mock('@/store/session', () => ({
-  $currentCwd: cwd,
-  $resumeFailedSessionId: resumeFailed,
-  $selectedStoredSessionId: selected,
-  $workspaceCwdOwner: owner
+  revealReview: (...args: unknown[]) => mocks.revealReview(...args)
 }))
 
 vi.mock('./session-navigation', () => ({
-  openHermesWorkspaceSession: (...args: unknown[]) => openHermesWorkspaceSession(...args),
+  openHermesWorkspaceSession: (...args: unknown[]) => mocks.openHermesWorkspaceSession(...args),
   storedHermesSessionId: (id: string) => id.trim()
 }))
+
+import {
+  $currentCwd as cwd,
+  $resumeFailedSessionId as resumeFailed,
+  $selectedStoredSessionId as selected,
+  $workspaceCwdOwner as owner
+} from '@/store/session'
 
 import { launchProjectWorkspaceSurface } from './project-workspace'
 
@@ -43,11 +39,11 @@ describe('Hermes OS project workspace launcher', () => {
     cwd.set('')
     owner.set(null)
     resumeFailed.set(null)
-    revealDesktopPane.mockReset()
-    revealDesktopPane.mockReturnValue(true)
-    openBrowserTab.mockReset()
-    revealReview.mockReset()
-    openHermesWorkspaceSession.mockReset()
+    mocks.revealDesktopPane.mockReset()
+    mocks.revealDesktopPane.mockReturnValue(true)
+    mocks.openBrowserTab.mockReset()
+    mocks.revealReview.mockReset()
+    mocks.openHermesWorkspaceSession.mockReset()
   })
 
   it('opens chat in the primary workspace without waiting for cwd', async () => {
