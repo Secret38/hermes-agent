@@ -10,6 +10,7 @@ import {
   type ExecutionInspectorSelection
 } from './execution-inspector'
 import { useHermesAudit } from './audit-data'
+import { useAutomationSummary } from './automation-data'
 import { useHermesEstop } from './control-data'
 import { openHumanGateSession, resolveHumanGateApproval, useHumanGates, type HumanGate } from './human-gates'
 import { sourceForSnapshot, useHermesOperations, useLiveFleet } from './operations-data'
@@ -25,7 +26,15 @@ import {
   runningOperationalTasks
 } from './selectors'
 
-export type HermesOsSection = 'mission' | 'attention' | 'projects' | 'fleet' | 'timeline' | 'security'
+export type HermesOsSection =
+  | 'mission'
+  | 'attention'
+  | 'projects'
+  | 'fleet'
+  | 'timeline'
+  | 'automations'
+  | 'knowledge'
+  | 'security'
 
 interface SectionDefinition {
   description: string
@@ -60,10 +69,22 @@ const SECTIONS: Record<HermesOsSection, SectionDefinition> = {
     path: '/hermes-os/fleet'
   },
   timeline: {
-    description: 'Live runtime sessions and task execution, joined without duplicating source state.',
+    description: 'Durable operator events, live runtime sessions, and task execution lineage.',
     icon: 'graph',
     label: 'Timeline',
     path: '/hermes-os/timeline'
+  },
+  automations: {
+    description: 'Scheduled and event-driven work composed from Hermes automation authorities.',
+    icon: 'clock',
+    label: 'Automations',
+    path: '/hermes-os/automations'
+  },
+  knowledge: {
+    description: 'Hermes memory and learned-skill knowledge surface, anchored in the native Starmap.',
+    icon: 'symbol-structure',
+    label: 'Knowledge',
+    path: '/hermes-os/knowledge'
   },
   security: {
     description: 'Current execution boundary; policy editing follows after the task/run model is complete.',
@@ -986,6 +1007,131 @@ function TimelinePage() {
   )
 }
 
+function AutomationsPage() {
+  const automations = useAutomationSummary()
+
+  return (
+    <div className="space-y-6">
+      <section>
+        <div className="grid grid-cols-3 gap-x-6 border-b border-(--ui-stroke-tertiary)">
+          <Metric label="Scheduled" value={automations.isError ? '—' : String(automations.jobs.length)} />
+          <Metric label="Active" value={automations.isError ? '—' : String(automations.enabledCount)} />
+          <Metric label="Needs attention" value={automations.isError ? '—' : String(automations.failed.length)} />
+        </div>
+      </section>
+
+      <section>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-sm font-semibold text-(--ui-text-primary)">Scheduled work</h2>
+            <p className="mt-1 max-w-3xl text-xs leading-relaxed text-(--ui-text-tertiary)">
+              Read directly from Hermes cron. Editing stays in the native Scheduled Jobs surface so Hermes OS does not
+              create a second scheduler.
+            </p>
+          </div>
+          <Button onClick={() => host.navigate('/cron')} size="sm" type="button" variant="secondary">
+            Scheduled Jobs
+          </Button>
+        </div>
+
+        {automations.isError ? (
+          <p className="mt-3 text-xs text-(--ui-text-tertiary)">Scheduled-job state is unavailable for this backend.</p>
+        ) : automations.jobs.length ? (
+          <div className="mt-3 divide-y divide-(--ui-stroke-tertiary)">
+            {automations.jobs.slice(0, 12).map(job => {
+              const failed = automations.failed.some(candidate => candidate.job_id === job.job_id)
+              const paused = job.enabled === false || job.state === 'paused'
+              return (
+                <FoundationRow
+                  detail={[
+                    job.schedule,
+                    job.last_run_at ? `last ${job.last_run_at}` : null,
+                    job.next_run_at ? `next ${job.next_run_at}` : null,
+                    job.last_error || job.last_fire_error || job.last_delivery_error
+                  ].filter(Boolean).join(' · ')}
+                  icon={failed ? 'error' : paused ? 'debug-pause' : 'clock'}
+                  key={job.job_id}
+                  label={job.name || job.job_id}
+                  state={failed ? 'ATTENTION' : paused ? 'PAUSED' : (job.last_status || 'READY').toUpperCase()}
+                />
+              )
+            })}
+          </div>
+        ) : (
+          <p className="mt-3 text-xs text-(--ui-text-tertiary)">No scheduled jobs are configured for this profile.</p>
+        )}
+      </section>
+
+      <section>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-sm font-semibold text-(--ui-text-primary)">Event-driven work</h2>
+            <p className="mt-1 max-w-3xl text-xs leading-relaxed text-(--ui-text-tertiary)">
+              Webhook routes remain a distinct Hermes authority. V1 links to that canonical surface until a narrow,
+              credential-free runtime summary exists.
+            </p>
+          </div>
+          <Button onClick={() => host.navigate('/webhooks')} size="sm" type="button" variant="text">
+            Webhooks
+          </Button>
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function KnowledgePage() {
+  return (
+    <div className="space-y-6">
+      <section>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-sm font-semibold text-(--ui-text-primary)">Hermes knowledge</h2>
+            <p className="mt-1 max-w-3xl text-sm leading-relaxed text-(--ui-text-tertiary)">
+              Memory and learned skills stay owned by Hermes. Hermes OS treats the native Starmap as the canonical
+              knowledge graph instead of creating a second vector store or graph database.
+            </p>
+          </div>
+          <Button onClick={() => host.navigate('/starmap')} size="sm" type="button" variant="secondary">
+            Open Starmap
+          </Button>
+        </div>
+      </section>
+
+      <section>
+        <div className="divide-y divide-(--ui-stroke-tertiary)">
+          <FoundationRow
+            detail="Persistent semantic and episodic knowledge remains in Hermes memory authorities."
+            icon="database"
+            label="Memory"
+            state="HERMES"
+          />
+          <FoundationRow
+            detail="Agent-created and installed reusable capabilities remain in Hermes Skills."
+            icon="tools"
+            label="Learned skills"
+            state="HERMES"
+          />
+          <FoundationRow
+            detail="The native Starmap already projects memory + skill relationships and chronology."
+            icon="symbol-structure"
+            label="Knowledge graph"
+            state="STARMAP"
+          />
+        </div>
+      </section>
+
+      <section>
+        <h2 className="text-sm font-semibold text-(--ui-text-primary)">V1 boundary</h2>
+        <p className="mt-1 max-w-3xl text-xs leading-relaxed text-(--ui-text-tertiary)">
+          Project/session/agent filters should be added as projections onto Starmap data. They must not fork memory
+          persistence or silently background-hydrate dormant sessions.
+        </p>
+      </section>
+    </div>
+  )
+}
+
 function SecurityPage() {
   const snapshot = useHermesOperations()
   const humanGates = useHumanGates()
@@ -1321,6 +1467,8 @@ function PageBody({ section }: { section: HermesOsSection }) {
     projects: <ProjectsPage />,
     fleet: <FleetPage />,
     timeline: <TimelinePage />,
+    automations: <AutomationsPage />,
+    knowledge: <KnowledgePage />,
     security: <SecurityPage />
   }
 
