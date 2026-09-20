@@ -26,13 +26,15 @@ const ROUTES: readonly HermesOsRoute[] = [
   { icon: 'project', label: 'Projects', path: '/hermes-os/projects', section: 'projects' },
   { icon: 'hubot', label: 'Fleet', path: '/hermes-os/fleet', section: 'fleet' },
   { icon: 'graph', label: 'Timeline', path: '/hermes-os/timeline', section: 'timeline' },
+  { icon: 'clock', label: 'Automations', path: '/hermes-os/automations', section: 'automations' },
+  { icon: 'symbol-structure', label: 'Knowledge', path: '/hermes-os/knowledge', section: 'knowledge' },
   { icon: 'shield', label: 'Security', path: '/hermes-os/security', section: 'security' }
 ]
 
 const plugin: HermesPlugin = {
   id: 'hermes-os',
   name: 'Hermes OS',
-  description: 'Agent operations control plane: mission control, attention, projects, fleet, timeline, and security.',
+  description: 'Agent operations control plane: mission control, attention, projects, fleet, timeline, automations, knowledge, and security.',
   defaultEnabled: true,
   register(ctx) {
     ctx.registerMany([
