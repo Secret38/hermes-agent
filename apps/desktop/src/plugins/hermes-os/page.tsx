@@ -645,7 +645,7 @@ function MissionControl() {
                     {captured.warning ? ` · ${captured.warning}` : ''}
                   </div>
                   <div className="flex items-center gap-2">
-                    {captureSource.shapeCaptured && captured.status === 'triage' ? (
+                    {captureSource.shapeCaptured && captured.status === 'triage' && !shaped ? (
                       <Button
                         disabled={shaping}
                         loading={shaping}
