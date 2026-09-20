@@ -9,6 +9,7 @@ import {
   ExecutionInspector,
   type ExecutionInspectorSelection
 } from './execution-inspector'
+import { useHermesAudit } from './audit-data'
 import { openHumanGateSession, resolveHumanGateApproval, useHumanGates, type HumanGate } from './human-gates'
 import { sourceForSnapshot, useHermesOperations, useLiveFleet } from './operations-data'
 import { ProjectInspector } from './project-inspector'
@@ -802,6 +803,7 @@ function FleetPage() {
 
 function TimelinePage() {
   const snapshot = useHermesOperations()
+  const audit = useHermesAudit()
   const runtimeRuns = activeRunIds(snapshot.busyBySession)
   const tasks = executionOperationalTasks(snapshot.snapshots)
 
@@ -831,6 +833,40 @@ function TimelinePage() {
           </div>
         ) : (
           <p className="mt-2 text-xs text-(--ui-text-tertiary)">No task source reports recorded execution yet.</p>
+        )}
+      </section>
+
+      <section>
+        <div className="flex items-baseline justify-between gap-4">
+          <h2 className="text-sm font-semibold text-(--ui-text-primary)">Operator / security audit</h2>
+          <span className="font-mono text-[0.6875rem] text-(--ui-text-tertiary)">
+            {audit.data?.events.length ?? 0}
+          </span>
+        </div>
+        <p className="mt-1 max-w-3xl text-xs leading-relaxed text-(--ui-text-tertiary)">
+          Durable metadata-only human-gate history. Prompt bodies, commands, secrets, verification codes and tool
+          output are never stored in this ledger.
+        </p>
+        {audit.isError ? (
+          <p className="mt-2 text-xs text-(--ui-text-tertiary)">The selected backend does not expose the durable audit authority.</p>
+        ) : audit.data?.events.length ? (
+          <div className="mt-2 divide-y divide-(--ui-stroke-tertiary)">
+            {audit.data.events.map(event => (
+              <FoundationRow
+                detail={[
+                  event.subject ? `gate ${event.subject}` : null,
+                  event.session_id ? `session ${event.session_id}` : null,
+                  new Date(event.created_at * 1000).toLocaleString()
+                ].filter(Boolean).join(' · ')}
+                icon={event.event.endsWith('resolved') ? 'check' : event.event.endsWith('cancelled') ? 'circle-slash' : 'bell'}
+                key={event.id}
+                label={event.event.replaceAll('_', ' ').replace('human gate.', '')}
+                state={(event.outcome || event.category).toUpperCase()}
+              />
+            ))}
+          </div>
+        ) : (
+          <p className="mt-2 text-xs text-(--ui-text-tertiary)">No durable operator/security events have been recorded yet.</p>
         )}
       </section>
 
