@@ -65,3 +65,65 @@ export function useTelemetrySecurity() {
     staleTime: 10_000
   })
 }
+
+
+export type NetworkClass = 'disabled' | 'external' | 'loopback' | 'process' | 'unknown'
+
+export interface NetworkSecuritySummary {
+  coverage: 'partial'
+  model_provider: {
+    class: NetworkClass
+    provider: string
+    model_configured: boolean
+    coverage: 'effective_startup_route'
+    subprocess_may_egress: boolean
+  }
+  mcp: {
+    configured: number
+    enabled: number
+    classes: Record<NetworkClass, number>
+    subprocess_may_egress: boolean
+  }
+  telemetry: {
+    class: NetworkClass
+    transmission_enabled: boolean
+  }
+  browser: {
+    class: NetworkClass
+    reason: 'user_directed_destinations'
+  }
+  computer_use: {
+    class: NetworkClass
+    reason: 'controlled_app_egress_not_observable'
+  }
+  messaging: {
+    class: NetworkClass
+    reason: 'no_narrow_runtime_authority'
+  }
+  updates: {
+    class: NetworkClass
+    mode: 'on_demand'
+  }
+}
+
+async function readNetworkSecurity(profile: string): Promise<NetworkSecuritySummary> {
+  return host.request<NetworkSecuritySummary>('config.get', {
+    key: 'network.security',
+    profile
+  })
+}
+
+export function useNetworkSecurity() {
+  const connectionId = useValue(host.state.connectionId)
+  const gateway = useValue(host.state.gateway)
+  const profile = useValue(host.state.profile) || 'default'
+
+  return useQuery({
+    enabled: Boolean(gateway && host.getGateway()),
+    queryFn: () => readNetworkSecurity(profile),
+    queryKey: ['hermes-os', 'network-security', connectionId, profile],
+    refetchOnWindowFocus: true,
+    retry: false,
+    staleTime: 10_000
+  })
+}
