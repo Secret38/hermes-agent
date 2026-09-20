@@ -1,4 +1,4 @@
-import { Button, Codicon, host, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea, type OperationsCaptureResult, type OperationsShapeResult, type OperationsTask, type OperationsTaskSnapshot, type OperationsTaskSource, type PluginProfileRoute } from '@hermes/plugin-sdk'
+import { Button, Codicon, host, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea, type OperationsCaptureResult, type OperationsPlanApprovalResult, type OperationsShapeResult, type OperationsTask, type OperationsTaskSnapshot, type OperationsTaskSource, type PluginProfileRoute } from '@hermes/plugin-sdk'
 import { useStore } from '@nanostores/react'
 import { type ReactNode, useState } from 'react'
 
@@ -497,8 +497,10 @@ function MissionControl() {
   const [captureProjectId, setCaptureProjectId] = useState<string>('none')
   const [capturing, setCapturing] = useState(false)
   const [shaping, setShaping] = useState(false)
+  const [approvingPlan, setApprovingPlan] = useState(false)
   const [captured, setCaptured] = useState<OperationsCaptureResult | null>(null)
   const [shaped, setShaped] = useState<OperationsShapeResult | null>(null)
+  const [approvedPlan, setApprovedPlan] = useState<OperationsPlanApprovalResult | null>(null)
 
   const captureMission = () => {
     const title = captureTitle.trim()
@@ -509,6 +511,7 @@ function MissionControl() {
     setCapturing(true)
     setCaptured(null)
     setShaped(null)
+    setApprovedPlan(null)
     void captureSource
       .capture({
         title,
@@ -531,11 +534,25 @@ function MissionControl() {
 
     setShaping(true)
     setShaped(null)
+    setApprovedPlan(null)
     void captureSource
       .shapeCaptured(captured)
       .then(result => setShaped(result))
       .catch(error => notifyError(error, 'Could not shape mission plan'))
       .finally(() => setShaping(false))
+  }
+
+  const approveMissionPlan = () => {
+    if (!captureSource?.approveCapturedPlan || !captured || !shaped?.ok || approvingPlan) {
+      return
+    }
+
+    setApprovingPlan(true)
+    void captureSource
+      .approveCapturedPlan(captured)
+      .then(result => setApprovedPlan(result))
+      .catch(error => notifyError(error, 'Could not approve mission plan'))
+      .finally(() => setApprovingPlan(false))
   }
 
   const setNewWorkPaused = (engaged: boolean) => {
@@ -665,8 +682,29 @@ function MissionControl() {
                         : shaped.reason || 'The producer did not provide a reason.'}
                     </div>
                     {shaped.ok ? (
-                      <div className="mt-1 font-mono text-[0.6875rem]">
-                        EXECUTION GATE: CLOSED · no child was auto-promoted
+                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                        <div className="font-mono text-[0.6875rem]">
+                          {approvedPlan ? 'EXECUTION GATE: OPEN' : 'EXECUTION GATE: CLOSED · no child was auto-promoted'}
+                        </div>
+                        {!approvedPlan && captureSource.approveCapturedPlan ? (
+                          <Button
+                            disabled={approvingPlan}
+                            loading={approvingPlan}
+                            onClick={approveMissionPlan}
+                            size="inline"
+                            type="button"
+                            variant="secondary"
+                          >
+                            Approve execution
+                          </Button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {approvedPlan ? (
+                      <div className="mt-2 text-[0.6875rem] text-(--ui-text-tertiary)">
+                        Stage 04 · Execution released: {approvedPlan.promotedIds.length} dependency-free task(s) ready
+                        {approvedPlan.heldIds.length ? ` · ${approvedPlan.heldIds.length} held behind dependencies` : ''}.
+                        Downstream tasks advance through Kanban's existing dependency engine.
                       </div>
                     ) : null}
                   </div>
