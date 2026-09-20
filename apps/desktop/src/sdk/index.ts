@@ -1559,8 +1559,12 @@ export { McpTab } from '@/app/capabilities/mcp/mcp-tab'
 /** Read-only contribution discovery for data-source style plugin contracts. */
 export { useContributions } from '@/contrib/react/use-contributions'
 export {
+  OPERATIONS_CAPTURE_SOURCES_AREA,
   OPERATIONS_TASK_SOURCES_AREA,
   type OperationsArtifact,
+  type OperationsCaptureInput,
+  type OperationsCaptureResult,
+  type OperationsCaptureSource,
   type OperationsEvent,
   type OperationsProject,
   type OperationsRun,
