@@ -13,6 +13,7 @@ import {
   atom,
   type PluginOs,
   type PluginRestOptions,
+  type OperationsCaptureInput,
   type OperationsRunInspection,
   type OperationsTaskExecution,
   type OperationsTaskLog,
@@ -407,6 +408,21 @@ export const patchTask = (id: string, patch: Record<string, unknown>) =>
 
 export const createTask = (body: Record<string, unknown>) =>
   nudged(call<{ task: KanbanTask | null; warning?: string }>(withBoard('/tasks'), { method: 'POST', body }))
+
+/** Mission Control intake always lands in triage; source owns board scoping. */
+export function toMissionCaptureTaskBody(input: OperationsCaptureInput): Record<string, unknown> {
+  const title = input.title.trim()
+  if (!title) {
+    throw new Error('A title is required.')
+  }
+
+  return {
+    title,
+    body: input.body?.trim() || undefined,
+    triage: true,
+    ...(input.projectId ? { project_id: input.projectId } : {})
+  }
+}
 
 // Deleting can unblock dependants (a gone parent no longer gates), so it
 // nudges too.
