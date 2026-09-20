@@ -1,8 +1,4 @@
-import { host } from '@hermes/plugin-sdk'
-
-import { openSession, type OpenSessionIntent } from '@/app/open-session'
-import type { SessionProfileRoute } from '@/store/session-request-router'
-import { storedSessionIdForRuntimeId } from '@/store/session-states'
+import { host, type PluginProfileRoute, storedSessionIdForRuntimeId } from '@hermes/plugin-sdk'
 
 export function storedHermesSessionId(sessionId: string): string {
   const id = sessionId.trim()
@@ -12,8 +8,8 @@ export function storedHermesSessionId(sessionId: string): string {
 
 function openHermesSessionWithIntent(
   sessionId: string,
-  ownerRoute: SessionProfileRoute | undefined,
-  intent: OpenSessionIntent
+  ownerRoute: PluginProfileRoute | undefined,
+  intent: 'main' | 'stack'
 ): void {
   const storedId = storedHermesSessionId(sessionId)
 
@@ -21,13 +17,14 @@ function openHermesSessionWithIntent(
     return
   }
 
-  openSession(storedId, to => host.navigate(to), intent, {
-    ...(ownerRoute ? { ownerRoute } : {}),
+  void host.openSession(storedId, {
+    intent,
+    ...(ownerRoute ? { route: ownerRoute } : {}),
     workspaceMode: 'sessions'
   })
 }
 
-export function openHermesSession(sessionId: string, ownerRoute?: SessionProfileRoute): void {
+export function openHermesSession(sessionId: string, ownerRoute?: PluginProfileRoute): void {
   openHermesSessionWithIntent(sessionId, ownerRoute, 'stack')
 }
 
