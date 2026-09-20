@@ -7,6 +7,38 @@
  */
 export const OPERATIONS_TASK_SOURCES_AREA = 'operations.taskSources'
 
+/**
+ * Narrow write capability for Mission Control intake.
+ *
+ * This is deliberately separate from the read-only task-source contract:
+ * the producer remains the sole write authority and decides where/how the
+ * captured intent is persisted. Consumers may only ask it to capture an
+ * intent into a non-executing intake state.
+ */
+export const OPERATIONS_CAPTURE_SOURCES_AREA = 'operations.captureSources'
+
+export interface OperationsCaptureInput {
+  title: string
+  body?: null | string
+  /** Exact Hermes Project id. Never infer project membership from path/name. */
+  projectId?: null | string
+}
+
+export interface OperationsCaptureResult {
+  sourceId: string
+  taskId: string
+  status: string
+  warning?: null | string
+}
+
+export interface OperationsCaptureSource {
+  id: string
+  label: string
+  capture: (input: OperationsCaptureInput) => Promise<OperationsCaptureResult>
+  /** Optional producer-owned navigation to the captured item. */
+  openCapturedTask?: (taskId: string) => void
+}
+
 export interface OperationsTaskWarning {
   count: number
   severity?: null | string
