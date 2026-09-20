@@ -87,8 +87,8 @@ def append_event(
     outcome: object = None,
     created_at: float | None = None,
     home: str | Path | None = None,
-) -> None:
-    """Best-effort append of one metadata-only audit fact."""
+) -> int | None:
+    """Best-effort append of one metadata-only audit fact; returns the row id."""
     global _write_count
     row = (
         _safe_scalar(event, max_len=80),
@@ -100,10 +100,10 @@ def append_event(
         float(created_at if created_at is not None else time.time()),
     )
     if not row[0] or not row[1]:
-        return
+        return None
     try:
         with _write_lock, closing(_connect(home)) as conn:
-            conn.execute(
+            cursor = conn.execute(
                 """
                 INSERT INTO audit_events
                     (event, category, session_id, request_id, subject, outcome, created_at)
@@ -111,6 +111,7 @@ def append_event(
                 """,
                 row,
             )
+            event_id = int(cursor.lastrowid)
             _write_count += 1
             if _write_count % _PRUNE_EVERY == 0:
                 conn.execute(
@@ -125,8 +126,10 @@ def append_event(
                     (_MAX_ROWS,),
                 )
             conn.commit()
+            return event_id
     except Exception:
         logger.debug("operator audit append failed", exc_info=True)
+        return None
 
 
 def list_events(
