@@ -1638,6 +1638,23 @@ def decompose_task_endpoint(task_id: str, payload: DecomposeBody, board: Optiona
         payload.author,
         auto_promote=payload.auto_promote,
     )
+    if outcome.ok:
+        try:
+            with _board_conn(board) as (_resolved_board, conn):
+                task = kanban_db.get_task(conn, task_id)
+            from hermes_cli.operations_audit import append_event
+
+            append_event(
+                "plan.shaped",
+                category="control",
+                session_id=task.session_id if task else None,
+                subject="kanban_plan",
+                outcome="fanout" if outcome.fanout else "single",
+                task_id=task_id,
+                project_id=task.project_id if task else None,
+            )
+        except Exception:
+            log.debug("kanban plan-shaped audit append failed", exc_info=True)
     return {
         "ok": bool(outcome.ok), "task_id": outcome.task_id, "reason": outcome.reason,
         "fanout": bool(outcome.fanout), "child_ids": outcome.child_ids or [], "new_title": outcome.new_title}
