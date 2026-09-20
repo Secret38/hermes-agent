@@ -1565,6 +1565,7 @@ export {
   type OperationsCaptureInput,
   type OperationsCaptureResult,
   type OperationsCaptureSource,
+  type OperationsPlanApprovalResult,
   type OperationsShapeResult,
   type OperationsEvent,
   type OperationsProject,
