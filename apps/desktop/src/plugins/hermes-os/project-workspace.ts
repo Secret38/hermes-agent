@@ -29,7 +29,7 @@ function targetStoredId(sessionId: string): string {
 }
 
 function selectedPrimarySession(target: string): boolean {
-  return host.state.focusedStoredSessionId.get() === target
+  return host.state.selectedStoredSessionId.get() === target
 }
 
 function confirmedWorkspaceCwd(target: string): string | null {
@@ -99,7 +99,7 @@ function waitForCondition<T>(
     }
 
     unsubs.push(
-      host.state.focusedStoredSessionId.listen(check),
+      host.state.selectedStoredSessionId.listen(check),
       $workspaceCwdOwner.listen(check),
       host.state.cwd.listen(check),
       $resumeFailedSessionId.listen(check)
