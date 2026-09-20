@@ -126,7 +126,7 @@ def _audit_request(req: ServerRequest, event: str, outcome: str | None = None) -
     """Best-effort metadata-only audit. Never pass req.params/result payloads here."""
     try:
         from hermes_cli.operations_audit import append_event
-        append_event(
+        event_id = append_event(
             event,
             category="human_gate",
             session_id=req.sid,
@@ -134,6 +134,8 @@ def _audit_request(req: ServerRequest, event: str, outcome: str | None = None) -
             subject=req.method,
             outcome=outcome,
         )
+        if event_id is not None:
+            _emit("audit.changed", req.sid, {"id": event_id, "event": event, "subject": req.method})
     except Exception:
         logger.debug("server request audit failed", exc_info=True)
 
