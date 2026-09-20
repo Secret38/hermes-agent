@@ -127,8 +127,14 @@ def test_plan_approval_promotes_single_specified_task(kanban_home):
     with kbc.connect() as conn:
         root_id = _create_triage(conn, title="single")
         assert kb.specify_triage_task(
-            conn, root_id, title="specified", body="do one thing", author="planner"
+            conn,
+            root_id,
+            title="specified",
+            body="do one thing",
+            author="planner",
+            auto_promote_ready=False,
         )
+        assert kb.get_task(conn, root_id).status == "todo"
 
         ok, promoted, held, reason = approve_decomposed_plan(
             conn, root_id, actor="hermes-os"
