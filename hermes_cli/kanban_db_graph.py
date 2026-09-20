@@ -166,6 +166,78 @@ def decompose_triage_task(
     return child_ids
 
 
+def approve_decomposed_plan(
+    conn: sqlite3.Connection,
+    task_id: str,
+    *,
+    actor: str = "operator",
+) -> tuple[bool, list[str], list[str], str]:
+    """Approve one shaped plan without bypassing Kanban dependency rules.
+
+    For a decomposed root, only child nodes whose parents are already satisfied
+    are promoted now; downstream nodes remain todo and are advanced later by
+    the existing recompute_ready path as dependencies complete. For a
+    specified single-task plan (no decomposition event), the root itself is
+    promoted. Returns (ok, promoted_ids, held_ids, reason).
+    """
+    from hermes_cli.kanban_db import _json_dict, _latest_event, get_task, promote_task
+
+    root = get_task(conn, task_id)
+    if root is None:
+        return False, [], [], "task not found"
+    if root.status != "todo":
+        return False, [], [], f"plan root is not awaiting approval (status={root.status!r})"
+
+    event = _latest_event(conn, task_id, "decomposed")
+    payload = _json_dict(event["payload"]) if event is not None else {}
+    child_ids = payload.get("child_ids") if isinstance(payload, dict) else None
+
+    if not isinstance(child_ids, list) or not child_ids:
+        ok, reason = promote_task(
+            conn, task_id, actor=actor, reason="Hermes OS plan approved"
+        )
+        return (True, [task_id], [], "") if ok else (False, [], [task_id], reason or "promotion refused")
+
+    normalized = [str(child_id) for child_id in child_ids if isinstance(child_id, str) and child_id]
+    if not normalized:
+        return False, [], [], "decomposition has no valid child ids"
+
+    placeholders = ",".join("?" for _ in normalized)
+    rows = conn.execute(
+        f"SELECT id, status FROM tasks WHERE id IN ({placeholders})", tuple(normalized)
+    ).fetchall()
+    state = {str(row["id"]): str(row["status"]) for row in rows}
+    if any(child_id not in state for child_id in normalized):
+        return False, [], [], "decomposed plan references missing child tasks"
+
+    linked_to_root = {
+        str(row["parent_id"])
+        for row in conn.execute(
+            f"SELECT parent_id FROM task_links WHERE child_id = ? AND parent_id IN ({placeholders})",
+            (task_id, *normalized),
+        ).fetchall()
+    }
+    if any(child_id not in linked_to_root for child_id in normalized):
+        return False, [], [], "decomposed plan graph no longer matches root dependencies"
+
+    promoted: list[str] = []
+    held: list[str] = []
+    for child_id in normalized:
+        if state[child_id] == "ready":
+            promoted.append(child_id)
+            continue
+        if state[child_id] != "todo":
+            held.append(child_id)
+            continue
+        ok, _reason = promote_task(
+            conn, child_id, actor=actor, reason=f"Hermes OS plan approved from {task_id}"
+        )
+        (promoted if ok else held).append(child_id)
+
+    if not promoted:
+        return False, [], held, "no dependency-free plan tasks were eligible for promotion"
+    return True, promoted, held, ""
+
 def _insert_decomposed_child(
     conn: sqlite3.Connection, root_id: str, root_row: sqlite3.Row, child: dict,
     author: Optional[str], now: int,
