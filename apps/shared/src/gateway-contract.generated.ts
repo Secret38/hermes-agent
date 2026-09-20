@@ -536,6 +536,75 @@ export interface ConfigGetResult {
   prompt?: string | null
   mtime?: number | null
   mcp_rev?: string | null
+  permission_mode?: string | null
+  telemetry_enabled?: boolean | null
+  manifest?: ComputerUseManifestSecurity | null
+  shared_metrics?: SharedMetricsSecuritySummary | null
+  coverage?: string | null
+  model_provider?: ModelProviderNetworkSummary | null
+  mcp?: McpNetworkSummary | null
+  telemetry?: SimpleNetworkSummary | null
+  browser?: SimpleNetworkSummary | null
+  computer_use?: SimpleNetworkSummary | null
+  messaging?: SimpleNetworkSummary | null
+  updates?: SimpleNetworkSummary | null
+}
+export interface ComputerUseManifestSecurity {
+  configured: boolean
+  readable: boolean
+  version?: number | null
+  mode_independent: boolean
+  required: boolean
+}
+export interface ComputerUseSecuritySummary {
+  permission_mode: string
+  telemetry_enabled: boolean
+  manifest: ComputerUseManifestSecurity
+}
+export interface SharedMetricsSecuritySummary {
+  collection_enabled: boolean
+  transmission_requested: boolean
+  transmission_enabled: boolean
+  destination: string
+}
+export interface TelemetrySecuritySummary {
+  shared_metrics: SharedMetricsSecuritySummary
+}
+export interface NetworkClassCounts {
+  disabled: number
+  external: number
+  loopback: number
+  process: number
+  unknown: number
+}
+export interface ModelProviderNetworkSummary {
+  class: string
+  provider: string
+  model_configured: boolean
+  coverage: string
+  subprocess_may_egress: boolean
+}
+export interface McpNetworkSummary {
+  configured: number
+  enabled: number
+  classes: NetworkClassCounts
+  subprocess_may_egress: boolean
+}
+export interface SimpleNetworkSummary {
+  class: string
+  reason?: string | null
+  mode?: string | null
+  transmission_enabled?: boolean | null
+}
+export interface NetworkSecuritySummary {
+  coverage: string
+  model_provider: ModelProviderNetworkSummary
+  mcp: McpNetworkSummary
+  telemetry: SimpleNetworkSummary
+  browser: SimpleNetworkSummary
+  computer_use: SimpleNetworkSummary
+  messaging: SimpleNetworkSummary
+  updates: SimpleNetworkSummary
 }
 /** ``hermes_cli/models.py::list_available_providers`` row. */
 export interface ConfigProviderRef {
@@ -642,6 +711,35 @@ export interface McpServerStatus {
   tool_count?: number | null
   error?: string | null
   [key: string]: unknown
+}
+export interface AuditListParams {
+  profile?: string | null
+  limit?: number | null
+  before_id?: number | null
+  session_id?: string | null
+}
+export interface AuditEventRow {
+  id: number
+  event: string
+  category: string
+  session_id?: string | null
+  request_id?: string | null
+  subject?: string | null
+  outcome?: string | null
+  created_at: number
+}
+export interface AuditListResult {
+  events: AuditEventRow[]
+}
+export interface EstopGetParams {}
+export interface EstopState {
+  engaged: boolean
+  reason?: string | null
+  engaged_at?: string | null
+}
+export interface EstopSetParams {
+  engaged: boolean
+  reason?: string | null
 }
 /** ``provider_configured`` is the loose answer; the boot record's fields (``ready``, ``free_tier``, ``other_providers``, ``inference_provider``) ride along on the launch profile. An unknown ``profile`` answers ``ok=False`` + ``error``. */
 export interface SetupStatusResult {
@@ -4014,6 +4112,11 @@ export interface SessionControlUpdatePayload {
   control: SessionControlSnapshot
 }
 /** ``methods_session`` billing.step_up on_verification. */
+export interface AuditChangedPayload {
+  id: number
+  event: string
+  subject: string
+}
 export interface BillingStepUpVerificationPayload {
   verification_url: string
   user_code: string
@@ -4243,6 +4346,8 @@ export interface RpcMethods {
   'complete.path': { params: CompletePathParams; result: CompletionItemsResult }
   /** Ranked slash-command / skill completions for a ``/`` token. */
   'complete.slash': { params: CompleteSlashParams; result: CompleteSlashResult }
+  /** Metadata-only durable operator/security events for the selected profile. */
+  'audit.list': { params: AuditListParams; result: AuditListResult }
   /** Read one normalised config value (or the whole effective config) the way the UIs render it. */
   'config.get': { params: ConfigGetParams; result: ConfigGetResult }
   /** Change one config key (persisted or session-scoped) and read back the normalised value. */
@@ -4543,6 +4648,10 @@ export interface RpcMethods {
   'session.workspace.move': { params: SessionWorkspaceMoveParams; result: SessionWorkspaceMoveResult }
   /** Strict provider check through the same runtime resolution the agent uses on session creation. */
   'setup.runtime_check': { params: SetupRuntimeCheckParams; result: SetupRuntimeCheckResult }
+  /** Read the backend-global emergency stop used by gateway, cron and Kanban new-work gates. */
+  'system.estop.get': { params: EstopGetParams; result: EstopState }
+  /** Engage or disengage the backend-global emergency stop; in-flight work is not killed. */
+  'system.estop.set': { params: EstopSetParams; result: EstopState }
   /** Loose provider check: is ANY provider auth state discoverable for the (launch or named) profile. */
   'setup.status': { params: ProfileParams; result: SetupStatusResult }
   /** Run a safe (non-dangerous) shell command captured for ``!cmd`` / inline substitution. */
@@ -4975,6 +5084,8 @@ export interface BackendGatewayEventMap {
   'request.cancel': RequestCancelPayload
   /** Background review of the last turn finished. */
   'review.summary': ReviewSummaryPayload
+  /** Durable operator/security audit changed; refetch audit.list for authoritative history. */
+  'audit.changed': AuditChangedPayload
   /** Persisted goal / loop / heartbeat state changed. */
   'session.control.update': SessionControlUpdatePayload
   /** Live session settings snapshot (``server._session_info``); also the ``info`` of create/resume/activate. */
@@ -5035,6 +5146,7 @@ export interface BackendGatewayEventMap {
 export type BackendGatewayEventName = keyof BackendGatewayEventMap
 export const GATEWAY_EVENT_TYPES = [
   'agent.terminal.output',
+  'audit.changed',
   'background.complete',
   'billing.step_up.verification',
   'bot_relay.outbox.pending',
