@@ -283,20 +283,25 @@ def _(rid, params: dict) -> dict:
 
     if engaged:
         estop.engage(reason=reason)
-        append_event(
-            "system.estop.engaged",
+        event_name = "system.estop.engaged"
+        event_id = append_event(
+            event_name,
             category="control",
             subject="new_work",
             outcome=reason or "operator",
         )
     else:
         estop.disengage()
-        append_event(
-            "system.estop.disengaged",
+        event_name = "system.estop.disengaged"
+        event_id = append_event(
+            event_name,
             category="control",
             subject="new_work",
             outcome="operator",
         )
+
+    if event_id is not None:
+        _emit("audit.changed", "", {"id": event_id, "event": event_name, "subject": "new_work"})
 
     state = estop.get_state()
     return _ok(rid, {
