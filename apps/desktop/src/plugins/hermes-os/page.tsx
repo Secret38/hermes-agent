@@ -1,9 +1,25 @@
-import { Button, Codicon, host, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea, type OperationsCaptureResult, type OperationsPlanApprovalResult, type OperationsShapeResult, type OperationsTask, type OperationsTaskSnapshot, type OperationsTaskSource, type PluginProfileRoute } from '@hermes/plugin-sdk'
+import {
+  $approvalModes,
+  Button,
+  Codicon,
+  host,
+  Input,
+  type OperationsCaptureResult,
+  type OperationsPlanApprovalResult,
+  type OperationsShapeResult,
+  type OperationsTask,
+  type OperationsTaskSnapshot,
+  type OperationsTaskSource,
+  type PluginProfileRoute,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Textarea
+} from '@hermes/plugin-sdk'
 import { useStore } from '@nanostores/react'
 import { type ReactNode, useState } from 'react'
-
-import { $approvalModes } from '@/store/approval-mode'
-import { notifyError } from '@/store/notifications'
 
 import {
   ExecutionInspector,
@@ -186,7 +202,7 @@ function OperationalTaskRows({
     setStoppingWorker(task.workerSessionId)
     void host
       .requestProfile(route, 'session.interrupt', { session_id: task.workerSessionId })
-      .catch(error => notifyError(error, 'Could not stop worker session'))
+      .catch(error => host.notifyError(error, 'Could not stop worker session'))
       .finally(() => setStoppingWorker(null))
   }
 
@@ -393,7 +409,7 @@ function HumanGateRows({ gates, snapshots = [] }: { gates: readonly HumanGate[];
     setSubmitting(current => new Set(current).add(gate.id))
     void resolveHumanGateApproval(gate, choice)
       .catch(error => {
-        notifyError(error, 'Could not answer approval')
+        host.notifyError(error, 'Could not answer approval')
       })
       .finally(() => {
         setSubmitting(current => {
@@ -526,7 +542,7 @@ function MissionControl() {
         setCaptureTitle('')
         setCaptureBody('')
       })
-      .catch(error => notifyError(error, 'Could not capture mission'))
+      .catch(error => host.notifyError(error, 'Could not capture mission'))
       .finally(() => setCapturing(false))
   }
 
@@ -541,7 +557,7 @@ function MissionControl() {
     void captureSource
       .shapeCaptured(captured)
       .then(result => setShaped(result))
-      .catch(error => notifyError(error, 'Could not shape mission plan'))
+      .catch(error => host.notifyError(error, 'Could not shape mission plan'))
       .finally(() => setShaping(false))
   }
 
@@ -554,7 +570,7 @@ function MissionControl() {
     void captureSource
       .approveCapturedPlan(captured)
       .then(result => setApprovedPlan(result))
-      .catch(error => notifyError(error, 'Could not approve mission plan'))
+      .catch(error => host.notifyError(error, 'Could not approve mission plan'))
       .finally(() => setApprovingPlan(false))
   }
 
@@ -565,7 +581,7 @@ function MissionControl() {
     setChangingEstop(true)
     void estop
       .setEngaged(engaged, engaged ? 'Hermes OS operator emergency stop' : undefined)
-      .catch(error => notifyError(error, engaged ? 'Could not pause new work' : 'Could not resume new work'))
+      .catch(error => host.notifyError(error, engaged ? 'Could not pause new work' : 'Could not resume new work'))
       .finally(() => setChangingEstop(false))
   }
 
