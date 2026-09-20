@@ -2319,6 +2319,20 @@ function Install-Repository {
                 # users hit on update. Pin autocrlf=false so the dirt is never
                 # created in the first place.
                 git -c windows.appendAtomically=false config core.autocrlf false 2>$null
+                # This checkout is installer-managed. The selected distribution
+                # repository is authoritative even when Hermes was previously
+                # installed from another origin (for example upstream -> Hermes OS).
+                $currentOrigin = (& git -c windows.appendAtomically=false remote get-url origin 2>$null)
+                $currentOrigin = if ($currentOrigin) { ("$currentOrigin").Trim() } else { "" }
+                if ($currentOrigin -ne $RepoUrlHttps) {
+                    Write-Info "Switching managed repository origin to $RepoUrlHttps"
+                    if ($currentOrigin) {
+                        git -c windows.appendAtomically=false remote set-url origin $RepoUrlHttps
+                    } else {
+                        git -c windows.appendAtomically=false remote add origin $RepoUrlHttps
+                    }
+                    if ($LASTEXITCODE -ne 0) { throw "could not configure managed repository origin" }
+                }
                 Discard-LockfileChurn $InstallDir
                 # Preserve any real local changes before the checkout instead of
                 # discarding them with `reset --hard HEAD`. The old hard reset
