@@ -18,6 +18,45 @@ export function runningOperationalTasks(snapshots: readonly OperationsTaskSnapsh
   return allOperationalTasks(snapshots).filter(task => task.status === 'running')
 }
 
+export interface OperationalWorkflowCounts {
+  triage: number
+  todo: number
+  scheduled: number
+  ready: number
+  running: number
+  blocked: number
+  review: number
+  done: number
+  other: number
+}
+
+/** Exact producer-authored task-state counts. No semantic stage is inferred. */
+export function operationalWorkflowCounts(
+  snapshots: readonly OperationsTaskSnapshot[]
+): OperationalWorkflowCounts {
+  const counts: OperationalWorkflowCounts = {
+    triage: 0,
+    todo: 0,
+    scheduled: 0,
+    ready: 0,
+    running: 0,
+    blocked: 0,
+    review: 0,
+    done: 0,
+    other: 0
+  }
+
+  for (const task of allOperationalTasks(snapshots)) {
+    if (task.status in counts && task.status !== 'other') {
+      counts[task.status as keyof Omit<OperationalWorkflowCounts, 'other'>] += 1
+    } else {
+      counts.other += 1
+    }
+  }
+
+  return counts
+}
+
 export function executionOperationalTasks(snapshots: readonly OperationsTaskSnapshot[]): OperationsTask[] {
   return allOperationalTasks(snapshots)
     .filter(task => task.runId != null || Boolean(task.workerSessionId) || task.startedAt != null)
