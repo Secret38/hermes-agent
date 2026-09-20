@@ -197,6 +197,9 @@ class AuditListParams(ProfileParams):
     limit: int | None = None
     before_id: int | None = None
     session_id: str | None = None
+    task_id: str | None = None
+    run_id: int | None = None
+    project_id: str | None = None
 
 
 class AuditEventRow(Result):
@@ -207,6 +210,9 @@ class AuditEventRow(Result):
     request_id: str | None = None
     subject: str | None = None
     outcome: str | None = None
+    task_id: str | None = None
+    run_id: int | None = None
+    project_id: str | None = None
     created_at: float
 
 
