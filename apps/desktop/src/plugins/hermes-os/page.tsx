@@ -152,6 +152,19 @@ function OperationalTaskRows({
   tasks: readonly OperationsTask[]
 }) {
   const [inspectionKey, setInspectionKey] = useState<null | { sourceId: string; taskId: string }>(null)
+  const [stoppingWorker, setStoppingWorker] = useState<null | string>(null)
+
+  const stopWorker = (task: OperationsTask, route: PluginProfileRoute) => {
+    if (!task.workerSessionId || stoppingWorker) {
+      return
+    }
+
+    setStoppingWorker(task.workerSessionId)
+    void host
+      .requestProfile(route, 'session.interrupt', { session_id: task.workerSessionId })
+      .catch(error => notifyError(error, 'Could not stop worker session'))
+      .finally(() => setStoppingWorker(null))
+  }
 
   const owner = (task: OperationsTask) =>
     snapshots.find(snapshot => snapshot.tasks.some(candidate => candidate === task)) ?? null
@@ -175,6 +188,7 @@ function OperationalTaskRows({
           const route = exactWorkerRoute(task, snapshot, routes)
           const canInspect = Boolean(snapshot && source?.readTaskExecution)
           const canOpenWorker = Boolean(task.workerSessionId && route)
+          const canStopWorker = Boolean(task.status === 'running' && task.workerSessionId && route)
           const inspectAction =
             canInspect && snapshot && source
               ? () => setInspectionKey({ sourceId: snapshot.sourceId, taskId: task.id })
@@ -223,6 +237,18 @@ function OperationalTaskRows({
                     variant="text"
                   >
                     Worker
+                  </Button>
+                ) : null}
+                {canStopWorker ? (
+                  <Button
+                    disabled={stoppingWorker === task.workerSessionId}
+                    loading={stoppingWorker === task.workerSessionId}
+                    onClick={() => stopWorker(task, route!)}
+                    size="sm"
+                    type="button"
+                    variant="text"
+                  >
+                    Stop
                   </Button>
                 ) : null}
               </div>
