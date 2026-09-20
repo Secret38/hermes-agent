@@ -259,6 +259,53 @@ def _(rid, params: dict) -> dict:
         return _err(rid, _CONFIG_GET_ERR[key], str(e))
 
 
+@method("system.estop.get")
+def _(rid, params: dict) -> dict:
+    """Backend-global new-work emergency stop state."""
+    from agent import estop
+
+    state = estop.get_state()
+    return _ok(rid, {
+        "engaged": state is not None,
+        "reason": state.get("reason") if state else None,
+        "engaged_at": state.get("engaged_at") if state else None,
+    })
+
+
+@method("system.estop.set")
+def _(rid, params: dict) -> dict:
+    """Engage/disengage Hermes' native ESTOP. Existing in-flight work is untouched."""
+    from agent import estop
+    from hermes_cli.operations_audit import append_event
+
+    engaged = bool(params.get("engaged"))
+    reason = str(params.get("reason") or "").strip() or None
+
+    if engaged:
+        estop.engage(reason=reason)
+        append_event(
+            "system.estop.engaged",
+            category="control",
+            subject="new_work",
+            outcome=reason or "operator",
+        )
+    else:
+        estop.disengage()
+        append_event(
+            "system.estop.disengaged",
+            category="control",
+            subject="new_work",
+            outcome="operator",
+        )
+
+    state = estop.get_state()
+    return _ok(rid, {
+        "engaged": state is not None,
+        "reason": state.get("reason") if state else None,
+        "engaged_at": state.get("engaged_at") if state else None,
+    })
+
+
 @method("audit.list")
 @_profile_scoped
 def _(rid, params: dict) -> dict:
