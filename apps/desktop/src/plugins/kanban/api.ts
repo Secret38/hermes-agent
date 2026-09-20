@@ -353,7 +353,12 @@ export function toOperationsSnapshot(
           startedAt: task.started_at,
           lastHeartbeatAt: task.last_heartbeat_at,
           warning: task.warnings
-            ? { count: task.warnings.count, severity: task.warnings.highest_severity }
+            ? {
+                count: task.warnings.count,
+                severity: task.warnings.highest_severity,
+                kinds: task.warnings.kinds,
+                latestAt: task.warnings.latest_at
+              }
             : null
         }
       })
