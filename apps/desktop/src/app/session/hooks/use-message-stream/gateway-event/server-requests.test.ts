@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createClientSessionState } from '@/lib/chat-runtime'
+import { clearAllPrompts, sessionApprovalRequests } from '@/store/prompts'
 import { setActiveSessionId, setSessions } from '@/store/session'
 import { $sessionTiles } from '@/store/session-states'
 import { $toursEnabled } from '@/store/tours'
@@ -56,15 +57,48 @@ describe('approval request routing', () => {
   })
 
   afterEach(() => {
+    clearAllPrompts()
     delete desktopWindow.hermesDesktop
     setSessions([])
     setActiveSessionId(null)
   })
 
-  it('titles the parked approval toast with the session it belongs to', () => {
+  it('preserves policy provenance on a live approval request', () => {
     deliver(
       'approval',
-      { command: 'rm -rf /', description: 'dangerous', request_id: 'r1', session_id: 'session-a' },
+      {
+        allow_permanent: false,
+        allow_session: true,
+        choices: ['once', 'session', 'deny'],
+        command: 'git clean -fdx',
+        description: 'destructive clean',
+        pattern_key: 'git.clean',
+        pattern_keys: ['git.clean', 'filesystem.delete'],
+        request_id: 'r-policy',
+        session_id: 'session-a',
+        smart_denied: true,
+        tool_name: 'terminal'
+      },
+      'session-a'
+    )
+
+    expect(sessionApprovalRequests('session-a').get()[0]).toMatchObject({
+      allowPermanent: false,
+      allowSession: true,
+      patternKey: 'git.clean',
+      patternKeys: ['git.clean', 'filesystem.delete'],
+      smartDenied: true,
+      toolName: 'terminal'
+    })
+  })
+
+  it('titles the parked approval toast with the session it belongs to', () => {
+    // Use a distinct session id from the preceding approval test so the
+    // production per-(kind,session) notification throttle cannot couple tests.
+    setSessions([{ id: 'session-toast', title: 'Fix the flaky test' } as SessionInfo])
+    deliver(
+      'approval',
+      { command: 'rm -rf /', description: 'dangerous', request_id: 'r1', session_id: 'session-toast' },
       'session-b'
     )
 

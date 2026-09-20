@@ -184,6 +184,22 @@ def _cfg_get_thinking_mode(params):
     return {"value": raw}
 
 
+def _cfg_get_computer_use_security(params):
+    from tools.computer_use.cua_backend import computer_use_security_summary
+    return computer_use_security_summary()
+
+
+def _cfg_get_telemetry_security(params):
+    from hermes_cli.observability.shared_metrics_send_config import telemetry_security_summary
+    return telemetry_security_summary(_load_cfg())
+
+
+def _cfg_get_network_security(params):
+    from hermes_cli.network_security import network_security_summary
+    model, runtime = _resolve_agent_model_runtime(None, None)
+    return network_security_summary(_load_cfg(), model=model, runtime=runtime)
+
+
 def _cfg_get_mtime(params):
     cfg_path = _hermes_home / "config.yaml"
     try:
@@ -212,6 +228,9 @@ _CONFIG_GETTERS = {
     "busy": lambda params: {"value": _load_busy_input_mode()},
     "approval_mode": lambda params: {"value": _load_approval_mode()},
     "approvals.mode": lambda params: {"value": _load_approval_mode()},
+    "computer_use.security": _cfg_get_computer_use_security,
+    "telemetry.security": _cfg_get_telemetry_security,
+    "network.security": _cfg_get_network_security,
     "details_mode": lambda params: {"value": _display_word("details_mode", "collapsed", _DETAIL_MODES)},
     "thinking_mode": _cfg_get_thinking_mode,
     "density": lambda params: {"value": "on" if bool(_display_raw().get("tui_compact", False)) else "off"},
@@ -238,6 +257,96 @@ def _(rid, params: dict) -> dict:
         if key not in _CONFIG_GET_ERR:
             raise
         return _err(rid, _CONFIG_GET_ERR[key], str(e))
+
+
+@method("system.estop.get")
+def _(rid, params: dict) -> dict:
+    """Backend-global new-work emergency stop state."""
+    from agent import estop
+
+    state = estop.get_state()
+    return _ok(rid, {
+        "engaged": state is not None,
+        "reason": state.get("reason") if state else None,
+        "engaged_at": state.get("engaged_at") if state else None,
+    })
+
+
+@method("system.estop.set")
+def _(rid, params: dict) -> dict:
+    """Engage/disengage Hermes' native ESTOP. Existing in-flight work is untouched."""
+    from agent import estop
+    from hermes_cli.operations_audit import append_event
+
+    engaged = bool(params.get("engaged"))
+    reason = str(params.get("reason") or "").strip() or None
+
+    if engaged:
+        estop.engage(reason=reason)
+        event_name = "system.estop.engaged"
+        event_id = append_event(
+            event_name,
+            category="control",
+            subject="new_work",
+            outcome=reason or "operator",
+        )
+    else:
+        estop.disengage()
+        event_name = "system.estop.disengaged"
+        event_id = append_event(
+            event_name,
+            category="control",
+            subject="new_work",
+            outcome="operator",
+        )
+
+    if event_id is not None:
+        _emit("audit.changed", "", {"id": event_id, "event": event_name, "subject": "new_work"})
+
+    state = estop.get_state()
+    return _ok(rid, {
+        "engaged": state is not None,
+        "reason": state.get("reason") if state else None,
+        "engaged_at": state.get("engaged_at") if state else None,
+    })
+
+
+@method("audit.list")
+@_profile_scoped
+def _(rid, params: dict) -> dict:
+    """Metadata-only operator/security audit events for the selected profile.
+
+    This surface intentionally cannot return request payloads, prompt text, command
+    text, secrets, codes, URLs, or tool output because the ledger has no such columns.
+    """
+    from hermes_cli.operations_audit import list_events
+
+    try:
+        limit = max(1, min(int(params.get("limit") or 200), 1000))
+    except (TypeError, ValueError):
+        limit = 200
+    before_id = params.get("before_id")
+    try:
+        before_id = int(before_id) if before_id is not None else None
+    except (TypeError, ValueError):
+        before_id = None
+    session_id = str(params.get("session_id") or "").strip() or None
+    task_id = str(params.get("task_id") or "").strip() or None
+    project_id = str(params.get("project_id") or "").strip() or None
+    run_id = params.get("run_id")
+    try:
+        run_id = int(run_id) if run_id is not None else None
+    except (TypeError, ValueError):
+        run_id = None
+    events = list_events(
+        limit=limit,
+        before_id=before_id,
+        session_id=session_id,
+        task_id=task_id,
+        run_id=run_id,
+        project_id=project_id,
+    )
+    return _ok(rid, {"events": events})
 
 
 # ── setup readiness

@@ -32,6 +32,10 @@ param(
     [string]$Tag = "",
     [string]$HermesHome = $(if ($env:HERMES_HOME) { $env:HERMES_HOME } else { "$env:LOCALAPPDATA\hermes" }),
     [string]$InstallDir = $(if ($env:HERMES_HOME) { "$env:HERMES_HOME\hermes-agent" } else { "$env:LOCALAPPDATA\hermes\hermes-agent" }),
+    # Repository source. Defaults to upstream Hermes; forks/distributions can
+    # pass -RepoUrl (or HERMES_REPO_URL) so a fresh install clones itself
+    # instead of silently switching back to upstream.
+    [string]$RepoUrl = $(if ($env:HERMES_REPO_URL) { $env:HERMES_REPO_URL } else { "https://github.com/NousResearch/hermes-agent.git" }),
 
     # --- Stage protocol (additive; default invocation behaves as before) ----
     # See the "Stage protocol" section near the bottom of the file for the
@@ -377,14 +381,29 @@ $script:ResolvedPathReport = @{
     temp              = $env:TEMP
     hermes_home       = $HermesHome
     install_dir       = $InstallDir
+    repo_url          = $RepoUrl
 }
 
 # ============================================================================
 # Configuration
 # ============================================================================
 
-$RepoUrlSsh = "git@github.com:NousResearch/hermes-agent.git"
-$RepoUrlHttps = "https://github.com/NousResearch/hermes-agent.git"
+# Resolve the repository source before the machine-readable path report so
+# support tooling and release tests can prove which distribution a fresh install
+# will clone. The generic installer defaults to upstream Hermes; Hermes OS passes
+# its fork URL explicitly.
+$RepoUrlHttps = ([string]$RepoUrl).Trim()
+if (-not $RepoUrlHttps) {
+    throw "RepoUrl must not be empty"
+}
+$RepoUrlSsh = ""
+$script:RepoGithubSlug = ""
+if ($RepoUrlHttps -match '^https://github\.com/([^/]+)/([^/]+?)(?:\.git)?/?$') {
+    $owner = $Matches[1]
+    $name = $Matches[2]
+    $RepoUrlSsh = "git@github.com:$owner/$name.git"
+    $script:RepoGithubSlug = "$owner/$name"
+}
 $PythonVersion = "3.11"
 # Minor versions the installer accepts when the requested $PythonVersion isn't
 # available, in preference order. Only checkout-private uv-managed interpreters
@@ -499,6 +518,27 @@ function Invoke-NativeWithRelaxedErrorAction {
         $ErrorActionPreference = $prevEAP
     }
 }
+function Set-ManagedRepositoryOrigin {
+    param(
+        [Parameter(Mandatory=$true)][string]$Repo,
+        [Parameter(Mandatory=$true)][string]$Url
+    )
+
+    $currentOrigin = (& git -c windows.appendAtomically=false -C $Repo remote get-url origin 2>$null)
+    $currentOrigin = if ($currentOrigin) { ("$currentOrigin").Trim() } else { "" }
+    if ($currentOrigin -eq $Url) { return }
+
+    Write-Info "Switching managed repository origin to $Url"
+    if ($currentOrigin) {
+        git -c windows.appendAtomically=false -C $Repo remote set-url origin $Url
+    } else {
+        git -c windows.appendAtomically=false -C $Repo remote add origin $Url
+    }
+    if ($LASTEXITCODE -ne 0) {
+        throw "could not configure managed repository origin"
+    }
+}
+
 function Discard-LockfileChurn {
     param([string]$Repo = $InstallDir)
 
@@ -2300,6 +2340,10 @@ function Install-Repository {
                 # users hit on update. Pin autocrlf=false so the dirt is never
                 # created in the first place.
                 git -c windows.appendAtomically=false config core.autocrlf false 2>$null
+                # This checkout is installer-managed. The selected distribution
+                # repository is authoritative even when Hermes was previously
+                # installed from another origin (for example upstream -> Hermes OS).
+                Set-ManagedRepositoryOrigin -Repo $InstallDir -Url $RepoUrlHttps
                 Discard-LockfileChurn $InstallDir
                 # Preserve any real local changes before the checkout instead of
                 # discarding them with `reset --hard HEAD`. The old hard reset
@@ -2493,14 +2537,17 @@ function Install-Repository {
         $env:GIT_CONFIG_VALUE_0 = "false"
         git config --global windows.appendAtomically false 2>$null
 
-        # Try SSH first, then HTTPS, with -c flag for atomic write fix
-        Write-Info "Trying SSH clone..."
-        $env:GIT_SSH_COMMAND = "ssh -o BatchMode=yes -o ConnectTimeout=5"
-        try {
-            Invoke-NativeWithRelaxedErrorAction { git -c windows.appendAtomically=false clone --depth 1 --branch $Branch $RepoUrlSsh $InstallDir }
-            if ($LASTEXITCODE -eq 0) { $cloneSuccess = $true }
-        } catch { }
-        $env:GIT_SSH_COMMAND = $null
+        # Try SSH first for GitHub HTTPS repositories, then HTTPS.
+        # Non-GitHub/custom repository URLs skip the derived SSH attempt.
+        if ($RepoUrlSsh) {
+            Write-Info "Trying SSH clone..."
+            $env:GIT_SSH_COMMAND = "ssh -o BatchMode=yes -o ConnectTimeout=5"
+            try {
+                Invoke-NativeWithRelaxedErrorAction { git -c windows.appendAtomically=false clone --depth 1 --branch $Branch $RepoUrlSsh $InstallDir }
+                if ($LASTEXITCODE -eq 0) { $cloneSuccess = $true }
+            } catch { }
+            $env:GIT_SSH_COMMAND = $null
+        }
 
         if (-not $cloneSuccess) {
             if (Test-Path $InstallDir) { Remove-Item -Recurse -Force $InstallDir -ErrorAction SilentlyContinue }
@@ -2519,14 +2566,17 @@ function Install-Repository {
                 # Pick the ZIP URL for the most-specific ref the caller asked
                 # for.  GitHub supports archive URLs for commits, tags, and
                 # branches; we honour Commit > Tag > Branch.
+                if (-not $script:RepoGithubSlug) {
+                    throw "ZIP fallback is only available for GitHub repository URLs; git clone failed for $RepoUrlHttps"
+                }
                 if ($Commit) {
-                    $zipUrl = "https://github.com/NousResearch/hermes-agent/archive/$Commit.zip"
+                    $zipUrl = "https://github.com/$($script:RepoGithubSlug)/archive/$Commit.zip"
                     $zipLabel = $Commit
                 } elseif ($Tag) {
-                    $zipUrl = "https://github.com/NousResearch/hermes-agent/archive/refs/tags/$Tag.zip"
+                    $zipUrl = "https://github.com/$($script:RepoGithubSlug)/archive/refs/tags/$Tag.zip"
                     $zipLabel = $Tag
                 } else {
-                    $zipUrl = "https://github.com/NousResearch/hermes-agent/archive/refs/heads/$Branch.zip"
+                    $zipUrl = "https://github.com/$($script:RepoGithubSlug)/archive/refs/heads/$Branch.zip"
                     $zipLabel = $Branch
                 }
                 $zipPath = "$env:TEMP\hermes-agent-$zipLabel.zip"

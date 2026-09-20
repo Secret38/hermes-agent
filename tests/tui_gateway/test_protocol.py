@@ -287,6 +287,25 @@ def _frames(buf):
     return [json.loads(line) for line in buf.getvalue().splitlines()]
 
 
+def _request_frame(buf, request_id):
+    return next(frame for frame in _frames(buf) if frame.get("id") == request_id and frame.get("method") != "event")
+
+
+def _event_frames(buf, event_type):
+    return [
+        frame for frame in _frames(buf)
+        if frame.get("method") == "event" and frame.get("params", {}).get("type") == event_type
+    ]
+
+
+def _timeout_request_params(method):
+    if method == "secret":
+        return {"env_var": "TEST_SECRET", "prompt": "test prompt"}
+    if method == "tour":
+        return {"action": "dismiss"}
+    return {}
+
+
 def _wait_open(server_requests, buf=None, timeout=2.0):
     """The open request once its frame has been written (registration precedes the write)."""
     deadline = time.monotonic() + timeout
@@ -308,7 +327,7 @@ def test_server_request_round_trip_uses_response_frame(capture):
     thread = threading.Thread(target=lambda: box.__setitem__("r", server._ask("sudo", "s1", {}, timeout=5)), daemon=True)
     thread.start()
     req = _wait_open(server_requests, buf)
-    frame = _frames(buf)[-1]
+    frame = _request_frame(buf, req.id)
     assert frame == {"jsonrpc": "2.0", "id": req.id, "method": "sudo", "params": {"session_id": "s1"}}
     assert req.id.startswith("srq-")
 
@@ -348,7 +367,11 @@ def test_send_returns_an_answer_committed_after_the_deadline_expired(capture, mo
     from tui_gateway import server_requests
 
     cancels: list[dict] = []
-    monkeypatch.setattr(server_requests, "_emit", lambda event, sid, payload: cancels.append(payload))
+    monkeypatch.setattr(
+        server_requests,
+        "_emit",
+        lambda event, sid, payload: cancels.append(payload) if event == "request.cancel" else None,
+    )
 
     real_wait = server_requests.threading.Event.wait
 
@@ -430,7 +453,7 @@ def test_server_request_waits_for_a_ws_client_that_advertised(server):
                               daemon=True)
     thread.start()
     req = _wait_open(server_requests)
-    assert peer.frames[-1]["id"] == req.id
+    assert next(frame for frame in peer.frames if frame.get("id") == req.id)["method"] == "sudo"
     assert server.dispatch({"jsonrpc": "2.0", "id": req.id, "result": {"value": "yes"}}) is None
     thread.join(timeout=5)
     assert box["r"] == {"value": "yes"}
@@ -460,8 +483,9 @@ def test_server_request_error_response_fails_fast(server):
 def test_server_request_timeout_emits_one_request_cancel(capture, method):
     from tui_gateway import server_requests
     server, buf = capture
-    assert server_requests.send(method, "s1", {}, timeout=0) is None
-    request, cancel = _frames(buf)
+    assert server_requests.send(method, "s1", _timeout_request_params(method), timeout=0) is None
+    request = next(frame for frame in _frames(buf) if frame.get("method") == method)
+    cancel = _event_frames(buf, "request.cancel")[-1]
     assert request["method"] == method
     assert cancel["params"]["type"] == "request.cancel"
     assert cancel["params"]["session_id"] == "s1"
@@ -495,7 +519,7 @@ def test_clarify_batch_locks_resolve_in_order_and_keep_partial_on_timeout(captur
     request with the full answer set. Only wire fields reach the renderer."""
     server, buf = capture
     thread, box, req = _start_batch_clarify(server, buf, ["q0", "q1"])
-    sent = _frames(buf)[-1]["params"]["questions"][0]
+    sent = _request_frame(buf, req.id)["params"]["questions"][0]
     assert set(sent) == {"qid", "question", "choices", "multi_select"}
 
     first = server.handle_request({"id": "a1", "method": "clarify.lock",
@@ -525,7 +549,7 @@ def test_clarify_batch_locks_resolve_in_order_and_keep_partial_on_timeout(captur
     finally:
         server._clarify_timeout_seconds = original_timeout
     assert json.loads(box["answer"]) == {"answers": {"q0": "kept"}, "timed_out": True}
-    cancels = [f for f in _frames(buf) if f.get("method") == "event" and f["params"]["type"] == "request.cancel"]
+    cancels = _event_frames(buf, "request.cancel")
     assert [c["params"]["payload"]["id"] for c in cancels] == [req.id]
 
 
@@ -554,7 +578,7 @@ def test_clear_pending_cancels_only_that_session(capture):
     server._clear_pending()
     b.join(timeout=2)
     assert not b.is_alive()
-    reasons = [f["params"]["payload"]["reason"] for f in _frames(buf) if f.get("method") == "event"]
+    reasons = [f["params"]["payload"]["reason"] for f in _event_frames(buf, "request.cancel")]
     assert reasons == ["interrupted", "shutdown"]
 
 

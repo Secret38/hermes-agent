@@ -13,6 +13,7 @@ import {
   clearSudoRequest,
   receiveApprovalRequest,
   replayPendingApproval,
+  resolveApprovalRequest,
   sessionApprovalRequests,
   setApprovalRequest,
   setSecretRequest,
@@ -83,6 +84,19 @@ describe('approval prompt store', () => {
     expect($approvalRequest.get()).toBeNull()
   })
 
+  it('refuses to resolve an approval that is no longer queued', async () => {
+    const request = vi.fn(async () => ({ ok: true }))
+    const approval = {
+      command: 'echo stale',
+      description: 'stale approval',
+      requestId: 'stale',
+      sessionId: 's1'
+    }
+
+    await expect(resolveApprovalRequest({ request }, approval, 'once')).resolves.toBe(false)
+    expect(request).not.toHaveBeenCalled()
+  })
+
   it('acknowledges an approval only after parking it', async () => {
     const calls: Array<[string, Record<string, unknown>]> = []
 
@@ -103,6 +117,46 @@ describe('approval prompt store', () => {
 
     expect($approvalRequest.get()?.requestId).toBe('r1')
     expect(calls).toEqual([['approval.received', { request_id: 'r1', session_id: 's1' }]])
+  })
+
+  it('preserves policy provenance from approval.pending', async () => {
+    await replayPendingApproval(
+      {
+        request: async method => {
+          if (method === 'approval.pending') {
+            return {
+              approvals: [
+                {
+                  allow_permanent: false,
+                  allow_session: true,
+                  choices: ['once', 'session', 'deny'],
+                  command: 'git clean -fdx',
+                  description: 'destructive clean',
+                  pattern_key: 'git.clean',
+                  pattern_keys: ['git.clean', 'filesystem.delete'],
+                  request_id: 'policy-1',
+                  smart_denied: true,
+                  tool_name: 'terminal'
+                }
+              ]
+            }
+          }
+
+          return { acknowledged: true }
+        }
+      },
+      's1'
+    )
+
+    expect(sessionApprovalRequests('s1').get()[0]).toMatchObject({
+      allowPermanent: false,
+      allowSession: true,
+      choices: ['once', 'session', 'deny'],
+      patternKey: 'git.clean',
+      patternKeys: ['git.clean', 'filesystem.delete'],
+      smartDenied: true,
+      toolName: 'terminal'
+    })
   })
 
   it('replays and acknowledges every unresolved approval after reconnect', async () => {

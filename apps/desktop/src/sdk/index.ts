@@ -669,6 +669,9 @@ export const host = {
     /** Stored (durable) id of the focused session — for navigation and
      *  session-list matching, where runtime ids don't survive reloads. */
     focusedStoredSessionId: readonlyAtom<null | string>($focusedStoredSessionId),
+    /** Stored id selected in the primary workspace. Unlike focusedStoredSessionId,
+     *  this does not follow a side tile and is the filesystem-owner gate. */
+    selectedStoredSessionId: readonlyAtom<null | string>($selectedStoredSessionId),
     /** Live usage snapshot of the focused session (`context_used` /
      *  `context_max` / `context_percent`, token counts, `cost_usd`) —
      *  streamed by the backend, no RPC needed. Null while unresolved.
@@ -1583,6 +1586,7 @@ export { SidebarRowLead } from '@/app/chat/sidebar/chrome'
  *  switcher, the fleet profile rail and any plugin rail listing gateways share
  *  it, so a connection looks the same wherever it is named. */
 export { ConnectionGlyph } from '@/app/chat/sidebar/connection-glyph'
+export type { SidebarProjectTree } from '@/app/chat/sidebar/projects/workspace-groups'
 export { SIDEBAR_ROW_LEAD, SIDEBAR_TRUNCATED_LEADING } from '@/app/chat/sidebar/row-geometry'
 export { PALETTE_AREA, type PaletteContribution } from '@/app/command-palette/contrib'
 /** THE overdue test for a cron job's `next_run_at`: non-null once the stored slot
@@ -1721,12 +1725,33 @@ export { SearchField } from '@/components/ui/search-field'
 export { SegmentedControl } from '@/components/ui/segmented-control'
 export { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 export { Separator } from '@/components/ui/separator'
+export { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 export { Skeleton } from '@/components/ui/skeleton'
 export { Switch } from '@/components/ui/switch'
 export { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 export { Textarea } from '@/components/ui/textarea'
 export { Tip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 export type { GatewayEventListener } from '@/contrib/events'
+export {
+  OPERATIONS_CAPTURE_SOURCES_AREA,
+  OPERATIONS_TASK_SOURCES_AREA,
+  type OperationsArtifact,
+  type OperationsCaptureInput,
+  type OperationsCaptureResult,
+  type OperationsCaptureSource,
+  type OperationsEvent,
+  type OperationsPlanApprovalResult,
+  type OperationsProject,
+  type OperationsRun,
+  type OperationsRunInspection,
+  type OperationsShapeResult,
+  type OperationsTask,
+  type OperationsTaskExecution,
+  type OperationsTaskLog,
+  type OperationsTaskSnapshot,
+  type OperationsTaskSource,
+  type OperationsTaskWarning
+} from '@/contrib/operations'
 export type {
   HermesPlugin,
   PluginContext,
@@ -1737,6 +1762,8 @@ export type {
   PluginRestOptions,
   PluginStorage
 } from '@/contrib/plugin'
+/** Read-only contribution discovery for data-source style plugin contracts. */
+export { useContributions } from '@/contrib/react/use-contributions'
 /** Mount-scoped contribution: while the rendering component is mounted, its
  *  children render in the target area's slot; unmount disposes it. Use for
  *  page-owned chrome (a page's titlebar control leaves with the page) —
@@ -1749,7 +1776,7 @@ export { Contribute, type ContributeProps } from '@/contrib/react/contribute'
 export type { Contribution } from '@/contrib/types'
 /** The live gateway instance type — for typing the `gateway` prop `McpTab`
  *  takes; obtain the instance from `host.getGateway()`. */
-export type { HermesGateway } from '@/hermes'
+export type { HermesGateway, SessionInfo } from '@/hermes'
 /** Grab-to-pan for overflow containers (boards, timelines, wide tables) —
  *  the shared scrub primitive; don't hand-roll drag-to-scroll. */
 export { type GrabScroll, useGrabScroll } from '@/hooks/use-grab-scroll'
@@ -1858,7 +1885,50 @@ export { cn } from '@/lib/utils'
  *  the user opens the session, `forgetSessionUnread` drops it when the session
  *  is gone. Pass the owning profile — a hidden session has no row to read it
  *  from, and the persisted half is bucketed per profile. */
+export { $approvalModes, type ApprovalMode } from '@/store/approval-mode'
+export { $clarifyRequests, type ClarifyRequest } from '@/store/clarify'
+export { $goalsBySession, type SessionGoal } from '@/store/goals'
+export {
+  $liveSessionSnapshots,
+  liveSessionScopeKey,
+  type LiveSessionSnapshotItem
+} from '@/store/live-sessions'
+export { revealDesktopPane } from '@/store/pane-focus'
+export { openBrowserTab } from '@/store/preview'
+export {
+  $projectTree,
+  $projectTreeLoading,
+  fetchProjectSessions,
+  goToProject,
+  refreshProjectTree
+} from '@/store/projects'
+export {
+  $approvalRequestQueues,
+  $secretRequests,
+  $sudoRequests,
+  $vaultCodeRequests,
+  $vaultSaveLoginRequests,
+  $vaultUnlockRequests,
+  type ApprovalChoice,
+  type ApprovalRequest,
+  resolveApprovalRequest,
+  type SecretRequest,
+  type SudoRequest,
+  type VaultCodeRequest,
+  type VaultSaveLoginRequest,
+  type VaultUnlockRequest
+} from '@/store/prompts'
+export { revealReview } from '@/store/review'
+export {
+  $resumeFailedSessionId,
+  $workspaceCwdOwner,
+  knownSessionProfile,
+  ownerLookupSessionRows,
+  sessionMatchesStoredId
+} from '@/store/session'
+export { storedSessionIdForRuntimeId } from '@/store/session-states'
 export { ackStoredSessionId, forgetSessionUnread, markSessionUnreadFinished } from '@/store/session-unread'
+export { $subagentsBySession, type SubagentProgress } from '@/store/subagents'
 /** Live accent override — set a hex and the ACTIVE theme repaints with its
  *  accent family re-seeded from it (see `retintTheme`); `null` restores the
  *  authored palette. Deliberately not persisted: it is an authoring knob, not

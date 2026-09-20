@@ -40,6 +40,10 @@ def test_sudo_request_preserves_command_without_leaking_prompt_context(monkeypat
     frames, replays = [], []
 
     def refuse(frame):
+        # Metadata-only audit.changed is a legitimate additional transport event.
+        # Only the server-request frame is an answerable sudo prompt.
+        if frame.get("method") != "sudo":
+            return True
         frames.append(frame)
         replays.append(server_requests.open_requests(sid))
         assert server_requests.resolve_response(

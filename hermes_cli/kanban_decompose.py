@@ -230,7 +230,13 @@ def _apply_single(task: kb.Task, parsed: dict, routing: _Routing, author: str) -
         return DecomposeOutcome(task.id, False, "decomposer returned fanout=false with no title/body")
     with kbc.connect_closing() as conn:
         ok = kb.specify_triage_task(
-            conn, task.id, title=title_val, body=body_val, assignee=assignee_val, author=author,
+            conn,
+            task.id,
+            title=title_val,
+            body=body_val,
+            assignee=assignee_val,
+            author=author,
+            auto_promote_ready=routing.auto_promote,
         )
     if not ok:
         return DecomposeOutcome(task.id, False, "task moved out of triage before promotion")
@@ -305,6 +311,7 @@ def decompose_task(
     *,
     author: Optional[str] = None,
     timeout: Optional[int] = None,
+    auto_promote: Optional[bool] = None,
 ) -> DecomposeOutcome:
     """Decompose a triage task into a graph of child tasks. Expected failures
     (not in triage, no aux client, API error, malformed/empty reply) surface
@@ -314,6 +321,10 @@ def decompose_task(
         return DecomposeOutcome(task_id, False, reason)
 
     routing = _load_routing(root_assignee=task.assignee)
+    # A caller such as Hermes OS Mission Control may require a hard human gate
+    # regardless of the board's ambient auto_promote_children setting.
+    if auto_promote is not None:
+        routing.auto_promote = bool(auto_promote)
     raw, reason = _call_aux(
         "decompose", task_id, aux_task="kanban_decomposer", system=_SYSTEM_PROMPT,
         user=_USER_TEMPLATE.format(

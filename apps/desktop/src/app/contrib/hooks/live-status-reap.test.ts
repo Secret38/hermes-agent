@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { buildToolView } from '@/components/assistant-ui/tool/fallback-model'
 import { createClientSessionState } from '@/lib/chat-runtime'
+import { liveSessionScopeKey } from '@/store/live-sessions'
 import { $activeSessionId, $selectedStoredSessionId, $unreadFinishedSessionIds } from '@/store/session'
 import {
   $attentionSessionIds,
@@ -99,6 +100,26 @@ describe('rehydrateLiveSessionStatuses — reaping vanished runtimes', () => {
     rehydrateLiveSessionStatuses({ sessions: [] }, Date.now(), 'default')
 
     expect($workingSessionIds.get()).toEqual(['stored-other'])
+  })
+
+  it('does not cross-reap two connections that share the same profile name', () => {
+    const scopeA = liveSessionScopeKey('conn-a', 'default')
+    const scopeB = liveSessionScopeKey('conn-b', 'default')
+
+    rehydrateLiveSessionStatuses(
+      { sessions: [{ id: 'runtime-a', session_key: 'stored-a', status: 'working' }] },
+      Date.now(),
+      scopeA
+    )
+    rehydrateLiveSessionStatuses(
+      { sessions: [{ id: 'runtime-b', session_key: 'stored-b', status: 'working' }] },
+      Date.now(),
+      scopeB
+    )
+
+    rehydrateLiveSessionStatuses({ sessions: [] }, Date.now(), scopeA)
+
+    expect($workingSessionIds.get()).toEqual(['stored-b'])
   })
 
   it('seals open tool parts and clears awaitingResponse when a session vanishes', () => {

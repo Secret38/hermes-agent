@@ -2,6 +2,12 @@ name: E2E Desktop
 
 on:
   workflow_call:
+    inputs:
+      runner:
+        description: Runner label for Electron E2E.
+        type: string
+        required: false
+        default: ubuntu-latest-32-core
     outputs:
       review_status:
         description: Screenshot and visual-diff status for the CI review comment.
@@ -20,8 +26,8 @@ jobs:
     # This job builds the renderer and the electron bundle, then drives a real
     # Electron app under xvfb. vite, tsc and the Playwright workers all scale
     # with the core count.
-    runs-on: ubuntu-latest-32-core
-    timeout-minutes: 20
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 45
     outputs:
       review_status: ${{ steps.review-status.outputs.review_status }}
     steps:
@@ -77,8 +83,22 @@ jobs:
 
       - name: Install Python dependencies
         uses: ./.github/actions/retry
+        env:
+          # Desktop's managed-runtime resolver intentionally uses <repo>/venv,
+          # matching the production installer. A default uv sync would create
+          # .venv and make real-backend E2E fail with ENOENT.
+          UV_PROJECT_ENVIRONMENT: venv
         with:
           command: uv sync --locked --python 3.11 --extra all --extra dev
+
+      - name: Install Playwright Chromium
+        uses: ./.github/actions/retry
+        with:
+          # npm ci installs @playwright/test but does not download its browser
+          # payload. Standard GitHub-hosted runners do not preseed the matching
+          # revision, so provision it explicitly instead of depending on runner
+          # image cache state.
+          command: npx playwright install chromium
 
       # ── Build desktop app ─────────────────────────────────────────────
       # The Playwright step below runs `npm run build` before testing so

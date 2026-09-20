@@ -79,6 +79,24 @@
       }
     },
     {
+      "name": "audit.list",
+      "summary": "Metadata-only durable operator/security events for the selected profile.",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/AuditListParams"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/AuditListResult"
+        }
+      }
+    },
+    {
       "name": "billing.auto_reload",
       "summary": "Enable/disable auto top-up with its threshold and reload amount (billing:manage).",
       "params": [
@@ -3517,6 +3535,42 @@
       }
     },
     {
+      "name": "system.estop.get",
+      "summary": "Read the backend-global emergency stop used by gateway, cron and Kanban new-work gates.",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/EstopGetParams"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/EstopState"
+        }
+      }
+    },
+    {
+      "name": "system.estop.set",
+      "summary": "Engage or disengage the backend-global emergency stop; in-flight work is not killed.",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/EstopSetParams"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/EstopState"
+        }
+      }
+    },
+    {
       "name": "terminal.resize",
       "summary": "Record the client's column width for server-side rendering.",
       "params": [
@@ -4715,6 +4769,252 @@
           "attached"
         ],
         "title": "AttachedImageResult",
+        "type": "object"
+      },
+      "AuditChangedPayload": {
+        "additionalProperties": false,
+        "description": "Metadata-only invalidation emitted after a durable operator-audit append.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "event": {
+            "title": "Event",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "event",
+          "subject"
+        ],
+        "title": "AuditChangedPayload",
+        "type": "object"
+      },
+      "AuditEventRow": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "event": {
+            "title": "Event",
+            "type": "string"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Session Id"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Request Id"
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subject"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Outcome"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Task Id"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Run Id"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Project Id"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "event",
+          "category",
+          "created_at"
+        ],
+        "title": "AuditEventRow",
+        "type": "object"
+      },
+      "AuditListParams": {
+        "additionalProperties": false,
+        "properties": {
+          "profile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Profile"
+          },
+          "limit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Limit"
+          },
+          "before_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Before Id"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Session Id"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Task Id"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Run Id"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Project Id"
+          }
+        },
+        "title": "AuditListParams",
+        "type": "object"
+      },
+      "AuditListResult": {
+        "additionalProperties": false,
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/AuditEventRow"
+            },
+            "title": "Events",
+            "type": "array"
+          }
+        },
+        "required": [
+          "events"
+        ],
+        "title": "AuditListResult",
         "type": "object"
       },
       "AutoContinue": {
@@ -7787,6 +8087,47 @@
         "title": "CompressionSummary",
         "type": "object"
       },
+      "ComputerUseManifestSecurity": {
+        "additionalProperties": false,
+        "properties": {
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "readable": {
+            "title": "Readable",
+            "type": "boolean"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Version"
+          },
+          "mode_independent": {
+            "title": "Mode Independent",
+            "type": "boolean"
+          },
+          "required": {
+            "title": "Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "configured",
+          "readable",
+          "mode_independent",
+          "required"
+        ],
+        "title": "ComputerUseManifestSecurity",
+        "type": "object"
+      },
       "ConfigGetParams": {
         "additionalProperties": false,
         "description": "``key`` selects one getter from ``_CONFIG_GETTERS``; ``cwd`` feeds the ``project`` getter,\n``session_id`` lets ``reasoning`` / ``fast`` answer with the session's live pin.",
@@ -8001,6 +8342,141 @@
             ],
             "default": null,
             "title": "Mcp Rev"
+          },
+          "permission_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Permission Mode"
+          },
+          "telemetry_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Telemetry Enabled"
+          },
+          "manifest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ComputerUseManifestSecurity"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "shared_metrics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SharedMetricsSecuritySummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "coverage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Coverage"
+          },
+          "model_provider": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelProviderNetworkSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "mcp": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/McpNetworkSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "telemetry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SimpleNetworkSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "browser": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SimpleNetworkSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "computer_use": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SimpleNetworkSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "messaging": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SimpleNetworkSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "updates": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SimpleNetworkSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "title": "ConfigGetResult",
@@ -10411,6 +10887,76 @@
           "retryable"
         ],
         "title": "ErrorSurface",
+        "type": "object"
+      },
+      "EstopGetParams": {
+        "additionalProperties": false,
+        "properties": {},
+        "title": "EstopGetParams",
+        "type": "object"
+      },
+      "EstopSetParams": {
+        "additionalProperties": false,
+        "properties": {
+          "engaged": {
+            "title": "Engaged",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "engaged"
+        ],
+        "title": "EstopSetParams",
+        "type": "object"
+      },
+      "EstopState": {
+        "additionalProperties": false,
+        "properties": {
+          "engaged": {
+            "title": "Engaged",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reason"
+          },
+          "engaged_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Engaged At"
+          }
+        },
+        "required": [
+          "engaged"
+        ],
+        "title": "EstopState",
         "type": "object"
       },
       "FileAttachParams": {
@@ -13893,6 +14439,34 @@
         "title": "McpCatalogResult",
         "type": "object"
       },
+      "McpNetworkSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "configured": {
+            "title": "Configured",
+            "type": "integer"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "integer"
+          },
+          "classes": {
+            "$ref": "#/components/schemas/NetworkClassCounts"
+          },
+          "subprocess_may_egress": {
+            "title": "Subprocess May Egress",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "configured",
+          "enabled",
+          "classes",
+          "subprocess_may_egress"
+        ],
+        "title": "McpNetworkSummary",
+        "type": "object"
+      },
       "McpOauthCallbackParams": {
         "additionalProperties": false,
         "properties": {
@@ -15749,6 +16323,40 @@
         "title": "ModelPricing",
         "type": "object"
       },
+      "ModelProviderNetworkSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "class": {
+            "title": "Class",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "model_configured": {
+            "title": "Model Configured",
+            "type": "boolean"
+          },
+          "coverage": {
+            "title": "Coverage",
+            "type": "string"
+          },
+          "subprocess_may_egress": {
+            "title": "Subprocess May Egress",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "class",
+          "provider",
+          "model_configured",
+          "coverage",
+          "subprocess_may_egress"
+        ],
+        "title": "ModelProviderNetworkSummary",
+        "type": "object"
+      },
       "ModelSaveKeyParams": {
         "additionalProperties": false,
         "properties": {
@@ -15791,6 +16399,40 @@
           "provider"
         ],
         "title": "ModelSaveKeyResult",
+        "type": "object"
+      },
+      "NetworkClassCounts": {
+        "additionalProperties": false,
+        "properties": {
+          "disabled": {
+            "title": "Disabled",
+            "type": "integer"
+          },
+          "external": {
+            "title": "External",
+            "type": "integer"
+          },
+          "loopback": {
+            "title": "Loopback",
+            "type": "integer"
+          },
+          "process": {
+            "title": "Process",
+            "type": "integer"
+          },
+          "unknown": {
+            "title": "Unknown",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "disabled",
+          "external",
+          "loopback",
+          "process",
+          "unknown"
+        ],
+        "title": "NetworkClassCounts",
         "type": "object"
       },
       "NoticePayload": {
@@ -27676,6 +28318,35 @@
         "title": "SetupStatusResult",
         "type": "object"
       },
+      "SharedMetricsSecuritySummary": {
+        "additionalProperties": false,
+        "properties": {
+          "collection_enabled": {
+            "title": "Collection Enabled",
+            "type": "boolean"
+          },
+          "transmission_requested": {
+            "title": "Transmission Requested",
+            "type": "boolean"
+          },
+          "transmission_enabled": {
+            "title": "Transmission Enabled",
+            "type": "boolean"
+          },
+          "destination": {
+            "title": "Destination",
+            "type": "string"
+          }
+        },
+        "required": [
+          "collection_enabled",
+          "transmission_requested",
+          "transmission_enabled",
+          "destination"
+        ],
+        "title": "SharedMetricsSecuritySummary",
+        "type": "object"
+      },
       "ShellExecParams": {
         "additionalProperties": false,
         "properties": {
@@ -27787,6 +28458,56 @@
           "text"
         ],
         "title": "SideAgentParams",
+        "type": "object"
+      },
+      "SimpleNetworkSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "class": {
+            "title": "Class",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reason"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Mode"
+          },
+          "transmission_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Transmission Enabled"
+          }
+        },
+        "required": [
+          "class"
+        ],
+        "title": "SimpleNetworkSummary",
         "type": "object"
       },
       "SkillBrowseItem": {
@@ -33826,6 +34547,18 @@
           "name": "payload",
           "schema": {
             "$ref": "#/components/schemas/TerminalOutputPayload"
+          }
+        }
+      ]
+    },
+    {
+      "name": "audit.changed",
+      "summary": "Durable operator/security audit changed; refetch audit.list for authoritative history.",
+      "params": [
+        {
+          "name": "payload",
+          "schema": {
+            "$ref": "#/components/schemas/AuditChangedPayload"
           }
         }
       ]

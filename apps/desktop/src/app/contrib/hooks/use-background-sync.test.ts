@@ -925,7 +925,7 @@ describe('rehydrateLiveSessionStatuses', () => {
       sessions: [
         { id: 'runtime-idle', session_key: 'idle-session', status: 'idle' },
         { id: 'runtime-starting', session_key: 'starting-session', status: 'starting' },
-        { id: 'runtime-malformed', status: 'working' }
+        { id: 'runtime-malformed', status: 'working' } as never
       ]
     })
 

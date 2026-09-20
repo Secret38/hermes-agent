@@ -126,6 +126,8 @@ def test_install_ps1_repository_stage_recovers_from_autostash_conflict(
             str(managed),
             "-HermesHome",
             str(tmp_path / "hermes-home"),
+            "-RepoUrl",
+            _git(managed, "remote", "get-url", "origin").stdout.strip(),
         ],
         cwd=tmp_path,
         capture_output=True,

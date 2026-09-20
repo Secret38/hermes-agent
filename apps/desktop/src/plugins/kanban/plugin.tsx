@@ -18,6 +18,10 @@ import {
   host,
   type KeybindContribution,
   KEYBINDS_AREA,
+  OPERATIONS_CAPTURE_SOURCES_AREA,
+  OPERATIONS_TASK_SOURCES_AREA,
+  type OperationsCaptureSource,
+  type OperationsTaskSource,
   PALETTE_AREA,
   type PaletteContribution,
   type RouteContribution,
@@ -30,7 +34,21 @@ import {
   useValue
 } from '@hermes/plugin-sdk'
 
-import { $boardSlug, bindApi, boardKey, fetchBoard } from './api'
+import {
+  $boardSlug,
+  bindApi,
+  boardKey,
+  approveMissionPlanInScope,
+  createTaskInScope,
+  fetchBoard,
+  fetchBoards,
+  fetchOperationsRunInspection,
+  fetchOperationsSnapshot,
+  fetchOperationsTaskExecution,
+  fetchOperationsTaskLog,
+  shapeMissionTaskInScope,
+  toMissionCaptureTaskBody
+} from './api'
 import { KanbanBoardPage } from './board'
 import { KANBAN_LOCALES } from './i18n'
 import { $newTaskLane, useKanban } from './ui'
@@ -104,6 +122,76 @@ const plugin: HermesPlugin = {
     }
 
     ctx.registerMany([
+      {
+        id: 'operations-capture',
+        area: OPERATIONS_CAPTURE_SOURCES_AREA,
+        data: {
+          id: 'kanban',
+          label: 'Kanban inbox',
+          capture: async input => {
+            const selectedScope = $boardSlug.get()
+            const scopeKey = selectedScope || (await fetchBoards()).current
+            const result = await createTaskInScope(toMissionCaptureTaskBody(input), scopeKey)
+            if (!result.task) {
+              throw new Error('Kanban did not return the captured task.')
+            }
+
+            return {
+              sourceId: 'kanban',
+              taskId: result.task.id,
+              status: result.task.status,
+              scopeKey,
+              warning: result.warning ?? null
+            }
+          },
+          shapeCaptured: async captured => {
+            const result = await shapeMissionTaskInScope(captured.taskId, captured.scopeKey)
+
+            return {
+              taskId: result.task_id,
+              ok: result.ok,
+              reason: result.reason ?? null,
+              fanout: result.fanout,
+              childIds: result.child_ids ?? [],
+              title: result.new_title ?? null
+            }
+          },
+          approveCapturedPlan: async captured => {
+            const result = await approveMissionPlanInScope(captured.taskId, captured.scopeKey)
+
+            return {
+              taskId: result.task_id,
+              ok: result.ok,
+              promotedIds: result.promoted_ids,
+              heldIds: result.held_ids
+            }
+          },
+          openCapturedTask: () => host.navigate('/kanban')
+        } satisfies OperationsCaptureSource
+      },
+      {
+        id: 'operations-source',
+        area: OPERATIONS_TASK_SOURCES_AREA,
+        data: {
+          id: 'kanban',
+          label: 'Kanban',
+          queryKey: ['operations', 'kanban'],
+          readRunInspection: fetchOperationsRunInspection,
+          readTaskExecution: fetchOperationsTaskExecution,
+          readTaskLog: fetchOperationsTaskLog,
+          readSnapshot: async () => {
+            const connectionId = host.state.connectionId.get()
+            const profile = host.state.profile.get()
+
+            return {
+              ...(await fetchOperationsSnapshot()),
+              connectionId,
+              profile
+            }
+          },
+          openTask: () => host.navigate('/kanban')
+        } satisfies OperationsTaskSource
+      },
       {
         id: 'page',
         area: ROUTES_AREA,

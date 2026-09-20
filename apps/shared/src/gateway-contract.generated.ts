@@ -536,6 +536,18 @@ export interface ConfigGetResult {
   prompt?: string | null
   mtime?: number | null
   mcp_rev?: string | null
+  permission_mode?: string | null
+  telemetry_enabled?: boolean | null
+  manifest?: ComputerUseManifestSecurity | null
+  shared_metrics?: SharedMetricsSecuritySummary | null
+  coverage?: string | null
+  model_provider?: ModelProviderNetworkSummary | null
+  mcp?: McpNetworkSummary | null
+  telemetry?: SimpleNetworkSummary | null
+  browser?: SimpleNetworkSummary | null
+  computer_use?: SimpleNetworkSummary | null
+  messaging?: SimpleNetworkSummary | null
+  updates?: SimpleNetworkSummary | null
 }
 /** ``hermes_cli/models.py::list_available_providers`` row. */
 export interface ConfigProviderRef {
@@ -544,6 +556,45 @@ export interface ConfigProviderRef {
   aliases?: string[]
   authenticated?: boolean
   [key: string]: unknown
+}
+export interface ComputerUseManifestSecurity {
+  configured: boolean
+  readable: boolean
+  version?: number | null
+  mode_independent: boolean
+  required: boolean
+}
+export interface SharedMetricsSecuritySummary {
+  collection_enabled: boolean
+  transmission_requested: boolean
+  transmission_enabled: boolean
+  destination: string
+}
+export interface ModelProviderNetworkSummary {
+  class: string
+  provider: string
+  model_configured: boolean
+  coverage: string
+  subprocess_may_egress: boolean
+}
+export interface McpNetworkSummary {
+  configured: number
+  enabled: number
+  classes: NetworkClassCounts
+  subprocess_may_egress: boolean
+}
+export interface NetworkClassCounts {
+  disabled: number
+  external: number
+  loopback: number
+  process: number
+  unknown: number
+}
+export interface SimpleNetworkSummary {
+  class: string
+  reason?: string | null
+  mode?: string | null
+  transmission_enabled?: boolean | null
 }
 /** ``key`` picks the setter (``_CONFIG_SETTERS``, ``details_mode.<section>``, display toggles); ``value`` is the raw word/string the setter normalises (falsy non-strings are reported back in the error). ``scope`` applies to ``yolo`` / ``reasoning``; ``confirm_expensive_model`` to ``model``. */
 export interface ConfigSetParams {
@@ -642,6 +693,41 @@ export interface McpServerStatus {
   tool_count?: number | null
   error?: string | null
   [key: string]: unknown
+}
+export interface AuditListParams {
+  profile?: string | null
+  limit?: number | null
+  before_id?: number | null
+  session_id?: string | null
+  task_id?: string | null
+  run_id?: number | null
+  project_id?: string | null
+}
+export interface AuditListResult {
+  events: AuditEventRow[]
+}
+export interface AuditEventRow {
+  id: number
+  event: string
+  category: string
+  session_id?: string | null
+  request_id?: string | null
+  subject?: string | null
+  outcome?: string | null
+  task_id?: string | null
+  run_id?: number | null
+  project_id?: string | null
+  created_at: number
+}
+export type EstopGetParams = Record<string, never>
+export interface EstopState {
+  engaged: boolean
+  reason?: string | null
+  engaged_at?: string | null
+}
+export interface EstopSetParams {
+  engaged: boolean
+  reason?: string | null
 }
 /** ``provider_configured`` is the loose answer; the boot record's fields (``ready``, ``free_tier``, ``other_providers``, ``inference_provider``) ride along on the launch profile. An unknown ``profile`` answers ``ok=False`` + ``error``. */
 export interface SetupStatusResult {
@@ -4013,6 +4099,12 @@ export interface SessionReclaimedPayload {
 export interface SessionControlUpdatePayload {
   control: SessionControlSnapshot
 }
+/** Metadata-only invalidation emitted after a durable operator-audit append. */
+export interface AuditChangedPayload {
+  id: number
+  event: string
+  subject: string
+}
 /** ``methods_session`` billing.step_up on_verification. */
 export interface BillingStepUpVerificationPayload {
   verification_url: string
@@ -4197,6 +4289,8 @@ export interface RpcMethods {
   'approval.received': { params: ApprovalReceivedParams; result: ApprovalReceivedResult }
   /** Deliver the user's decision on a dangerous command (falls back to durable identity on a stale sid). */
   'approval.respond': { params: ApprovalRespondParams; result: ApprovalRespondResult }
+  /** Metadata-only durable operator/security events for the selected profile. */
+  'audit.list': { params: AuditListParams; result: AuditListResult }
   /** Enable/disable auto top-up with its threshold and reload amount (billing:manage). */
   'billing.auto_reload': { params: BillingAutoReloadParams; result: BillingMutationResult }
   /** Start a one-off top-up charge (billing:manage, idempotent). */
@@ -4579,6 +4673,10 @@ export interface RpcMethods {
   'subscription.upgrade': { params: SubscriptionUpgradeParams; result: SubscriptionUpgradeResult }
   /** Host battery for the status bar; always resolves, ``available: false`` when unreadable. */
   'system.battery': { params: SystemBatteryParams; result: SystemBatteryResult }
+  /** Read the backend-global emergency stop used by gateway, cron and Kanban new-work gates. */
+  'system.estop.get': { params: EstopGetParams; result: EstopState }
+  /** Engage or disengage the backend-global emergency stop; in-flight work is not killed. */
+  'system.estop.set': { params: EstopSetParams; result: EstopState }
   /** Record the client's column width for server-side rendering. */
   'terminal.resize': { params: TerminalResizeParams; result: TerminalResizeResult }
   /** Persist a toolset / MCP enable-disable change and rebuild the session agent so it takes effect now. */
@@ -4632,6 +4730,7 @@ export const RPC_METHODS = [
   'approval.pending',
   'approval.received',
   'approval.respond',
+  'audit.list',
   'billing.auto_reload',
   'billing.charge',
   'billing.charge_status',
@@ -4823,6 +4922,8 @@ export const RPC_METHODS = [
   'subscription.state',
   'subscription.upgrade',
   'system.battery',
+  'system.estop.get',
+  'system.estop.set',
   'terminal.resize',
   'tools.configure',
   'tools.list',
@@ -4895,6 +4996,8 @@ export const SERVER_REQUEST_METHODS = [
 export interface BackendGatewayEventMap {
   /** Output chunk from an agent-owned background process. */
   'agent.terminal.output': TerminalOutputPayload
+  /** Durable operator/security audit changed; refetch audit.list for authoritative history. */
+  'audit.changed': AuditChangedPayload
   /** A /background side agent finished. */
   'background.complete': SideAgentCompletePayload
   /** Device-flow URL + code for the billing scope step-up; the client opens the browser. */
@@ -5035,6 +5138,7 @@ export interface BackendGatewayEventMap {
 export type BackendGatewayEventName = keyof BackendGatewayEventMap
 export const GATEWAY_EVENT_TYPES = [
   'agent.terminal.output',
+  'audit.changed',
   'background.complete',
   'billing.step_up.verification',
   'bot_relay.outbox.pending',

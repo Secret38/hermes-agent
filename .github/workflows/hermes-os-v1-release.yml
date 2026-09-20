@@ -1,0 +1,211 @@
+name: Hermes OS V1 Release Gate
+
+on:
+  push:
+    branches:
+      - hermes-os/v1-shell
+      - release/v1.0.0
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hermes-os-v1-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Full Python
+    uses: ./.github/workflows/tests.yml
+    with:
+      runner: ubuntu-latest
+      workers: '8'
+
+  js:
+    name: Full JS and TS
+    uses: ./.github/workflows/js-tests.yml
+    with:
+      runner: ubuntu-latest
+
+  os-tests:
+    name: Native OS tests
+    uses: ./.github/workflows/tests-os.yml
+    with:
+      desktop_updater: true
+      macos_runner: macos-latest
+      windows_runner: windows-latest
+
+  installer:
+    name: Windows installer contracts
+    uses: ./.github/workflows/installer-tests.yml
+
+  desktop-e2e:
+    name: Electron E2E
+    uses: ./.github/workflows/e2e-desktop.yml
+    with:
+      runner: ubuntu-latest
+
+  windows-dist:
+    name: Windows V1 distribution
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 26
+          cache: npm
+
+      - name: Use npm 12
+        shell: pwsh
+        run: |
+          if (-not ((npm --version) -match '^12\.')) { npm i -g npm@12 }
+
+      - name: Install workspace dependencies
+        shell: pwsh
+        run: npm ci --include=optional
+
+      - name: Verify V1 version identity
+        shell: pwsh
+        run: |
+          $root = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $desktop = (Get-Content apps/desktop/package.json -Raw | ConvertFrom-Json).version
+          if ($root -ne '1.0.0' -or $desktop -ne '1.0.0') {
+            throw "V1 version mismatch: root=$root desktop=$desktop"
+          }
+
+      - name: Build Windows x64 and ARM64 distributions
+        shell: pwsh
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          WIN_CSC_LINK: ''
+          WIN_CSC_KEY_PASSWORD: ''
+        run: |
+          npm --workspace apps/desktop run build
+          npm --workspace apps/desktop run builder -- --win nsis msi --x64 --arm64
+
+      - name: Smoke launch x64 desktop
+        shell: pwsh
+        run: |
+          $exe = 'apps/desktop/release/win-unpacked/Hermes.exe'
+          if (-not (Test-Path -LiteralPath $exe)) { throw "Missing $exe" }
+          $env:HERMES_HOME = Join-Path $env:RUNNER_TEMP 'hermes-os-v1-smoke'
+          $env:HERMES_DESKTOP_BOOT_FAKE = '1'
+          $p = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 12
+          if ($p.HasExited) { throw "Hermes.exe exited during startup smoke with code $($p.ExitCode)" }
+          Stop-Process -Id $p.Id -Force
+
+      - name: Verify ARM64 payload exists
+        shell: pwsh
+        run: |
+          $exe = 'apps/desktop/release/win-arm64-unpacked/Hermes.exe'
+          if (-not (Test-Path -LiteralPath $exe)) { throw "Missing $exe" }
+
+      - name: Create portable archives and checksums
+        shell: pwsh
+        run: |
+          $release = Resolve-Path 'apps/desktop/release'
+          $x64Zip = Join-Path $release 'Hermes-OS-1.0.0-win-x64-portable.zip'
+          $armZip = Join-Path $release 'Hermes-OS-1.0.0-win-arm64-portable.zip'
+          Compress-Archive -Path (Join-Path $release 'win-unpacked\*') -DestinationPath $x64Zip -Force
+          Compress-Archive -Path (Join-Path $release 'win-arm64-unpacked\*') -DestinationPath $armZip -Force
+          $files = @(Get-ChildItem $release -File | Where-Object {
+            $_.Name -match '^Hermes-1\.0\.0-win-(x64|arm64)\.(exe|msi)$' -or
+            $_.Name -match '^Hermes-OS-1\.0\.0-win-(x64|arm64)-portable\.zip$'
+          })
+          if (($files | Where-Object Extension -eq '.exe').Count -lt 2) { throw 'Missing NSIS installers' }
+          if (($files | Where-Object Extension -eq '.msi').Count -lt 2) { throw 'Missing MSI installers' }
+          $files | Sort-Object Name | ForEach-Object {
+            $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)"
+          } | Set-Content -Encoding ascii (Join-Path $release 'SHA256SUMS.txt')
+          @{
+            product = 'Hermes OS'
+            version = '1.0.0'
+            commit = '${{ github.sha }}'
+            repository = '${{ github.repository }}'
+            built_at_utc = [DateTime]::UtcNow.ToString('o')
+          } | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $release 'BUILD-METADATA.json')
+
+      - name: Upload Windows V1 artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: hermes-os-v1-windows-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            apps/desktop/release/Hermes-1.0.0-win-x64.exe
+            apps/desktop/release/Hermes-1.0.0-win-x64.msi
+            apps/desktop/release/Hermes-1.0.0-win-arm64.exe
+            apps/desktop/release/Hermes-1.0.0-win-arm64.msi
+            apps/desktop/release/Hermes-OS-1.0.0-win-x64-portable.zip
+            apps/desktop/release/Hermes-OS-1.0.0-win-arm64-portable.zip
+            apps/desktop/release/SHA256SUMS.txt
+            apps/desktop/release/BUILD-METADATA.json
+
+  gate:
+    name: V1 production gate
+    runs-on: ubuntu-latest
+    needs:
+      - python
+      - js
+      - os-tests
+      - installer
+      - desktop-e2e
+      - windows-dist
+    steps:
+      - name: Gate passed
+        run: echo 'Hermes OS V1 production qualification passed for this commit.'
+
+  publish:
+    name: Publish V1.0.0
+    if: github.ref == 'refs/heads/release/v1.0.0'
+    runs-on: ubuntu-latest
+    needs:
+      - gate
+      - windows-dist
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Download qualified Windows artifacts
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: hermes-os-v1-windows-${{ github.sha }}
+          path: release-artifacts
+
+      - name: Create immutable V1 tag and GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG=v1.0.0
+          SHA='${{ github.sha }}'
+          existing=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}" --jq '.object.sha' 2>/dev/null || true)
+          if [ -n "$existing" ] && [ "$existing" != "$SHA" ]; then
+            echo "::error::${TAG} already points to ${existing}, expected ${SHA}"
+            exit 1
+          fi
+          if [ -z "$existing" ]; then
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f ref="refs/tags/${TAG}" -f sha="$SHA" >/dev/null
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" release-artifacts/* --clobber
+          else
+            gh release create "$TAG" release-artifacts/* \
+              --title 'Hermes OS v1.0.0' \
+              --notes-file HERMES_OS_V1_RELEASE.md
+          fi

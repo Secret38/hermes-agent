@@ -111,3 +111,192 @@ def test_config_set_without_profile_still_writes_launch_home(tmp_path, monkeypat
     assert resp["result"]["value"] == "interrupt"
     assert _read_yaml(launch)["display"]["busy_input_mode"] == "interrupt"
     assert _read_yaml(worker)["display"]["busy_input_mode"] == "queue"
+
+
+def test_computer_use_security_getter_is_profile_scoped_and_sanitized(tmp_path, monkeypatch):
+    launch, worker = _homes(tmp_path)
+    manifest = worker / "private" / "capabilities.yaml"
+    manifest.parent.mkdir()
+    manifest.write_text("version: 3\napps: []\n", encoding="utf-8")
+
+    launch_cfg = _read_yaml(launch)
+    launch_cfg["computer_use"] = {"permission_mode": "standard", "cua_telemetry": False}
+    (launch / "config.yaml").write_text(yaml.safe_dump(launch_cfg), encoding="utf-8")
+
+    worker_cfg = _read_yaml(worker)
+    worker_cfg["computer_use"] = {
+        "permission_mode": "bounded",
+        "capability_manifest": str(manifest),
+        "cua_telemetry": True,
+    }
+    (worker / "config.yaml").write_text(yaml.safe_dump(worker_cfg), encoding="utf-8")
+
+    _bind_homes(monkeypatch, launch, worker)
+
+    launch_resp = _get({"key": "computer_use.security"})
+    assert launch_resp["result"] == {
+        "permission_mode": "standard",
+        "telemetry_enabled": False,
+        "manifest": {
+            "configured": False,
+            "readable": False,
+            "version": None,
+            "mode_independent": False,
+            "required": False,
+        },
+    }
+
+    _reset_cfg_cache()
+    worker_resp = _get({"key": "computer_use.security", "profile": "code"})
+    assert worker_resp["result"] == {
+        "permission_mode": "bounded",
+        "telemetry_enabled": True,
+        "manifest": {
+            "configured": True,
+            "readable": True,
+            "version": 3,
+            "mode_independent": True,
+            "required": True,
+        },
+    }
+    assert str(manifest) not in repr(worker_resp)
+
+
+def test_telemetry_security_getter_is_profile_scoped_and_sanitized(tmp_path, monkeypatch):
+    launch, worker = _homes(tmp_path)
+
+    launch_cfg = _read_yaml(launch)
+    launch_cfg["telemetry"] = {
+        "shared_metrics": {
+            "enabled": False,
+            "send": True,
+            "endpoint": "http://metrics.example.invalid/private/path",
+        }
+    }
+    (launch / "config.yaml").write_text(yaml.safe_dump(launch_cfg), encoding="utf-8")
+
+    worker_cfg = _read_yaml(worker)
+    worker_cfg["telemetry"] = {
+        "shared_metrics": {
+            "enabled": True,
+            "send": True,
+            "endpoint": "https://metrics.example.internal/v1/private",
+        }
+    }
+    (worker / "config.yaml").write_text(yaml.safe_dump(worker_cfg), encoding="utf-8")
+
+    _bind_homes(monkeypatch, launch, worker)
+
+    launch_resp = _get({"key": "telemetry.security"})
+    assert launch_resp["result"] == {
+        "shared_metrics": {
+            "collection_enabled": False,
+            "transmission_requested": True,
+            "transmission_enabled": False,
+            "destination": "blocked",
+        }
+    }
+    assert "metrics.example.invalid" not in repr(launch_resp)
+    assert "/private/path" not in repr(launch_resp)
+
+    _reset_cfg_cache()
+    worker_resp = _get({"key": "telemetry.security", "profile": "code"})
+    assert worker_resp["result"] == {
+        "shared_metrics": {
+            "collection_enabled": True,
+            "transmission_requested": True,
+            "transmission_enabled": True,
+            "destination": "custom_https",
+        }
+    }
+    assert "metrics.example.internal" not in repr(worker_resp)
+    assert "/v1/private" not in repr(worker_resp)
+
+
+def test_telemetry_security_getter_handles_malformed_endpoint(tmp_path, monkeypatch):
+    launch, worker = _homes(tmp_path)
+    launch_cfg = _read_yaml(launch)
+    launch_cfg["telemetry"] = {
+        "shared_metrics": {
+            "enabled": True,
+            "send": True,
+            "endpoint": "http://[broken",
+        }
+    }
+    (launch / "config.yaml").write_text(yaml.safe_dump(launch_cfg), encoding="utf-8")
+    _bind_homes(monkeypatch, launch, worker)
+
+    resp = _get({"key": "telemetry.security"})
+
+    assert resp["result"] == {
+        "shared_metrics": {
+            "collection_enabled": True,
+            "transmission_requested": True,
+            "transmission_enabled": False,
+            "destination": "blocked",
+        }
+    }
+
+
+def test_network_security_getter_is_profile_scoped_sanitized_and_conservative(tmp_path, monkeypatch):
+    launch, worker = _homes(tmp_path)
+
+    launch_cfg = _read_yaml(launch)
+    launch_cfg["mcp_servers"] = {
+        "local-http": {"url": "http://127.0.0.1:7777/private"},
+        "remote-http": {"url": "https://mcp.example.invalid/private"},
+        "stdio": {"command": "python", "args": ["secret-helper.py"]},
+        "off": {"enabled": False, "url": "https://disabled.example.invalid"},
+    }
+    (launch / "config.yaml").write_text(yaml.safe_dump(launch_cfg), encoding="utf-8")
+
+    worker_cfg = _read_yaml(worker)
+    worker_cfg["mcp_servers"] = {
+        "unknown": {},
+    }
+    (worker / "config.yaml").write_text(yaml.safe_dump(worker_cfg), encoding="utf-8")
+
+    _bind_homes(monkeypatch, launch, worker)
+    monkeypatch.setattr(
+        server,
+        "_resolve_agent_model_runtime",
+        lambda _model, _provider: ("provider/model", {
+            "provider": "custom",
+            "base_url": "https://models.example.invalid/v1",
+            "api_key": "TOP-SECRET",
+        }),
+    )
+
+    launch_resp = _get({"key": "network.security"})
+    result = launch_resp["result"]
+    assert result["coverage"] == "partial"
+    assert result["model_provider"]["class"] == "external"
+    assert result["model_provider"]["provider"] == "custom"
+    assert result["mcp"]["configured"] == 4
+    assert result["mcp"]["enabled"] == 3
+    assert result["mcp"]["classes"]["loopback"] == 1
+    assert result["mcp"]["classes"]["external"] == 1
+    assert result["mcp"]["classes"]["process"] == 1
+    assert result["mcp"]["classes"]["disabled"] == 1
+    assert result["mcp"]["subprocess_may_egress"] is True
+    assert result["browser"]["class"] == "unknown"
+    assert result["computer_use"]["class"] == "unknown"
+    assert result["messaging"]["class"] == "unknown"
+
+    rendered = repr(launch_resp)
+    for forbidden in (
+        "127.0.0.1:7777",
+        "mcp.example.invalid",
+        "disabled.example.invalid",
+        "models.example.invalid",
+        "secret-helper.py",
+        "TOP-SECRET",
+    ):
+        assert forbidden not in rendered
+
+    _reset_cfg_cache()
+    worker_resp = _get({"key": "network.security", "profile": "code"})
+    worker_result = worker_resp["result"]
+    assert worker_result["mcp"]["configured"] == 1
+    assert worker_result["mcp"]["classes"]["unknown"] == 1
+    assert "mcp_servers" not in repr(worker_resp)

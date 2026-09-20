@@ -92,6 +92,48 @@ def _manifest_is_mode_independent(path: str) -> bool:
     version = parsed.get("version") if isinstance(parsed, dict) else None
     return isinstance(version, int) and not isinstance(version, bool) and version >= 3
 
+def computer_use_security_summary() -> Dict[str, Any]:
+    """Sanitized read-only security facts for UI/control-plane consumers.
+
+    Deliberately omits the capability-manifest path and all manifest contents.
+    A malformed/unreadable manifest is reported as unreadable rather than
+    leaking parser errors or filesystem details.
+    """
+    cfg = _computer_use_cfg()
+    raw_manifest = cfg.get("capability_manifest")
+    manifest = raw_manifest.strip() if isinstance(raw_manifest, str) and raw_manifest.strip() else ""
+    readable = False
+    version = None
+    mode_independent = False
+
+    if manifest:
+        try:
+            import yaml
+            with open(os.path.abspath(os.path.expanduser(manifest)), "r", encoding="utf-8") as handle:
+                parsed = yaml.safe_load(handle)
+            candidate = parsed.get("version") if isinstance(parsed, dict) else None
+            if isinstance(candidate, int) and not isinstance(candidate, bool):
+                version = candidate
+            readable = True
+            mode_independent = bool(version is not None and version >= 3)
+        except Exception:
+            pass
+
+    permission_mode = _cua_configured_permission_mode()
+
+    return {
+        "permission_mode": permission_mode,
+        "telemetry_enabled": not _cua_telemetry_disabled(),
+        "manifest": {
+            "configured": bool(manifest),
+            "readable": readable,
+            "version": version,
+            "mode_independent": mode_independent,
+            "required": permission_mode == "bounded",
+        },
+    }
+
+
 def _computer_use_max_image_dimension() -> Optional[int]:
     """``computer_use.max_image_dimension`` longest-edge cap (default 1456 = aux-vision downscale); ``0``/negative -> None."""
     try:

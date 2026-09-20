@@ -113,11 +113,20 @@ def _require(getter: Callable, conn: sqlite3.Connection, ident, label: str):
     return obj
 
 
-def _run_aux(board: Optional[str], module: str, fn: str, task_id: str, author: Optional[str]) -> Any:
+def _run_aux(
+    board: Optional[str],
+    module: str,
+    fn: str,
+    task_id: str,
+    author: Optional[str],
+    **kwargs: Any,
+) -> Any:
     """Run a slow auxiliary-LLM task helper (``hermes_cli.<module>.<fn>``) with the board pinned;
     the module is imported lazily so a missing aux client can't break plugin load."""
     def _run():
-        return getattr(importlib.import_module(f"hermes_cli.{module}"), fn)(task_id, author=(author or None))
+        return getattr(importlib.import_module(f"hermes_cli.{module}"), fn)(
+            task_id, author=(author or None), **kwargs
+        )
     return _with_board_pinned(board, _run)
 
 
@@ -297,9 +306,21 @@ def get_board(
         # One window-function query for latest summaries (avoids N+1); cards get a
         # truncated preview, the full text comes from /tasks/:id.
         summary_map = kanban_db.latest_summaries(conn, [t.id for t in tasks])
+        # One batch lookup for exact worker-session correlation on active runs.
+        # No per-card task detail calls; NULL means the worker has not bound yet.
+        active_run_sessions = {
+            int(r["id"]): r["worker_session_id"]
+            for r in conn.execute(
+                "SELECT id, worker_session_id FROM task_runs WHERE ended_at IS NULL"
+            ).fetchall()
+        }
         for t in tasks:
             full = summary_map.get(t.id)
             d = _task_dict(t, latest_summary=(full[:_CARD_SUMMARY_PREVIEW_CHARS] if full else None))
+            d["worker_session_id"] = (
+                active_run_sessions.get(int(t.current_run_id))
+                if t.current_run_id is not None else None
+            )
             d["link_counts"] = link_counts.get(t.id, {"parents": 0, "children": 0})
             d["comment_count"] = comment_counts.get(t.id, 0)
             d["progress"] = progress.get(t.id)  # None when the task has no children
@@ -962,6 +983,49 @@ def terminate_run_endpoint(run_id: int, payload: TerminateRunBody, board: Option
 
 # --- Recovery actions — reclaim / specify / reassign / estimate -------------
 
+class ApprovePlanBody(BaseModel):
+    actor: Optional[str] = None
+
+
+@router.post("/tasks/{task_id}/approve-plan")
+def approve_plan_endpoint(
+    task_id: str,
+    payload: ApprovePlanBody,
+    board: Optional[str] = Query(None),
+):
+    """Approve a shaped plan while preserving Kanban's dependency graph."""
+    with _board_conn(board) as (board, conn):
+        from hermes_cli.kanban_db_graph import approve_decomposed_plan
+
+        ok, promoted, held, reason = approve_decomposed_plan(
+            conn, task_id, actor=(payload.actor or "hermes-os")
+        )
+        if not ok:
+            raise _conflict(reason or f"cannot approve plan for {task_id}")
+        task = kanban_db.get_task(conn, task_id)
+
+    try:
+        from hermes_cli.operations_audit import append_event
+
+        append_event(
+            "plan.approved",
+            category="control",
+            session_id=task.session_id if task else None,
+            subject="kanban_plan",
+            outcome="approved",
+            task_id=task_id,
+            project_id=task.project_id if task else None,
+        )
+    except Exception:
+        log.debug("kanban plan approval audit append failed", exc_info=True)
+
+    return {
+        "ok": True,
+        "task_id": task_id,
+        "promoted_ids": promoted,
+        "held_ids": held,
+    }
+
 class ReclaimBody(BaseModel):
     reason: Optional[str] = None
 
@@ -1558,13 +1622,39 @@ def auto_describe_profile(profile_name: str, payload: DescribeAutoBody):
 
 class DecomposeBody(BaseModel):
     author: Optional[str] = None
+    # None follows board config; False is the Hermes OS human-gate mode.
+    auto_promote: Optional[bool] = None
 
 
 @router.post("/tasks/{task_id}/decompose")
 def decompose_task_endpoint(task_id: str, payload: DecomposeBody, board: Optional[str] = Query(None)):
     """Fan a triage task out into child tasks via the auxiliary LLM (``hermes kanban decompose``).
     Non-OK is NOT an HTTP error. Sync ``def`` → runs in the threadpool."""
-    outcome = _run_aux(board, "kanban_decompose", "decompose_task", task_id, payload.author)
+    outcome = _run_aux(
+        board,
+        "kanban_decompose",
+        "decompose_task",
+        task_id,
+        payload.author,
+        auto_promote=payload.auto_promote,
+    )
+    if outcome.ok:
+        try:
+            with _board_conn(board) as (_resolved_board, conn):
+                task = kanban_db.get_task(conn, task_id)
+            from hermes_cli.operations_audit import append_event
+
+            append_event(
+                "plan.shaped",
+                category="control",
+                session_id=task.session_id if task else None,
+                subject="kanban_plan",
+                outcome="fanout" if outcome.fanout else "single",
+                task_id=task_id,
+                project_id=task.project_id if task else None,
+            )
+        except Exception:
+            log.debug("kanban plan-shaped audit append failed", exc_info=True)
     return {
         "ok": bool(outcome.ok), "task_id": outcome.task_id, "reason": outcome.reason,
         "fanout": bool(outcome.fanout), "child_ids": outcome.child_ids or [], "new_title": outcome.new_title}
