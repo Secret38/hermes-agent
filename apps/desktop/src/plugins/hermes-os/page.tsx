@@ -126,7 +126,14 @@ function taskDetail(task: OperationsTask): string {
     task.assignee ? `agent ${task.assignee}` : null,
     task.workerSessionId ? `worker ${task.workerSessionId}` : task.originSessionId ? `origin ${task.originSessionId}` : null,
     task.runId != null ? `run ${task.runId}` : null,
-    task.warning?.count ? `${task.warning.count} diagnostic${task.warning.count === 1 ? '' : 's'}` : null
+    task.warning?.count
+      ? [
+          `${task.warning.count} diagnostic${task.warning.count === 1 ? '' : 's'}`,
+          task.warning.kinds && Object.keys(task.warning.kinds).length
+            ? Object.keys(task.warning.kinds).join(', ')
+            : null
+        ].filter(Boolean).join(': ')
+      : null
   ].filter(Boolean)
 
   return parts.join(' · ') || 'Operational task'
