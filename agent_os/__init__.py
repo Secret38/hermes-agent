@@ -1,12 +1,8 @@
-"""Agent OS production-runtime foundation.
-
-This package is intentionally additive: Hermes remains the runtime provider,
-while Agent OS owns the canonical task/action lifecycle and durable execution
-ledger used to coordinate Hermes subsystems.
-"""
+"""Agent OS production-runtime foundation."""
 
 from .contracts import ActionRecord, TaskRecord
 from .events import EventRecord, EventType
+from .risk import RiskAssessment, RiskLevel
 from .states import ActionState, TaskState
 
 __all__ = [
@@ -14,6 +10,8 @@ __all__ = [
     "ActionState",
     "EventRecord",
     "EventType",
+    "RiskAssessment",
+    "RiskLevel",
     "TaskRecord",
     "TaskState",
 ]

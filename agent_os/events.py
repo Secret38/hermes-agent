@@ -14,6 +14,7 @@ class EventType(StrEnum):
     TASK_STATE_CHANGED = "task.state_changed"
     ACTION_CREATED = "action.created"
     ACTION_STATE_CHANGED = "action.state_changed"
+    RISK_CLASSIFIED = "risk.classified"
     APPROVAL_REQUESTED = "approval.requested"
     APPROVAL_RESOLVED = "approval.resolved"
     VERIFICATION_RECORDED = "verification.recorded"
