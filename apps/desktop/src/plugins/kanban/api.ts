@@ -409,6 +409,27 @@ export const patchTask = (id: string, patch: Record<string, unknown>) =>
 export const createTask = (body: Record<string, unknown>) =>
   nudged(call<{ task: KanbanTask | null; warning?: string }>(withBoard('/tasks'), { method: 'POST', body }))
 
+export const createTaskInScope = (body: Record<string, unknown>, scopeKey?: null | string) =>
+  nudged(
+    call<{ task: KanbanTask | null; warning?: string }>(
+      withBoardScope('/tasks', scopeKey),
+      { method: 'POST', body }
+    )
+  )
+
+export const shapeMissionTaskInScope = (id: string, scopeKey?: null | string) =>
+  call<{
+    ok: boolean
+    task_id: string
+    reason?: null | string
+    fanout: boolean
+    child_ids?: string[]
+    new_title?: null | string
+  }>(withBoardScope(`/tasks/${id}/decompose`, scopeKey), {
+    method: 'POST',
+    body: { auto_promote: false }
+  })
+
 /** Mission Control intake always lands in triage; source owns board scoping. */
 export function toMissionCaptureTaskBody(input: OperationsCaptureInput): Record<string, unknown> {
   const title = input.title.trim()
