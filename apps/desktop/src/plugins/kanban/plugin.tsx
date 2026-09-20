@@ -38,6 +38,7 @@ import {
   $boardSlug,
   bindApi,
   boardKey,
+  approveMissionPlanInScope,
   createTaskInScope,
   fetchBoard,
   fetchBoards,
@@ -153,6 +154,16 @@ const plugin: HermesPlugin = {
               fanout: result.fanout,
               childIds: result.child_ids ?? [],
               title: result.new_title ?? null
+            }
+          },
+          approveCapturedPlan: async captured => {
+            const result = await approveMissionPlanInScope(captured.taskId, captured.scopeKey)
+
+            return {
+              taskId: result.task_id,
+              ok: result.ok,
+              promotedIds: result.promoted_ids,
+              heldIds: result.held_ids
             }
           },
           openCapturedTask: () => host.navigate('/kanban')
