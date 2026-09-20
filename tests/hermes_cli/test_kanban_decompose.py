@@ -114,6 +114,42 @@ def test_decompose_with_fanout_creates_children(kanban_home):
     assert c1.assignee == "engineer"
 
 
+def test_decompose_can_force_human_gate_even_when_auto_promote_is_enabled(kanban_home):
+    with kbc.connect() as conn:
+        tid = kb.create_task(conn, title="plan safely", triage=True)
+
+    llm_payload = jsonlib.dumps({
+        "fanout": True,
+        "rationale": "safe plan",
+        "tasks": [
+            {"title": "research", "body": "inspect", "assignee": "researcher", "parents": []},
+            {"title": "build", "body": "implement", "assignee": "engineer", "parents": [0]},
+        ],
+    })
+
+    patches = _patch_list_profiles(["orchestrator", "researcher", "engineer"])
+    for p in patches:
+        p.start()
+    try:
+        with _patch_aux_client(llm_payload), _patch_extra_body(), patch(
+            "hermes_cli.config.load_config_readonly",
+            return_value={"kanban": {"auto_promote_children": True}},
+        ):
+            outcome = decomp.decompose_task(tid, author="mission-control", auto_promote=False)
+    finally:
+        for p in patches:
+            p.stop()
+
+    assert outcome.ok, outcome.reason
+    assert outcome.child_ids and len(outcome.child_ids) == 2
+    with kbc.connect() as conn:
+        root = kb.get_task(conn, tid)
+        children = [kb.get_task(conn, child_id) for child_id in outcome.child_ids]
+
+    assert root is not None and root.status == "todo"
+    assert all(child is not None and child.status == "todo" for child in children)
+
+
 def test_decompose_fanout_children_inherit_root_assignee_when_unrouted(kanban_home):
     """Unrouted children fall back to the ROOT task's assignee, not
     the decomposer's active profile (#114294). The active profile here is ``private``
