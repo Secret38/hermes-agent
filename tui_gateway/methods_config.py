@@ -259,6 +259,30 @@ def _(rid, params: dict) -> dict:
         return _err(rid, _CONFIG_GET_ERR[key], str(e))
 
 
+@method("audit.list")
+@_profile_scoped
+def _(rid, params: dict) -> dict:
+    """Metadata-only operator/security audit events for the selected profile.
+
+    This surface intentionally cannot return request payloads, prompt text, command
+    text, secrets, codes, URLs, or tool output because the ledger has no such columns.
+    """
+    from hermes_cli.operations_audit import list_events
+
+    try:
+        limit = max(1, min(int(params.get("limit") or 200), 1000))
+    except (TypeError, ValueError):
+        limit = 200
+    before_id = params.get("before_id")
+    try:
+        before_id = int(before_id) if before_id is not None else None
+    except (TypeError, ValueError):
+        before_id = None
+    session_id = str(params.get("session_id") or "").strip() or None
+    events = list_events(limit=limit, before_id=before_id, session_id=session_id)
+    return _ok(rid, {"events": events})
+
+
 # ── setup readiness
 
 def _readiness_check(rid, params, probe):
