@@ -49,8 +49,8 @@ describe('Hermes OS project workspace launcher', () => {
   it('opens chat in the primary workspace without waiting for cwd', async () => {
     await launchProjectWorkspaceSurface('session-a', undefined, 'chat')
 
-    expect(openHermesWorkspaceSession).toHaveBeenCalledWith('session-a', undefined)
-    expect(revealDesktopPane).not.toHaveBeenCalled()
+    expect(mocks.openHermesWorkspaceSession).toHaveBeenCalledWith('session-a', undefined)
+    expect(mocks.revealDesktopPane).not.toHaveBeenCalled()
   })
 
   it('waits for confirmed cwd ownership before revealing Files', async () => {
@@ -60,12 +60,12 @@ describe('Hermes OS project workspace launcher', () => {
     cwd.set('/workspace/a')
 
     await Promise.resolve()
-    expect(revealDesktopPane).not.toHaveBeenCalled()
+    expect(mocks.revealDesktopPane).not.toHaveBeenCalled()
 
     owner.set('session-a')
     await pending
 
-    expect(revealDesktopPane).toHaveBeenCalledWith('files')
+    expect(mocks.revealDesktopPane).toHaveBeenCalledWith('files')
   })
 
   it('scopes Changes to the confirmed session cwd', async () => {
@@ -76,7 +76,7 @@ describe('Hermes OS project workspace launcher', () => {
     owner.set('session-a')
     await pending
 
-    expect(revealReview).toHaveBeenCalledWith('/workspace/a', 'main')
+    expect(mocks.revealReview).toHaveBeenCalledWith('/workspace/a', 'main')
   })
 
   it('waits only for primary selection before opening Browser', async () => {
@@ -85,7 +85,7 @@ describe('Hermes OS project workspace launcher', () => {
     selected.set('session-a')
     await pending
 
-    expect(openBrowserTab).toHaveBeenCalledTimes(1)
+    expect(mocks.openBrowserTab).toHaveBeenCalledTimes(1)
     expect(owner.get()).toBeNull()
   })
 
@@ -95,6 +95,6 @@ describe('Hermes OS project workspace launcher', () => {
     resumeFailed.set('session-a')
 
     await expect(pending).rejects.toThrow('Could not resume project session session-a.')
-    expect(revealDesktopPane).not.toHaveBeenCalledWith('terminal')
+    expect(mocks.revealDesktopPane).not.toHaveBeenCalledWith('terminal')
   })
 })
