@@ -236,3 +236,67 @@ def test_telemetry_security_getter_handles_malformed_endpoint(tmp_path, monkeypa
             "destination": "blocked",
         }
     }
+
+
+def test_network_security_getter_is_profile_scoped_sanitized_and_conservative(tmp_path, monkeypatch):
+    launch, worker = _homes(tmp_path)
+
+    launch_cfg = _read_yaml(launch)
+    launch_cfg["mcp_servers"] = {
+        "local-http": {"url": "http://127.0.0.1:7777/private"},
+        "remote-http": {"url": "https://mcp.example.invalid/private"},
+        "stdio": {"command": "python", "args": ["secret-helper.py"]},
+        "off": {"enabled": False, "url": "https://disabled.example.invalid"},
+    }
+    (launch / "config.yaml").write_text(yaml.safe_dump(launch_cfg), encoding="utf-8")
+
+    worker_cfg = _read_yaml(worker)
+    worker_cfg["mcp_servers"] = {
+        "unknown": {},
+    }
+    (worker / "config.yaml").write_text(yaml.safe_dump(worker_cfg), encoding="utf-8")
+
+    _bind_homes(monkeypatch, launch, worker)
+    monkeypatch.setattr(
+        server,
+        "_resolve_agent_model_runtime",
+        lambda _model, _provider: ("provider/model", {
+            "provider": "custom",
+            "base_url": "https://models.example.invalid/v1",
+            "api_key": "TOP-SECRET",
+        }),
+    )
+
+    launch_resp = _get({"key": "network.security"})
+    result = launch_resp["result"]
+    assert result["coverage"] == "partial"
+    assert result["model_provider"]["class"] == "external"
+    assert result["model_provider"]["provider"] == "custom"
+    assert result["mcp"]["configured"] == 4
+    assert result["mcp"]["enabled"] == 3
+    assert result["mcp"]["classes"]["loopback"] == 1
+    assert result["mcp"]["classes"]["external"] == 1
+    assert result["mcp"]["classes"]["process"] == 1
+    assert result["mcp"]["classes"]["disabled"] == 1
+    assert result["mcp"]["subprocess_may_egress"] is True
+    assert result["browser"]["class"] == "unknown"
+    assert result["computer_use"]["class"] == "unknown"
+    assert result["messaging"]["class"] == "unknown"
+
+    rendered = repr(launch_resp)
+    for forbidden in (
+        "127.0.0.1:7777",
+        "mcp.example.invalid",
+        "disabled.example.invalid",
+        "models.example.invalid",
+        "secret-helper.py",
+        "TOP-SECRET",
+    ):
+        assert forbidden not in rendered
+
+    _reset_cfg_cache()
+    worker_resp = _get({"key": "network.security", "profile": "code"})
+    worker_result = worker_resp["result"]
+    assert worker_result["mcp"]["configured"] == 1
+    assert worker_result["mcp"]["classes"]["unknown"] == 1
+    assert "mcp_servers" not in repr(worker_resp)
