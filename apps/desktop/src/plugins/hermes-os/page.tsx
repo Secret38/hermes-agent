@@ -25,7 +25,8 @@ import {
   exactWorkerRoute,
   executionOperationalTasks,
   operationalWorkflowCounts,
-  runningOperationalTasks
+  runningOperationalTasks,
+  uniqueOperationalProjects
 } from './selectors'
 
 export type HermesOsSection =
@@ -623,7 +624,7 @@ function MissionControl() {
                       .filter(project => !project.isNoProject)
                       .map(project => (
                         <SelectItem key={project.id} value={project.id}>
-                          {project.name}
+                          {project.label}
                         </SelectItem>
                       ))}
                   </SelectContent>
