@@ -49,13 +49,19 @@ def _loads(value: str | None) -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {}
 
 
-def _ensure_schema(conn: sqlite3.Connection) -> None:
+def _schema_version(conn: sqlite3.Connection) -> int:
+    row = conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
+    if row is None:
+        return 0
+    try:
+        return int(row["value"] if isinstance(row, sqlite3.Row) else row[0])
+    except (TypeError, ValueError):
+        raise RuntimeError("agent_os.db has an invalid schema_version")
+
+
+def _migration_1(conn: sqlite3.Connection) -> None:
     conn.executescript(
         """
-        CREATE TABLE IF NOT EXISTS meta (
-            key TEXT PRIMARY KEY,
-            value TEXT NOT NULL
-        );
         CREATE TABLE IF NOT EXISTS tasks (
             id TEXT PRIMARY KEY,
             goal TEXT NOT NULL,
@@ -96,6 +102,27 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
             FOREIGN KEY(task_id) REFERENCES tasks(id),
             FOREIGN KEY(parent_action_id) REFERENCES actions(id)
         );
+        CREATE TABLE IF NOT EXISTS events (
+            sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+            id TEXT NOT NULL UNIQUE,
+            task_id TEXT NOT NULL,
+            action_id TEXT,
+            type TEXT NOT NULL,
+            payload_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(task_id) REFERENCES tasks(id),
+            FOREIGN KEY(action_id) REFERENCES actions(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_actions_task ON actions(task_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_events_task_seq ON events(task_id, sequence);
+        CREATE INDEX IF NOT EXISTS idx_events_action_seq ON events(action_id, sequence);
+        """
+    )
+
+
+def _migration_2(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
         CREATE TABLE IF NOT EXISTS agent_instances (
             id TEXT PRIMARY KEY,
             task_id TEXT NOT NULL,
@@ -118,6 +145,15 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
             FOREIGN KEY(task_id) REFERENCES tasks(id),
             FOREIGN KEY(parent_agent_id) REFERENCES agent_instances(id)
         );
+        CREATE INDEX IF NOT EXISTS idx_agents_task ON agent_instances(task_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_agents_state ON agent_instances(state, updated_at);
+        """
+    )
+
+
+def _migration_3(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
         CREATE TABLE IF NOT EXISTS plans (
             id TEXT PRIMARY KEY,
             task_id TEXT NOT NULL,
@@ -150,32 +186,57 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
             FOREIGN KEY(step_id) REFERENCES plan_steps(id) ON DELETE CASCADE,
             FOREIGN KEY(dependency_step_id) REFERENCES plan_steps(id) ON DELETE CASCADE
         );
-        CREATE TABLE IF NOT EXISTS events (
-            sequence INTEGER PRIMARY KEY AUTOINCREMENT,
-            id TEXT NOT NULL UNIQUE,
-            task_id TEXT NOT NULL,
-            action_id TEXT,
-            type TEXT NOT NULL,
-            payload_json TEXT NOT NULL DEFAULT '{}',
-            created_at TEXT NOT NULL,
-            FOREIGN KEY(task_id) REFERENCES tasks(id),
-            FOREIGN KEY(action_id) REFERENCES actions(id)
-        );
-        CREATE INDEX IF NOT EXISTS idx_actions_task ON actions(task_id, created_at);
-        CREATE INDEX IF NOT EXISTS idx_agents_task ON agent_instances(task_id, created_at);
-        CREATE INDEX IF NOT EXISTS idx_agents_state ON agent_instances(state, updated_at);
         CREATE INDEX IF NOT EXISTS idx_plans_task ON plans(task_id, revision);
-        CREATE INDEX IF NOT EXISTS idx_plan_steps_plan_state ON plan_steps(plan_id, state, priority, created_at);
+        CREATE INDEX IF NOT EXISTS idx_plan_steps_plan_state
+            ON plan_steps(plan_id, state, priority, created_at);
         CREATE INDEX IF NOT EXISTS idx_plan_deps_step ON plan_step_dependencies(step_id);
-        CREATE INDEX IF NOT EXISTS idx_events_task_seq ON events(task_id, sequence);
-        CREATE INDEX IF NOT EXISTS idx_events_action_seq ON events(action_id, sequence);
         """
     )
+
+
+_MIGRATIONS = {
+    1: _migration_1,
+    2: _migration_2,
+    3: _migration_3,
+}
+
+
+def _ensure_schema(conn: sqlite3.Connection) -> None:
+    """Upgrade agent_os.db transactionally to the current schema version."""
+
     conn.execute(
-        "INSERT OR REPLACE INTO meta(key, value) VALUES ('schema_version', ?)",
-        (str(SCHEMA_VERSION),),
+        """
+        CREATE TABLE IF NOT EXISTS meta (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+        """
     )
     conn.commit()
+
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        version = _schema_version(conn)
+        if version > SCHEMA_VERSION:
+            raise RuntimeError(
+                f"agent_os.db schema {version} is newer than supported {SCHEMA_VERSION}"
+            )
+
+        while version < SCHEMA_VERSION:
+            target = version + 1
+            migration = _MIGRATIONS.get(target)
+            if migration is None:
+                raise RuntimeError(f"missing Agent OS schema migration {target}")
+            migration(conn)
+            conn.execute(
+                "INSERT OR REPLACE INTO meta(key, value) VALUES ('schema_version', ?)",
+                (str(target),),
+            )
+            version = target
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
 
 
 class AgentOSStore:
