@@ -305,6 +305,7 @@ def decompose_task(
     *,
     author: Optional[str] = None,
     timeout: Optional[int] = None,
+    auto_promote: Optional[bool] = None,
 ) -> DecomposeOutcome:
     """Decompose a triage task into a graph of child tasks. Expected failures
     (not in triage, no aux client, API error, malformed/empty reply) surface
@@ -314,6 +315,10 @@ def decompose_task(
         return DecomposeOutcome(task_id, False, reason)
 
     routing = _load_routing(root_assignee=task.assignee)
+    # A caller such as Hermes OS Mission Control may require a hard human gate
+    # regardless of the board's ambient auto_promote_children setting.
+    if auto_promote is not None:
+        routing.auto_promote = bool(auto_promote)
     raw, reason = _call_aux(
         "decompose", task_id, aux_task="kanban_decomposer", system=_SYSTEM_PROMPT,
         user=_USER_TEMPLATE.format(
