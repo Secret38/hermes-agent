@@ -10,7 +10,6 @@ def test_worker_session_binding_is_scoped_to_current_active_run(tmp_path):
             conn,
             title="worker session binding",
             assignee="default",
-            initial_status="ready",
         )
         claimed = kb.claim_task(conn, task_id)
         assert claimed is not None
