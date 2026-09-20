@@ -126,3 +126,17 @@ def test_waiting_permission_propagates_to_task(tmp_path):
     result = TaskSupervisor(store).reconcile(task.id, plan.id)
 
     assert result.task_state is TaskState.WAITING_FOR_APPROVAL
+
+
+def test_verifying_task_can_reenter_running_for_new_work(tmp_path):
+    store = AgentOSStore(tmp_path / "agent_os.db")
+    task = store.create_task(TaskRecord.create("recovery from verification"))
+    store.transition_task(task.id, TaskState.PLANNING)
+    store.transition_task(task.id, TaskState.READY)
+    store.transition_task(task.id, TaskState.RUNNING)
+    store.transition_task(task.id, TaskState.VERIFYING)
+
+    supervisor = TaskSupervisor(store)
+    moved = supervisor._move_task(TaskState.VERIFYING, task.id, TaskState.RUNNING)
+
+    assert moved.state is TaskState.RUNNING

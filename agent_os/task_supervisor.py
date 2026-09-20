@@ -170,12 +170,28 @@ class TaskSupervisor:
             return self.store.transition_task(task_id, TaskState.COMPLETED)
 
         if target is TaskState.FAILED:
-            if task.state in {TaskState.CREATED, TaskState.READY, TaskState.WAITING_FOR_APPROVAL}:
+            directly_fail = {
+                TaskState.INTERPRETING,
+                TaskState.PLANNING,
+                TaskState.RUNNING,
+                TaskState.VERIFYING,
+                TaskState.RECOVERING,
+                TaskState.BLOCKED,
+            }
+            if task.state not in directly_fail:
                 task = self._move_task(task.state, task_id, TaskState.RUNNING)
             return self.store.transition_task(task_id, TaskState.FAILED)
 
         if target is TaskState.BLOCKED:
-            if task.state not in {TaskState.RUNNING, TaskState.READY}:
+            directly_block = {
+                TaskState.READY,
+                TaskState.RUNNING,
+                TaskState.VERIFYING,
+                TaskState.WAITING_FOR_APPROVAL,
+                TaskState.WAITING_FOR_USER,
+                TaskState.RECOVERING,
+            }
+            if task.state not in directly_block:
                 task = self._move_task(task.state, task_id, TaskState.RUNNING)
             return self.store.transition_task(task_id, TaskState.BLOCKED)
 
@@ -192,5 +208,6 @@ class TaskSupervisor:
             TaskState.WAITING_FOR_USER: (TaskState.RUNNING,),
             TaskState.RECOVERING: (TaskState.RUNNING,),
             TaskState.BLOCKED: (TaskState.RUNNING,),
+            TaskState.VERIFYING: (TaskState.RECOVERING, TaskState.RUNNING),
             TaskState.RUNNING: (),
         }.get(current, ())

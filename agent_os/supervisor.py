@@ -176,6 +176,11 @@ class AgentSupervisor:
         if target == agent.state:
             return agent
 
+        # Never regress a confirmed live agent from RUNNING back to STARTING
+        # because a runtime reported a stale/lagging snapshot.
+        if agent.state is AgentInstanceState.RUNNING and target is AgentInstanceState.STARTING:
+            return agent
+
         if agent.state is AgentInstanceState.ORPHANED and target is AgentInstanceState.RUNNING:
             return self.store.transition_agent(
                 agent.id,

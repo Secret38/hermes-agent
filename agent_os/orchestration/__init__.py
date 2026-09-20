@@ -1,3 +1,10 @@
+"""Agent OS orchestration contracts.
+
+Keep this package initializer import-light: agent_os.store imports
+orchestration.plan, while orchestration.scheduler imports agent_os.store.
+Eagerly importing the scheduler here would therefore create a circular import.
+"""
+
 from .plan import (
     PlanRecord,
     PlanState,
@@ -6,10 +13,8 @@ from .plan import (
     PlanStepKind,
     validate_plan_graph,
 )
-from .scheduler import DurablePlanScheduler
 
 __all__ = [
-    "DurablePlanScheduler",
     "PlanRecord",
     "PlanState",
     "PlanStepKind",

@@ -125,3 +125,15 @@ def test_dead_owner_is_redispatched_with_bounded_budget(tmp_path):
     AgentSupervisor(store, [runtime]).reconcile_active()
     assert store.get_agent(agent.id).restart_count == 1
     assert runtime.launches == 1
+
+
+def test_running_agent_does_not_regress_on_stale_starting_snapshot(tmp_path):
+    store = AgentOSStore(tmp_path / "agent_os.db")
+    agent = make_running_agent(store)
+    runtime = FakeRuntime(
+        snapshot=RuntimeSnapshot(True, AgentInstanceState.STARTING)
+    )
+
+    AgentSupervisor(store, [runtime]).reconcile_active()
+
+    assert store.get_agent(agent.id).state is AgentInstanceState.RUNNING
