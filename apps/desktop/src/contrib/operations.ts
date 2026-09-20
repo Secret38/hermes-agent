@@ -10,6 +10,9 @@ export const OPERATIONS_TASK_SOURCES_AREA = 'operations.taskSources'
 export interface OperationsTaskWarning {
   count: number
   severity?: null | string
+  /** Producer-authored diagnostic kinds with occurrence counts. */
+  kinds?: Readonly<Record<string, number>>
+  latestAt?: null | number
 }
 
 export interface OperationsTask {
