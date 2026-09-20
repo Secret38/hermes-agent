@@ -50,6 +50,8 @@ AGENT_TRANSITIONS: dict[AgentInstanceState, frozenset[AgentInstanceState]] = {
     }),
     AgentInstanceState.ORPHANED: frozenset({
         AgentInstanceState.STARTING,
+        AgentInstanceState.RUNNING,
+        AgentInstanceState.SUCCEEDED,
         AgentInstanceState.FAILED,
         AgentInstanceState.CANCELLED,
     }),

@@ -590,6 +590,51 @@ class AgentOSStore:
         finally:
             conn.close()
 
+    def record_agent_restart_attempt(
+        self,
+        agent_id: str,
+        *,
+        diagnostic: str | None = None,
+    ) -> AgentInstanceRecord:
+        conn = self._connect()
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute("SELECT * FROM agent_instances WHERE id = ?", (agent_id,)).fetchone()
+            if row is None:
+                raise KeyError(f"unknown agent: {agent_id}")
+            restart_count = int(row["restart_count"]) + 1
+            if restart_count > int(row["max_restarts"]):
+                raise RuntimeError(f"agent restart budget exhausted: {agent_id}")
+            now = utc_now_iso()
+            conn.execute(
+                "UPDATE agent_instances SET restart_count = ?, diagnostic = ?, updated_at = ? WHERE id = ?",
+                (restart_count, diagnostic, now, agent_id),
+            )
+            self._insert_event(
+                conn,
+                EventRecord.create(
+                    task_id=row["task_id"],
+                    type=EventType.AGENT_RESTART_ATTEMPTED,
+                    payload={
+                        "agent_id": agent_id,
+                        "restart_count": restart_count,
+                        "max_restarts": int(row["max_restarts"]),
+                    },
+                ),
+            )
+            conn.commit()
+            return replace(
+                self._agent_from_row(row),
+                restart_count=restart_count,
+                diagnostic=diagnostic,
+                updated_at=now,
+            )
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
     def record_agent_reconcile(
         self,
         agent_id: str,

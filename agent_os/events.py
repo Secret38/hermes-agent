@@ -25,6 +25,7 @@ class EventType(StrEnum):
     AGENT_STATE_CHANGED = "agent.state_changed"
     AGENT_HANDLE_BOUND = "agent.handle_bound"
     AGENT_RECONCILED = "agent.reconciled"
+    AGENT_RESTART_ATTEMPTED = "agent.restart_attempted"
     AGENT_RESTARTED = "agent.restarted"
 
 
