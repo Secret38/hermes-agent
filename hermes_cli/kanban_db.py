@@ -1476,6 +1476,20 @@ def create_task(
                 # ACK-edge: the originating channel hears a child BLOCK, not just the fan-in.
                 inherit_creator_origin(conn, task_id, creator_task_id, created_at=now)
                 _inherit_notify_subs(conn, task_id, parents, created_at=now)
+            try:
+                from hermes_cli.operations_audit import append_event
+
+                append_event(
+                    "task.created",
+                    category="execution",
+                    session_id=session_id,
+                    subject="kanban",
+                    outcome=task_status,
+                    task_id=task_id,
+                    project_id=project_id,
+                )
+            except Exception:  # pragma: no cover - best-effort observer
+                _log.debug("kanban task-created audit append failed", exc_info=True)
             return task_id
         except sqlite3.IntegrityError:
             if attempt == 1:
