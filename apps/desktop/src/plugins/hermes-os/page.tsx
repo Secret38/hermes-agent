@@ -10,6 +10,7 @@ import {
   type ExecutionInspectorSelection
 } from './execution-inspector'
 import { useHermesAudit } from './audit-data'
+import { useHermesEstop } from './control-data'
 import { openHumanGateSession, resolveHumanGateApproval, useHumanGates, type HumanGate } from './human-gates'
 import { sourceForSnapshot, useHermesOperations, useLiveFleet } from './operations-data'
 import { ProjectInspector } from './project-inspector'
@@ -437,6 +438,19 @@ function MissionControl() {
   const attention = attentionOperationalTasks(snapshot.snapshots)
   const humanGates = useHumanGates()
   const projects = uniqueOperationalProjects(snapshot.snapshots)
+  const estop = useHermesEstop()
+  const [changingEstop, setChangingEstop] = useState(false)
+
+  const setNewWorkPaused = (engaged: boolean) => {
+    if (changingEstop) {
+      return
+    }
+    setChangingEstop(true)
+    void estop
+      .setEngaged(engaged, engaged ? 'Hermes OS operator emergency stop' : undefined)
+      .catch(error => notifyError(error, engaged ? 'Could not pause new work' : 'Could not resume new work'))
+      .finally(() => setChangingEstop(false))
+  }
 
   return (
     <div className="space-y-6">
@@ -446,6 +460,53 @@ function MissionControl() {
           <Metric label="Active runs" value={String(snapshot.activeRuns)} />
           <Metric label="Needs attention" value={String(humanGates.length + attention.length)} />
           <Metric label="Projects" value={snapshot.sources.length ? String(projects.length) : '—'} />
+        </div>
+      </section>
+
+      <section>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-sm font-semibold text-(--ui-text-primary)">Operator control</h2>
+            <p className="mt-1 max-w-3xl text-xs leading-relaxed text-(--ui-text-tertiary)">
+              Backend-global emergency stop for NEW work. It gates new gateway turns, cron fires, and Kanban dispatch;
+              work already in flight is intentionally not killed. Individual running sessions are stopped separately.
+            </p>
+          </div>
+          {estop.data?.engaged ? (
+            <Button
+              disabled={changingEstop}
+              loading={changingEstop}
+              onClick={() => setNewWorkPaused(false)}
+              size="sm"
+              type="button"
+              variant="secondary"
+            >
+              Resume new work
+            </Button>
+          ) : (
+            <Button
+              disabled={changingEstop || estop.isError}
+              loading={changingEstop}
+              onClick={() => setNewWorkPaused(true)}
+              size="sm"
+              type="button"
+              variant="secondary"
+            >
+              Pause new work
+            </Button>
+          )}
+        </div>
+        <div className="mt-2 divide-y divide-(--ui-stroke-tertiary)">
+          <FoundationRow
+            detail={
+              estop.data?.engaged
+                ? estop.data.reason || 'Hermes native emergency stop is engaged.'
+                : 'Hermes native emergency stop is clear.'
+            }
+            icon={estop.data?.engaged ? 'debug-pause' : 'play'}
+            label="New-work gate"
+            state={estop.isError ? 'UNAVAILABLE' : estop.data?.engaged ? 'PAUSED' : estop.isLoading ? 'LOADING' : 'OPEN'}
+          />
         </div>
       </section>
 
