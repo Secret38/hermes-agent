@@ -430,6 +430,19 @@ export const shapeMissionTaskInScope = (id: string, scopeKey?: null | string) =>
     body: { auto_promote: false }
   })
 
+export const approveMissionPlanInScope = (id: string, scopeKey?: null | string) =>
+  nudged(
+    call<{
+      ok: boolean
+      task_id: string
+      promoted_ids: string[]
+      held_ids: string[]
+    }>(withBoardScope(`/tasks/${id}/approve-plan`, scopeKey), {
+      method: 'POST',
+      body: { actor: 'hermes-os' }
+    })
+  )
+
 /** Mission Control intake always lands in triage; source owns board scoping. */
 export function toMissionCaptureTaskBody(input: OperationsCaptureInput): Record<string, unknown> {
   const title = input.title.trim()
