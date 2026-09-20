@@ -1,25 +1,27 @@
-import { useStore } from '@nanostores/react'
-
-import { $approvalModes, type ApprovalMode } from '@/store/approval-mode'
-import { $clarifyRequests, type ClarifyRequest } from '@/store/clarify'
-import { $gateway } from '@/store/gateway'
 import {
+  $approvalModes,
   $approvalRequestQueues,
+  $clarifyRequests,
   $secretRequests,
   $sudoRequests,
   $vaultCodeRequests,
   $vaultSaveLoginRequests,
   $vaultUnlockRequests,
   type ApprovalChoice,
+  type ApprovalMode,
   type ApprovalRequest,
+  type ClarifyRequest,
+  host,
+  knownSessionProfile,
+  ownerLookupSessionRows,
+  resolveApprovalRequest,
   type SecretRequest,
   type SudoRequest,
   type VaultCodeRequest,
   type VaultSaveLoginRequest,
-  type VaultUnlockRequest,
-  resolveApprovalRequest
-} from '@/store/prompts'
-import { knownSessionProfile, ownerLookupSessionRows, sessionMatchesStoredId } from '@/store/session'
+  type VaultUnlockRequest
+} from '@hermes/plugin-sdk'
+import { useStore } from '@nanostores/react'
 
 import { openHermesSession, storedHermesSessionId } from './session-navigation'
 
@@ -103,7 +105,7 @@ export async function resolveHumanGateApproval(
     return false
   }
 
-  const gateway = $gateway.get()
+  const gateway = host.getGateway()
 
   if (!gateway) {
     throw new Error('Hermes gateway is not connected')
