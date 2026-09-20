@@ -18,16 +18,23 @@ jobs:
   python:
     name: Full Python
     uses: ./.github/workflows/tests.yml
+    with:
+      runner: ubuntu-latest
+      workers: '8'
 
   js:
     name: Full JS and TS
     uses: ./.github/workflows/js-tests.yml
+    with:
+      runner: ubuntu-latest
 
   os-tests:
     name: Native OS tests
     uses: ./.github/workflows/tests-os.yml
     with:
       desktop_updater: true
+      macos_runner: macos-latest
+      windows_runner: windows-latest
 
   installer:
     name: Windows installer contracts
@@ -36,6 +43,8 @@ jobs:
   desktop-e2e:
     name: Electron E2E
     uses: ./.github/workflows/e2e-desktop.yml
+    with:
+      runner: ubuntu-latest
 
   windows-dist:
     name: Windows V1 distribution
