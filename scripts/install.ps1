@@ -381,19 +381,30 @@ $script:ResolvedPathReport = @{
     temp              = $env:TEMP
     hermes_home       = $HermesHome
     install_dir       = $InstallDir
+    repo_url          = $RepoUrl
 }
 
 # ============================================================================
 # Configuration
 # ============================================================================
 
-$RepoUrlHttps = ($RepoUrl or "").Trim()
+# Resolve the repository source before the machine-readable path report so
+# support tooling and release tests can prove which distribution a fresh install
+# will clone. The generic installer defaults to upstream Hermes; Hermes OS passes
+# its fork URL explicitly.
+$RepoUrlHttps = ([string]$RepoUrl).Trim()
 if (-not $RepoUrlHttps) {
     throw "RepoUrl must not be empty"
 }
 $RepoUrlSsh = ""
 $script:RepoGithubSlug = ""
-if ($RepoUrlHttps -match '^https://github\.com/([^/]+)/([^/]+?)(?:\.git)?/?
+if ($RepoUrlHttps -match '^https://github\.com/([^/]+)/([^/]+?)(?:\.git)?/?$') {
+    $owner = $Matches[1]
+    $name = $Matches[2]
+    $RepoUrlSsh = "git@github.com:$owner/$name.git"
+    $script:RepoGithubSlug = "$owner/$name"
+}
+$PythonVersion = "3.11"
 # Minor versions the installer accepts when the requested $PythonVersion isn't
 # available, in preference order. Only checkout-private uv-managed interpreters
 # are eligible. Single source of truth shared by Test-Python's fallback and
