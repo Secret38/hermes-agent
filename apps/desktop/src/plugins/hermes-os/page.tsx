@@ -1,4 +1,4 @@
-import { Button, Codicon, host, type OperationsTask, type OperationsTaskSnapshot, type OperationsTaskSource, type PluginProfileRoute } from '@hermes/plugin-sdk'
+import { Button, Codicon, host, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea, type OperationsCaptureResult, type OperationsTask, type OperationsTaskSnapshot, type OperationsTaskSource, type PluginProfileRoute } from '@hermes/plugin-sdk'
 import { useStore } from '@nanostores/react'
 import { type ReactNode, useState } from 'react'
 
@@ -11,6 +11,7 @@ import {
 } from './execution-inspector'
 import { useHermesAudit } from './audit-data'
 import { useAutomationSummary } from './automation-data'
+import { useMissionCaptureSources } from './capture-data'
 import { useHermesEstop } from './control-data'
 import { openHumanGateSession, resolveHumanGateApproval, useHumanGates, type HumanGate } from './human-gates'
 import { sourceForSnapshot, useHermesOperations, useLiveFleet } from './operations-data'
@@ -486,8 +487,39 @@ function MissionControl() {
   const humanGates = useHumanGates()
   const automations = useAutomationSummary()
   const projects = uniqueOperationalProjects(snapshot.snapshots)
+  const hermesProjects = useHermesProjects()
+  const captureSources = useMissionCaptureSources()
+  const captureSource = captureSources[0]
   const estop = useHermesEstop()
   const [changingEstop, setChangingEstop] = useState(false)
+  const [captureTitle, setCaptureTitle] = useState('')
+  const [captureBody, setCaptureBody] = useState('')
+  const [captureProjectId, setCaptureProjectId] = useState<string>('none')
+  const [capturing, setCapturing] = useState(false)
+  const [captured, setCaptured] = useState<OperationsCaptureResult | null>(null)
+
+  const captureMission = () => {
+    const title = captureTitle.trim()
+    if (!captureSource || !title || capturing) {
+      return
+    }
+
+    setCapturing(true)
+    setCaptured(null)
+    void captureSource
+      .capture({
+        title,
+        body: captureBody.trim() || undefined,
+        projectId: captureProjectId === 'none' ? undefined : captureProjectId
+      })
+      .then(result => {
+        setCaptured(result)
+        setCaptureTitle('')
+        setCaptureBody('')
+      })
+      .catch(error => notifyError(error, 'Could not capture mission'))
+      .finally(() => setCapturing(false))
+  }
 
   const setNewWorkPaused = (engaged: boolean) => {
     if (changingEstop) {
@@ -512,6 +544,89 @@ function MissionControl() {
           />
           <Metric label="Projects" value={snapshot.sources.length ? String(projects.length) : '—'} />
         </div>
+      </section>
+
+      <section>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-sm font-semibold text-(--ui-text-primary)">Capture mission</h2>
+            <p className="mt-1 max-w-3xl text-xs leading-relaxed text-(--ui-text-tertiary)">
+              Capture creates a producer-owned triage item only. Nothing executes until Kanban has shaped and promoted
+              the work through its canonical workflow.
+            </p>
+          </div>
+          <span className="font-mono text-[0.6875rem] text-(--ui-text-tertiary)">
+            {captureSource ? captureSource.label.toUpperCase() : 'NO INBOX'}
+          </span>
+        </div>
+
+        {captureSource ? (
+          <div className="mt-3 space-y-3">
+            <Input
+              aria-label="Mission title"
+              onChange={event => setCaptureTitle(event.target.value)}
+              placeholder="What should Hermes OS accomplish?"
+              value={captureTitle}
+            />
+            <Textarea
+              aria-label="Mission description"
+              onChange={event => setCaptureBody(event.target.value)}
+              placeholder="Outcome, constraints, acceptance criteria, context…"
+              rows={4}
+              value={captureBody}
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="min-w-56 flex-1">
+                <Select onValueChange={setCaptureProjectId} value={captureProjectId}>
+                  <SelectTrigger aria-label="Mission project">
+                    <SelectValue placeholder="No explicit project" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No explicit project</SelectItem>
+                    {hermesProjects.projects
+                      .filter(project => !project.isNoProject)
+                      .map(project => (
+                        <SelectItem key={project.id} value={project.id}>
+                          {project.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                disabled={capturing || !captureTitle.trim()}
+                loading={capturing}
+                onClick={captureMission}
+                size="sm"
+                type="button"
+              >
+                Capture to triage
+              </Button>
+            </div>
+            {captured ? (
+              <div className="flex items-center justify-between gap-3 border-t border-(--ui-stroke-tertiary) pt-3">
+                <div className="min-w-0 text-xs text-(--ui-text-tertiary)">
+                  Captured <span className="font-mono">{captured.taskId}</span> · {captured.status.toUpperCase()}
+                  {captured.warning ? ` · ${captured.warning}` : ''}
+                </div>
+                {captureSource.openCapturedTask ? (
+                  <Button
+                    onClick={() => captureSource.openCapturedTask?.(captured.taskId)}
+                    size="inline"
+                    type="button"
+                    variant="text"
+                  >
+                    Open task
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <p className="mt-3 text-xs text-(--ui-text-tertiary)">
+            No producer has registered a mission inbox. Enable Kanban to capture work from Mission Control.
+          </p>
+        )}
       </section>
 
       <section>
