@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from hermes_cli import kanban_db as kb
-from hermes_cli.kanban_db_graph import decompose_triage_task
+from hermes_cli.kanban_db_graph import approve_decomposed_plan, decompose_triage_task
 from hermes_cli import kanban_db_connect as kbc
 
 
@@ -92,3 +92,49 @@ def test_decompose_records_audit_comment_and_event(kanban_home):
 
 
 
+
+
+def test_plan_approval_promotes_only_dependency_free_children(kanban_home):
+    with kbc.connect() as conn:
+        root_id = _create_triage(conn, title="human gated plan")
+        child_ids = decompose_triage_task(
+            conn,
+            root_id,
+            root_assignee="orchestrator",
+            children=[
+                {"title": "research", "assignee": "researcher", "parents": []},
+                {"title": "build", "assignee": "engineer", "parents": [0]},
+            ],
+            author="planner",
+            auto_promote=False,
+        )
+        assert child_ids is not None
+        assert [kb.get_task(conn, child_id).status for child_id in child_ids] == ["todo", "todo"]
+
+        ok, promoted, held, reason = approve_decomposed_plan(
+            conn, root_id, actor="hermes-os"
+        )
+
+        assert ok, reason
+        assert promoted == [child_ids[0]]
+        assert held == [child_ids[1]]
+        assert kb.get_task(conn, child_ids[0]).status == "ready"
+        assert kb.get_task(conn, child_ids[1]).status == "todo"
+        assert kb.get_task(conn, root_id).status == "todo"
+
+
+def test_plan_approval_promotes_single_specified_task(kanban_home):
+    with kbc.connect() as conn:
+        root_id = _create_triage(conn, title="single")
+        assert kb.specify_triage_task(
+            conn, root_id, title="specified", body="do one thing", author="planner"
+        )
+
+        ok, promoted, held, reason = approve_decomposed_plan(
+            conn, root_id, actor="hermes-os"
+        )
+
+        assert ok, reason
+        assert promoted == [root_id]
+        assert held == []
+        assert kb.get_task(conn, root_id).status == "ready"
