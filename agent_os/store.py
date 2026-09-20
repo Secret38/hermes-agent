@@ -8,7 +8,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from hermes_cli.sqlite_util import open_db
+from hermes_cli.sqlite_util import add_column_if_missing, open_db
 from hermes_constants import get_hermes_home
 
 from .agents.records import (
@@ -31,7 +31,7 @@ from .orchestration.plan import (
 )
 from .states import ActionState, TaskState, validate_action_transition, validate_task_transition
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 def default_db_path() -> Path:
@@ -194,10 +194,23 @@ def _migration_3(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migration_4(conn: sqlite3.Connection) -> None:
+    add_column_if_missing(
+        conn,
+        "plan_steps",
+        "execution_id",
+        "execution_id TEXT",
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_plan_steps_execution ON plan_steps(execution_id)"
+    )
+
+
 _MIGRATIONS = {
     1: _migration_1,
     2: _migration_2,
     3: _migration_3,
+    4: _migration_4,
 }
 
 
@@ -552,12 +565,12 @@ class AgentOSStore:
                 conn.execute(
                     """INSERT INTO plan_steps(
                         id, plan_id, task_id, title, kind, state, spec_json,
-                        priority, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        execution_id, priority, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         step.id, step.plan_id, step.task_id, step.title, step.kind.value,
-                        step.state.value, _json(step.spec), step.priority,
-                        step.created_at, step.updated_at,
+                        step.state.value, _json(step.spec), step.execution_id,
+                        step.priority, step.created_at, step.updated_at,
                     ),
                 )
                 self._insert_event(
@@ -603,6 +616,14 @@ class AgentOSStore:
         finally:
             conn.close()
 
+    def get_plan_step(self, step_id: str) -> PlanStepRecord | None:
+        conn = self._connect()
+        try:
+            row = conn.execute("SELECT * FROM plan_steps WHERE id = ?", (step_id,)).fetchone()
+            return None if row is None else self._plan_step_from_row(row)
+        finally:
+            conn.close()
+
     def list_plan_steps(self, plan_id: str) -> list[PlanStepRecord]:
         conn = self._connect()
         try:
@@ -635,6 +656,67 @@ class AgentOSStore:
             )
             conn.commit()
             return replace(self._plan_from_row(row), state=target, updated_at=now)
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def bind_plan_step_execution(self, step_id: str, execution_id: str) -> PlanStepRecord:
+        if not execution_id.strip():
+            raise ValueError("execution_id must not be empty")
+        conn = self._connect()
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute("SELECT * FROM plan_steps WHERE id = ?", (step_id,)).fetchone()
+            if row is None:
+                raise KeyError(f"unknown plan step: {step_id}")
+            if PlanStepState(row["state"]) is not PlanStepState.RUNNING:
+                raise RuntimeError("plan step must be RUNNING before execution can be bound")
+
+            kind = PlanStepKind(row["kind"])
+            if kind in {PlanStepKind.ACTION, PlanStepKind.VERIFICATION}:
+                target = conn.execute(
+                    "SELECT task_id FROM actions WHERE id = ?",
+                    (execution_id,),
+                ).fetchone()
+            elif kind is PlanStepKind.AGENT:
+                target = conn.execute(
+                    "SELECT task_id FROM agent_instances WHERE id = ?",
+                    (execution_id,),
+                ).fetchone()
+            else:
+                raise RuntimeError("manual plan steps cannot bind an automatic execution")
+
+            if target is None:
+                raise KeyError(f"unknown execution target: {execution_id}")
+            if target["task_id"] != row["task_id"]:
+                raise ValueError("execution target belongs to a different task")
+
+            now = utc_now_iso()
+            conn.execute(
+                "UPDATE plan_steps SET execution_id = ?, updated_at = ? WHERE id = ?",
+                (execution_id, now, step_id),
+            )
+            self._insert_event(
+                conn,
+                EventRecord.create(
+                    task_id=row["task_id"],
+                    type=EventType.PLAN_STEP_BOUND,
+                    payload={
+                        "plan_id": row["plan_id"],
+                        "step_id": step_id,
+                        "kind": kind.value,
+                        "execution_id": execution_id,
+                    },
+                ),
+            )
+            conn.commit()
+            return replace(
+                self._plan_step_from_row(row),
+                execution_id=execution_id,
+                updated_at=now,
+            )
         except Exception:
             conn.rollback()
             raise
@@ -1147,6 +1229,7 @@ class AgentOSStore:
             kind=PlanStepKind(row["kind"]),
             state=PlanStepState(row["state"]),
             spec=_loads(row["spec_json"]),
+            execution_id=row["execution_id"],
             priority=int(row["priority"]),
             created_at=row["created_at"],
             updated_at=row["updated_at"],

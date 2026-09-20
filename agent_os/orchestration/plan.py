@@ -42,6 +42,7 @@ class PlanStepState(StrEnum):
 class PlanStepKind(StrEnum):
     ACTION = "ACTION"
     AGENT = "AGENT"
+    VERIFICATION = "VERIFICATION"
     MANUAL = "MANUAL"
 
 
@@ -129,6 +130,7 @@ class PlanStepRecord:
     kind: PlanStepKind
     state: PlanStepState = PlanStepState.PENDING
     spec: dict[str, Any] = field(default_factory=dict)
+    execution_id: str | None = None
     priority: int = 0
     created_at: str = field(default_factory=utc_now_iso)
     updated_at: str = field(default_factory=utc_now_iso)
@@ -142,6 +144,7 @@ class PlanStepRecord:
         title: str,
         kind: PlanStepKind,
         spec: dict[str, Any] | None = None,
+        execution_id: str | None = None,
         priority: int = 0,
     ) -> "PlanStepRecord":
         if not plan_id.strip():
@@ -157,6 +160,7 @@ class PlanStepRecord:
             title=title.strip(),
             kind=kind,
             spec=dict(spec or {}),
+            execution_id=execution_id,
             priority=int(priority),
         )
 

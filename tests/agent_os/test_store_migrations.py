@@ -141,3 +141,36 @@ def test_fresh_database_reaches_current_version(tmp_path):
     finally:
         conn.close()
     assert version == str(SCHEMA_VERSION)
+
+
+def test_v3_database_adds_execution_binding_column(tmp_path):
+    path = tmp_path / "agent_os.db"
+    store = AgentOSStore(path)
+    task = store.create_task(TaskRecord.create("migrate binding"))
+
+    conn = sqlite3.connect(path)
+    try:
+        conn.execute(
+            "UPDATE meta SET value = '3' WHERE key = 'schema_version'"
+        )
+        conn.execute("DROP INDEX IF EXISTS idx_plan_steps_execution")
+        conn.commit()
+    finally:
+        conn.close()
+
+    upgraded = AgentOSStore(path)
+    assert upgraded.get_task(task.id) is not None
+
+    conn = sqlite3.connect(path)
+    try:
+        columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(plan_steps)").fetchall()
+        }
+        version = conn.execute(
+            "SELECT value FROM meta WHERE key='schema_version'"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+
+    assert "execution_id" in columns
+    assert version == str(SCHEMA_VERSION)

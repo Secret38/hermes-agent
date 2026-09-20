@@ -31,6 +31,7 @@ class EventType(StrEnum):
     PLAN_STATE_CHANGED = "plan.state_changed"
     PLAN_STEP_CREATED = "plan_step.created"
     PLAN_STEP_STATE_CHANGED = "plan_step.state_changed"
+    PLAN_STEP_BOUND = "plan_step.bound"
 
 
 @dataclass(frozen=True, slots=True)
