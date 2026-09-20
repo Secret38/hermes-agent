@@ -3832,6 +3832,7 @@ def invalidate_descendants_for_parent_reopen(
 def specify_triage_task(
     conn: sqlite3.Connection, task_id: str, *, title: Optional[str] = None,
     body: Optional[str] = None, assignee: Optional[str] = None, author: Optional[str] = None,
+    auto_promote_ready: bool = True,
 ) -> bool:
     """Update title/body/assignee (when given) and move ``triage -> todo`` in one
     txn; False when not in triage. Lands in ``todo`` (not ``ready``) so parent
@@ -3880,9 +3881,11 @@ def specify_triage_task(
             conn, task_id, "specified",
             {"changed_fields": changed_fields} if changed_fields else None,
         )
-    # Own IMMEDIATE txn (outside the one above): a parent-free specified task
-    # flips to 'ready' now instead of idling until the next tick.
-    recompute_ready(conn)
+    # Own IMMEDIATE txn (outside the one above): ordinary specification wakes
+    # a parent-free task immediately. Mission Control can explicitly keep the
+    # specified task parked in todo until a human approves execution.
+    if auto_promote_ready:
+        recompute_ready(conn)
     return True
 
 
