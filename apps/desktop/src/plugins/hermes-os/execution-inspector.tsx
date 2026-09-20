@@ -5,6 +5,7 @@ import {
   type OperationsTask,
   type OperationsTaskSnapshot,
   type OperationsTaskSource,
+  host,
   type PluginProfileRoute,
   useQuery
 } from '@hermes/plugin-sdk'
@@ -24,6 +25,28 @@ export interface ExecutionInspectorSelection {
   snapshot: OperationsTaskSnapshot
   source: OperationsTaskSource
   task: OperationsTask
+}
+
+
+interface VerificationEvidence {
+  canonical_command?: null | string
+  command?: null | string
+  created_at?: null | string
+  exit_code?: null | number
+  kind?: null | string
+  output_summary?: null | string
+  scope?: null | string
+  status?: null | string
+}
+
+interface VerificationStatusResult {
+  verification: {
+    status: string
+    evidence?: null | VerificationEvidence
+    changed_paths?: null | string[]
+    root?: null | string
+    session_id?: null | string
+  }
 }
 
 export function formatRunDuration(
@@ -230,6 +253,34 @@ function InspectorBody({
     staleTime: 1_500
   })
 
+  const latestRun = execution.data?.runs.length
+    ? execution.data.runs[execution.data.runs.length - 1]
+    : undefined
+  const verificationProfile = latestRun?.profile || task.assignee || snapshot.profile
+  const verificationRoute = exactOperationsRoute(snapshot.connectionId, verificationProfile, routes)
+  const verificationSessionId = latestRun?.workerSessionId || task.workerSessionId || task.originSessionId
+  const verificationCwd = execution.data?.workspacePath
+
+  const verification = useQuery({
+    enabled: Boolean(execution.data && verificationRoute && (verificationSessionId || verificationCwd)),
+    queryFn: () =>
+      host.requestProfile<VerificationStatusResult>(verificationRoute!, 'verification.status', {
+        ...(verificationSessionId ? { session_id: verificationSessionId } : {}),
+        ...(verificationCwd ? { cwd: verificationCwd } : {})
+      }),
+    queryKey: [
+      'hermes-os',
+      'verification',
+      snapshot.connectionId,
+      verificationProfile,
+      verificationSessionId,
+      verificationCwd
+    ],
+    refetchOnWindowFocus: true,
+    retry: false,
+    staleTime: 5_000
+  })
+
   return (
     <>
       <SheetHeader className="border-b border-(--ui-stroke-tertiary) pr-10">
@@ -290,6 +341,72 @@ function InspectorBody({
                 ) : null}
               </section>
             )}
+
+            <section className="border-t border-(--ui-stroke-tertiary) py-3">
+              <div className="flex items-baseline justify-between gap-3">
+                <h3 className="text-xs font-semibold text-(--ui-text-primary)">Verification evidence</h3>
+                <span className="font-mono text-[0.625rem] text-(--ui-text-tertiary)">
+                  {!verificationRoute
+                    ? 'ROUTE UNKNOWN'
+                    : verification.isError
+                      ? 'UNAVAILABLE'
+                      : verification.data?.verification.status?.toUpperCase() || 'READING'}
+                </span>
+              </div>
+              <p className="mt-1 text-[0.6875rem] leading-relaxed text-(--ui-text-tertiary)">
+                Hermes verification evidence, not a synthetic quality score. A completed task can still be unverified or
+                stale.
+              </p>
+              {!verificationRoute ? (
+                <p className="mt-2 text-xs text-(--ui-text-tertiary)">
+                  Verification is omitted because no unique owner route can be proven for this task/run.
+                </p>
+              ) : verification.isError ? (
+                <p className="mt-2 text-xs text-(--ui-text-tertiary)">
+                  This backend could not provide verification evidence for the resolved session/workspace.
+                </p>
+              ) : verification.data ? (
+                <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2">
+                  <Meta label="Status" value={verification.data.verification.status.toUpperCase()} />
+                  <Meta
+                    label="Evidence type"
+                    value={verification.data.verification.evidence?.kind || 'no recorded verification command'}
+                  />
+                  <Meta
+                    label="Command"
+                    value={
+                      verification.data.verification.evidence?.canonical_command ||
+                      verification.data.verification.evidence?.command ||
+                      '—'
+                    }
+                  />
+                  <Meta
+                    label="Exit"
+                    value={
+                      verification.data.verification.evidence?.exit_code == null
+                        ? '—'
+                        : String(verification.data.verification.evidence.exit_code)
+                    }
+                  />
+                  {verification.data.verification.changed_paths?.length ? (
+                    <Meta
+                      label="Changed since verification"
+                      value={String(verification.data.verification.changed_paths.length)}
+                    />
+                  ) : null}
+                  {verification.data.verification.evidence?.created_at ? (
+                    <Meta label="Recorded" value={verification.data.verification.evidence.created_at} />
+                  ) : null}
+                </div>
+              ) : (
+                <p className="mt-2 text-xs text-(--ui-text-tertiary)">Reading verification evidence…</p>
+              )}
+              {verification.data?.verification.evidence?.output_summary ? (
+                <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap rounded bg-(--ui-bg-secondary) p-2 text-[0.6875rem] text-(--ui-text-secondary)">
+                  {verification.data.verification.evidence.output_summary}
+                </pre>
+              ) : null}
+            </section>
 
             <section className="border-t border-(--ui-stroke-tertiary) py-3">
               <div className="flex items-baseline justify-between gap-3">
