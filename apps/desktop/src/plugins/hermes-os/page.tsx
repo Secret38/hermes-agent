@@ -13,7 +13,7 @@ import { openHumanGateSession, resolveHumanGateApproval, useHumanGates, type Hum
 import { sourceForSnapshot, useHermesOperations, useLiveFleet } from './operations-data'
 import { ProjectInspector } from './project-inspector'
 import { useHermesProjects } from './project-data'
-import { useComputerUseSecurity } from './security-data'
+import { useComputerUseSecurity, useNetworkSecurity, useTelemetrySecurity } from './security-data'
 import { openHermesSession, storedHermesSessionId } from './session-navigation'
 import {
   activeRunIds,
@@ -862,6 +862,7 @@ function SecurityPage() {
   const approvalModes = useStore($approvalModes)
   const computerUse = useComputerUseSecurity()
   const telemetry = useTelemetrySecurity()
+  const network = useNetworkSecurity()
   const approvals = humanGates.filter(gate => gate.kind === 'approval')
   const profiles = new Set([
     snapshot.profile || 'default',
@@ -953,6 +954,80 @@ function SecurityPage() {
           </div>
         ) : (
           <p className="mt-2 text-xs text-(--ui-text-tertiary)">Reading Hermes telemetry configuration…</p>
+        )}
+      </section>
+
+      <section>
+        <div className="flex items-baseline justify-between gap-4">
+          <h3 className="text-sm font-semibold text-(--ui-text-primary)">Outbound network inventory</h3>
+          <span className="font-mono text-[0.6875rem] text-(--ui-text-tertiary)">
+            {network.data ? 'PARTIAL / PROVEN' : network.isError ? 'UNAVAILABLE' : 'LOADING'}
+          </span>
+        </div>
+        <p className="mt-1 max-w-3xl text-xs leading-relaxed text-(--ui-text-tertiary)">
+          Sanitized profile-scoped classification only. EXTERNAL means a configured route can leave the machine;
+          LOOPBACK means a configured HTTP route resolves locally; PROCESS means Hermes starts a subprocess whose own
+          network behavior is not proven. UNKNOWN is intentionally not treated as offline.
+        </p>
+        {network.isError ? (
+          <p className="mt-2 text-xs text-(--ui-text-tertiary)">
+            This backend does not expose the narrow outbound-network summary.
+          </p>
+        ) : network.data ? (
+          <div className="mt-2 divide-y divide-(--ui-stroke-tertiary)">
+            <FoundationRow
+              detail={`Effective startup route for provider ${network.data.model_provider.provider}; fallback routes may differ after provider failure.`}
+              icon="symbol-method"
+              label="Model provider"
+              state={network.data.model_provider.class.toUpperCase()}
+            />
+            <FoundationRow
+              detail={`${network.data.mcp.enabled}/${network.data.mcp.configured} MCP server(s) enabled · external ${network.data.mcp.classes.external} · loopback ${network.data.mcp.classes.loopback} · process ${network.data.mcp.classes.process} · unknown ${network.data.mcp.classes.unknown}${network.data.mcp.subprocess_may_egress ? ' · subprocesses may still egress' : ''}`}
+              icon="plug"
+              label="MCP"
+              state={
+                network.data.mcp.classes.external > 0
+                  ? 'EXTERNAL'
+                  : network.data.mcp.classes.unknown > 0 || network.data.mcp.classes.process > 0
+                    ? 'MIXED / UNKNOWN'
+                    : network.data.mcp.classes.loopback > 0
+                      ? 'LOOPBACK'
+                      : 'DISABLED'
+              }
+            />
+            <FoundationRow
+              detail="User-directed browser destinations are dynamic and are not inferred from configuration."
+              icon="browser"
+              label="Browser"
+              state={network.data.browser.class.toUpperCase()}
+            />
+            <FoundationRow
+              detail="Computer Use can drive applications with independent network behavior; Hermes cannot honestly classify that egress here."
+              icon="remote-explorer"
+              label="Computer Use applications"
+              state={network.data.computer_use.class.toUpperCase()}
+            />
+            <FoundationRow
+              detail="Messaging transport can be supplied by adapters/plugins; no narrow aggregate runtime authority exists yet."
+              icon="comment-discussion"
+              label="Messaging"
+              state={network.data.messaging.class.toUpperCase()}
+            />
+            <FoundationRow
+              detail="Hermes update checks/downloads are an explicit on-demand external network surface."
+              icon="cloud-download"
+              label="Updates"
+              state={network.data.updates.class.toUpperCase()}
+            />
+            <FoundationRow
+              detail="Same shared-metrics authority shown above; included here only to complete the egress inventory."
+              icon="broadcast"
+              label="Hermes telemetry"
+              state={network.data.telemetry.class.toUpperCase()}
+            />
+          </div>
+        ) : (
+          <p className="mt-2 text-xs text-(--ui-text-tertiary)">Classifying configured outbound surfaces…</p>
         )}
       </section>
 
