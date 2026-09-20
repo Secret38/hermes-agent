@@ -15,6 +15,7 @@ import {
   knownSessionProfile,
   ownerLookupSessionRows,
   resolveApprovalRequest,
+  sessionMatchesStoredId,
   type SecretRequest,
   type SudoRequest,
   type VaultCodeRequest,
