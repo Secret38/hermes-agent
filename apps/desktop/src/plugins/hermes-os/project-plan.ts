@@ -1,5 +1,4 @@
-import type { SessionInfo } from '@/hermes'
-import type { SessionGoal } from '@/store/goals'
+import type { SessionGoal, SessionInfo } from '@hermes/plugin-sdk'
 
 import { storedHermesSessionId } from './session-navigation'
 
