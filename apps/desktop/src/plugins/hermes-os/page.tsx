@@ -24,6 +24,7 @@ import {
   attentionOperationalTasks,
   exactWorkerRoute,
   executionOperationalTasks,
+  operationalWorkflowCounts,
   runningOperationalTasks
 } from './selectors'
 
@@ -483,6 +484,7 @@ function NoTaskSource() {
 function MissionControl() {
   const snapshot = useHermesOperations()
   const runningTasks = runningOperationalTasks(snapshot.snapshots)
+  const workflow = operationalWorkflowCounts(snapshot.snapshots)
   const attention = attentionOperationalTasks(snapshot.snapshots)
   const humanGates = useHumanGates()
   const automations = useAutomationSummary()
@@ -717,6 +719,31 @@ function MissionControl() {
             No producer has registered a mission inbox. Enable Kanban to capture work from Mission Control.
           </p>
         )}
+      </section>
+
+      <section>
+        <div className="flex items-baseline justify-between gap-4">
+          <div>
+            <h2 className="text-sm font-semibold text-(--ui-text-primary)">Canonical workflow state</h2>
+            <p className="mt-1 max-w-3xl text-xs leading-relaxed text-(--ui-text-tertiary)">
+              These are exact producer-authored Kanban states, not inferred mission stages. They survive renderer restarts
+              because Hermes OS reads them back from the task authority.
+            </p>
+          </div>
+          <Button onClick={() => host.navigate('/kanban')} size="inline" type="button" variant="text">
+            Open board
+          </Button>
+        </div>
+        <div className="mt-2 grid grid-cols-2 gap-x-6 border-y border-(--ui-stroke-tertiary) sm:grid-cols-4 lg:grid-cols-8">
+          <Metric label="Triage" value={String(workflow.triage)} />
+          <Metric label="Todo" value={String(workflow.todo)} />
+          <Metric label="Scheduled" value={String(workflow.scheduled)} />
+          <Metric label="Ready" value={String(workflow.ready)} />
+          <Metric label="Running" value={String(workflow.running)} />
+          <Metric label="Blocked" value={String(workflow.blocked)} />
+          <Metric label="Review" value={String(workflow.review)} />
+          <Metric label="Done" value={String(workflow.done)} />
+        </div>
       </section>
 
       <section>
