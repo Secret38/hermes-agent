@@ -19,9 +19,12 @@ def test_server_request_audit_never_receives_prompt_payload(monkeypatch):
         "session-secret",
         "secret",
         {
+            "env_var": "API_TOKEN",
             "prompt": "DO-NOT-PERSIST",
-            "secret": "TOP-SECRET",
-            "verification_code": "123456",
+            "metadata": {
+                "secret": "TOP-SECRET",
+                "verification_code": "123456",
+            },
         },
     )
 
@@ -71,9 +74,8 @@ def test_approval_audit_records_only_choice_not_request_or_result_payload(monkey
     )
     server_requests._register(request)
 
-    assert server_requests.resolve(
-        request.id,
-        result={"choice": "once", "echo": "DO-NOT-PERSIST"},
+    assert server_requests.resolve_response(
+        {"id": request.id, "result": {"choice": "once", "echo": "DO-NOT-PERSIST"}}
     ) is True
 
     assert calls[-1] == (
