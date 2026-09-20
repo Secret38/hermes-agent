@@ -61,6 +61,7 @@ describe('Kanban operations projection', () => {
     expect(toOperationsSnapshot(board, boards, projects)).toEqual({
       sourceId: 'kanban',
       sourceLabel: 'Kanban',
+      scopeKey: 'default',
       scopeLabel: 'Default',
       observedAt: 200000,
       projects: [
