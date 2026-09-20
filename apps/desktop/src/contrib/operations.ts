@@ -28,13 +28,29 @@ export interface OperationsCaptureResult {
   sourceId: string
   taskId: string
   status: string
+  /** Producer-owned opaque scope captured with the write (board/queue/etc.). */
+  scopeKey?: null | string
   warning?: null | string
+}
+
+export interface OperationsShapeResult {
+  taskId: string
+  ok: boolean
+  reason?: null | string
+  fanout: boolean
+  childIds: string[]
+  title?: null | string
 }
 
 export interface OperationsCaptureSource {
   id: string
   label: string
   capture: (input: OperationsCaptureInput) => Promise<OperationsCaptureResult>
+  /**
+   * Optional source-owned shaping step. It must remain non-executing: producing
+   * a plan may persist tasks, but may not promote them into executable lanes.
+   */
+  shapeCaptured?: (captured: OperationsCaptureResult) => Promise<OperationsShapeResult>
   /** Optional producer-owned navigation to the captured item. */
   openCapturedTask?: (taskId: string) => void
 }
