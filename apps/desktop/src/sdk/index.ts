@@ -669,6 +669,9 @@ export const host = {
     /** Stored (durable) id of the focused session — for navigation and
      *  session-list matching, where runtime ids don't survive reloads. */
     focusedStoredSessionId: readonlyAtom<null | string>($focusedStoredSessionId),
+    /** Stored id selected in the primary workspace. Unlike focusedStoredSessionId,
+     *  this does not follow a side tile and is the filesystem-owner gate. */
+    selectedStoredSessionId: readonlyAtom<null | string>($selectedStoredSessionId),
     /** Live usage snapshot of the focused session (`context_used` /
      *  `context_max` / `context_percent`, token counts, `cost_usd`) —
      *  streamed by the backend, no RPC needed. Null while unresolved.
@@ -1920,7 +1923,8 @@ export {
   $resumeFailedSessionId,
   $workspaceCwdOwner,
   knownSessionProfile,
-  ownerLookupSessionRows
+  ownerLookupSessionRows,
+  sessionMatchesStoredId
 } from '@/store/session'
 export { storedSessionIdForRuntimeId } from '@/store/session-states'
 export { ackStoredSessionId, forgetSessionUnread, markSessionUnreadFinished } from '@/store/session-unread'
