@@ -1,14 +1,17 @@
-import { host, type OperationsTask, type OperationsTaskSnapshot, useValue } from '@hermes/plugin-sdk'
-import { useStore } from '@nanostores/react'
-import { useEffect } from 'react'
-import type { SessionInfo } from '@/hermes'
 import {
   $projectTree,
   $projectTreeLoading,
   fetchProjectSessions,
-  refreshProjectTree
-} from '@/store/projects'
-import type { SidebarProjectTree } from '@/app/chat/sidebar/projects/workspace-groups'
+  host,
+  type OperationsTask,
+  type OperationsTaskSnapshot,
+  refreshProjectTree,
+  type SessionInfo,
+  type SidebarProjectTree,
+  useValue
+} from '@hermes/plugin-sdk'
+import { useStore } from '@nanostores/react'
+import { useEffect } from 'react'
 
 export function projectOperationalTasks(
   snapshots: readonly OperationsTaskSnapshot[],
