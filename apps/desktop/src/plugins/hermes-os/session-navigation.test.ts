@@ -28,7 +28,7 @@ describe('Hermes OS session navigation', () => {
   it('keeps ordinary session opens stacked', () => {
     openHermesSession('stored-1')
 
-    expect(openSession).toHaveBeenCalledWith(
+    expect(mocks.openSession).toHaveBeenCalledWith(
       'stored-1',
       expect.any(Function),
       'stack',
@@ -46,7 +46,7 @@ describe('Hermes OS session navigation', () => {
 
     openHermesWorkspaceSession('stored-2', ownerRoute)
 
-    expect(openSession).toHaveBeenCalledWith(
+    expect(mocks.openSession).toHaveBeenCalledWith(
       'stored-2',
       expect.any(Function),
       'main',
