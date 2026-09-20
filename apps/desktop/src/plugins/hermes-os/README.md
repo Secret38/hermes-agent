@@ -17,6 +17,7 @@ Hermes OS is a projection and coordination UI. It does not create parallel runti
 | Goals | Hermes per-session Goals |
 | Files / terminal / browser / review | Existing Desktop workspace panes |
 | Approval prompts | Existing Desktop prompt stores + gateway approval queue |
+| Durable operator/security/execution audit | `operations-audit.db` metadata-only ledger |
 | Computer Use security | `config.get computer_use.security` |
 | Hermes shared metrics posture | `config.get telemetry.security` |
 
@@ -85,7 +86,9 @@ It never returns the raw endpoint and performs no network probe.
 
 The OSV supply-chain audit remains explicit/on-demand because running it performs external OSV requests.
 
-Approval history is not synthesized from transient UI state. A durable audit timeline must wait for a durable backend authority.
+Approval history is not synthesized from transient UI state. Hermes now owns a dedicated metadata-only audit authority for cross-cutting operator/security/execution facts. It stores fixed identifiers and outcomes only; prompt bodies, command text, secrets, verification codes, tool output, task bodies, summaries, errors, URLs, and artifacts are not copied into the ledger.
+
+Execution correlation may include `project_id`, `task_id`, `run_id`, and a durable session identifier where one is already known. Kanban remains the authoritative source for task/run content and detailed attempt history.
 
 ## Routes
 
@@ -94,6 +97,8 @@ Approval history is not synthesized from transient UI state. A durable audit tim
 - `/hermes-os/projects` — Projects
 - `/hermes-os/fleet` — Fleet
 - `/hermes-os/timeline` — Timeline
+- `/hermes-os/automations` — Automations
+- `/hermes-os/knowledge` — Knowledge
 - `/hermes-os/security` — Security
 
 The bundled plugin loader discovers `plugin.tsx` through the existing `src/plugins/*/plugin.{js,ts,tsx}` glob.
@@ -101,6 +106,7 @@ The bundled plugin loader discovers `plugin.tsx` through the existing `src/plugi
 ## Next safe slices
 
 1. Resolve current-head CI findings.
-2. Add durable approval/audit history only after a backend source exists.
-3. Add outbound-network inventory only from exact sanitized runtime/config authorities; keep unknowns explicit.
+2. Expand the durable audit ledger only at committed backend lifecycle boundaries; never scrape UI state.
+3. Expand outbound-network coverage only from exact sanitized runtime/config authorities; keep unknowns explicit.
 4. Add project-scoped autonomy/capability policy only after Hermes exposes a real scoped policy authority.
+5. Complete the mission intake / plan / execute / shipped flow without adding a second task authority.
