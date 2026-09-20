@@ -93,9 +93,12 @@ describe('approval request routing', () => {
   })
 
   it('titles the parked approval toast with the session it belongs to', () => {
+    // Use a distinct session id from the preceding approval test so the
+    // production per-(kind,session) notification throttle cannot couple tests.
+    setSessions([{ id: 'session-toast', title: 'Fix the flaky test' } as SessionInfo])
     deliver(
       'approval',
-      { command: 'rm -rf /', description: 'dangerous', request_id: 'r1', session_id: 'session-a' },
+      { command: 'rm -rf /', description: 'dangerous', request_id: 'r1', session_id: 'session-toast' },
       'session-b'
     )
 
