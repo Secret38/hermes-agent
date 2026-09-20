@@ -549,6 +549,14 @@ export interface ConfigGetResult {
   messaging?: SimpleNetworkSummary | null
   updates?: SimpleNetworkSummary | null
 }
+/** ``hermes_cli/models.py::list_available_providers`` row. */
+export interface ConfigProviderRef {
+  id: string
+  label: string
+  aliases?: string[]
+  authenticated?: boolean
+  [key: string]: unknown
+}
 export interface ComputerUseManifestSecurity {
   configured: boolean
   readable: boolean
@@ -556,26 +564,11 @@ export interface ComputerUseManifestSecurity {
   mode_independent: boolean
   required: boolean
 }
-export interface ComputerUseSecuritySummary {
-  permission_mode: string
-  telemetry_enabled: boolean
-  manifest: ComputerUseManifestSecurity
-}
 export interface SharedMetricsSecuritySummary {
   collection_enabled: boolean
   transmission_requested: boolean
   transmission_enabled: boolean
   destination: string
-}
-export interface TelemetrySecuritySummary {
-  shared_metrics: SharedMetricsSecuritySummary
-}
-export interface NetworkClassCounts {
-  disabled: number
-  external: number
-  loopback: number
-  process: number
-  unknown: number
 }
 export interface ModelProviderNetworkSummary {
   class: string
@@ -590,29 +583,18 @@ export interface McpNetworkSummary {
   classes: NetworkClassCounts
   subprocess_may_egress: boolean
 }
+export interface NetworkClassCounts {
+  disabled: number
+  external: number
+  loopback: number
+  process: number
+  unknown: number
+}
 export interface SimpleNetworkSummary {
   class: string
   reason?: string | null
   mode?: string | null
   transmission_enabled?: boolean | null
-}
-export interface NetworkSecuritySummary {
-  coverage: string
-  model_provider: ModelProviderNetworkSummary
-  mcp: McpNetworkSummary
-  telemetry: SimpleNetworkSummary
-  browser: SimpleNetworkSummary
-  computer_use: SimpleNetworkSummary
-  messaging: SimpleNetworkSummary
-  updates: SimpleNetworkSummary
-}
-/** ``hermes_cli/models.py::list_available_providers`` row. */
-export interface ConfigProviderRef {
-  id: string
-  label: string
-  aliases?: string[]
-  authenticated?: boolean
-  [key: string]: unknown
 }
 /** ``key`` picks the setter (``_CONFIG_SETTERS``, ``details_mode.<section>``, display toggles); ``value`` is the raw word/string the setter normalises (falsy non-strings are reported back in the error). ``scope`` applies to ``yolo`` / ``reasoning``; ``confirm_expensive_model`` to ``model``. */
 export interface ConfigSetParams {
@@ -718,6 +700,9 @@ export interface AuditListParams {
   before_id?: number | null
   session_id?: string | null
 }
+export interface AuditListResult {
+  events: AuditEventRow[]
+}
 export interface AuditEventRow {
   id: number
   event: string
@@ -727,9 +712,6 @@ export interface AuditEventRow {
   subject?: string | null
   outcome?: string | null
   created_at: number
-}
-export interface AuditListResult {
-  events: AuditEventRow[]
 }
 export interface EstopGetParams {}
 export interface EstopState {
