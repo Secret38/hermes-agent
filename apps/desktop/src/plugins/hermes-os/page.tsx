@@ -999,8 +999,8 @@ function TimelinePage() {
           </span>
         </div>
         <p className="mt-1 max-w-3xl text-xs leading-relaxed text-(--ui-text-tertiary)">
-          Durable metadata-only human-gate history. Prompt bodies, commands, secrets, verification codes and tool
-          output are never stored in this ledger.
+          Durable metadata-only operator, security, and execution history. Prompt bodies, commands, secrets,
+          verification codes, tool output, and task content are never stored in this ledger.
         </p>
         {audit.isError ? (
           <p className="mt-2 text-xs text-(--ui-text-tertiary)">The selected backend does not expose the durable audit authority.</p>
@@ -1009,11 +1009,22 @@ function TimelinePage() {
             {audit.data.events.map(event => (
               <FoundationRow
                 detail={[
-                  event.subject ? `gate ${event.subject}` : null,
+                  event.project_id ? `project ${event.project_id}` : null,
+                  event.task_id ? `task ${event.task_id}` : null,
+                  event.run_id != null ? `run ${event.run_id}` : null,
                   event.session_id ? `session ${event.session_id}` : null,
+                  event.subject ? `subject ${event.subject}` : null,
                   new Date(event.created_at * 1000).toLocaleString()
                 ].filter(Boolean).join(' · ')}
-                icon={event.event.endsWith('resolved') ? 'check' : event.event.endsWith('cancelled') ? 'circle-slash' : 'bell'}
+                icon={
+                  event.event.endsWith('completed') || event.event.endsWith('resolved')
+                    ? 'check'
+                    : event.event.endsWith('failed') || event.event.endsWith('cancelled')
+                      ? 'circle-slash'
+                      : event.event.endsWith('started')
+                        ? 'play'
+                        : 'bell'
+                }
                 key={event.id}
                 label={event.event.replaceAll('_', ' ').replace('human gate.', '')}
                 state={(event.outcome || event.category).toUpperCase()}
@@ -1021,7 +1032,7 @@ function TimelinePage() {
             ))}
           </div>
         ) : (
-          <p className="mt-2 text-xs text-(--ui-text-tertiary)">No durable operator/security events have been recorded yet.</p>
+          <p className="mt-2 text-xs text-(--ui-text-tertiary)">No durable operator, security, or execution events have been recorded yet.</p>
         )}
       </section>
 
