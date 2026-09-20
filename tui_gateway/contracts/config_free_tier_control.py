@@ -39,6 +39,74 @@ class ConfigProviderRef(OpenModel):
     authenticated: bool = False
 
 
+
+
+class ComputerUseManifestSecurity(Result):
+    configured: bool
+    readable: bool
+    version: int | None = None
+    mode_independent: bool
+    required: bool
+
+
+class ComputerUseSecuritySummary(Result):
+    permission_mode: str
+    telemetry_enabled: bool
+    manifest: ComputerUseManifestSecurity
+
+
+class SharedMetricsSecuritySummary(Result):
+    collection_enabled: bool
+    transmission_requested: bool
+    transmission_enabled: bool
+    destination: str
+
+
+class TelemetrySecuritySummary(Result):
+    shared_metrics: SharedMetricsSecuritySummary
+
+
+class NetworkClassCounts(Result):
+    disabled: int
+    external: int
+    loopback: int
+    process: int
+    unknown: int
+
+
+class ModelProviderNetworkSummary(Result):
+    class_: str = Field(alias="class")
+    provider: str
+    model_configured: bool
+    coverage: str
+    subprocess_may_egress: bool
+
+
+class McpNetworkSummary(Result):
+    configured: int
+    enabled: int
+    classes: NetworkClassCounts
+    subprocess_may_egress: bool
+
+
+class SimpleNetworkSummary(Result):
+    class_: str = Field(alias="class")
+    reason: str | None = None
+    mode: str | None = None
+    transmission_enabled: bool | None = None
+
+
+class NetworkSecuritySummary(Result):
+    coverage: str
+    model_provider: ModelProviderNetworkSummary
+    mcp: McpNetworkSummary
+    telemetry: SimpleNetworkSummary
+    browser: SimpleNetworkSummary
+    computer_use: SimpleNetworkSummary
+    messaging: SimpleNetworkSummary
+    updates: SimpleNetworkSummary
+
+
 class ConfigGetResult(Result):
     """Union of every getter's payload: ``value`` for the simple words, ``config`` for ``full``,
     ``mtime`` / ``mcp_rev`` for the poller, ``model`` / ``provider`` / ``providers`` for ``provider``,
@@ -57,6 +125,18 @@ class ConfigGetResult(Result):
     prompt: str | None = None
     mtime: float | None = None
     mcp_rev: str | None = None
+    permission_mode: str | None = None
+    telemetry_enabled: bool | None = None
+    manifest: ComputerUseManifestSecurity | None = None
+    shared_metrics: SharedMetricsSecuritySummary | None = None
+    coverage: str | None = None
+    model_provider: ModelProviderNetworkSummary | None = None
+    mcp: McpNetworkSummary | None = None
+    telemetry: SimpleNetworkSummary | None = None
+    browser: SimpleNetworkSummary | None = None
+    computer_use: SimpleNetworkSummary | None = None
+    messaging: SimpleNetworkSummary | None = None
+    updates: SimpleNetworkSummary | None = None
 
 
 method("config.get", params=ConfigGetParams, result=ConfigGetResult,
@@ -106,6 +186,59 @@ class ConfigSetResult(Result):
 
 method("config.set", params=ConfigSetParams, result=ConfigSetResult,
        doc="Change one config key (persisted or session-scoped) and read back the normalised value.")
+
+
+
+
+# ── operator audit / emergency stop ───────────────────────────────────────────────────────────
+
+
+class AuditListParams(ProfileParams):
+    limit: int | None = None
+    before_id: int | None = None
+    session_id: str | None = None
+
+
+class AuditEventRow(Result):
+    id: int
+    event: str
+    category: str
+    session_id: str | None = None
+    request_id: str | None = None
+    subject: str | None = None
+    outcome: str | None = None
+    created_at: float
+
+
+class AuditListResult(Result):
+    events: list[AuditEventRow]
+
+
+method("audit.list", params=AuditListParams, result=AuditListResult,
+       doc="Metadata-only durable operator/security events for the selected profile.")
+
+
+class EstopGetParams(Params):
+    pass
+
+
+class EstopState(Result):
+    engaged: bool
+    reason: str | None = None
+    engaged_at: str | None = None
+
+
+method("system.estop.get", params=EstopGetParams, result=EstopState,
+       doc="Read the backend-global emergency stop used by gateway, cron and Kanban new-work gates.")
+
+
+class EstopSetParams(Params):
+    engaged: bool
+    reason: str | None = None
+
+
+method("system.estop.set", params=EstopSetParams, result=EstopState,
+       doc="Engage or disengage the backend-global emergency stop; in-flight work is not killed.")
 
 
 # ── setup readiness ───────────────────────────────────────────────────────────────────────────
