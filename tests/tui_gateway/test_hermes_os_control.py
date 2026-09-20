@@ -6,6 +6,7 @@ from tui_gateway import server
 
 
 def _bind_estop_home(monkeypatch, home):
+    monkeypatch.setenv("HERMES_HOME", str(home))
     monkeypatch.setattr(estop, "_hermes_home", lambda: home)
     monkeypatch.setattr(estop, "_canonical_root", lambda: home)
 
