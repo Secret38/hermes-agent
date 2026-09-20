@@ -1,14 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const openSession = vi.fn()
-const navigate = vi.fn()
+const mocks = vi.hoisted(() => ({
+  openSession: vi.fn(),
+  navigate: vi.fn()
+}))
 
 vi.mock('@hermes/plugin-sdk', () => ({
-  host: { navigate }
+  host: { navigate: mocks.navigate }
 }))
 
 vi.mock('@/app/open-session', () => ({
-  openSession: (...args: unknown[]) => openSession(...args)
+  openSession: (...args: unknown[]) => mocks.openSession(...args)
 }))
 
 vi.mock('@/store/session-states', () => ({
@@ -19,8 +21,8 @@ import { openHermesSession, openHermesWorkspaceSession } from './session-navigat
 
 describe('Hermes OS session navigation', () => {
   beforeEach(() => {
-    openSession.mockClear()
-    navigate.mockClear()
+    mocks.openSession.mockClear()
+    mocks.navigate.mockClear()
   })
 
   it('keeps ordinary session opens stacked', () => {
