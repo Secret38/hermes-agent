@@ -27,6 +27,10 @@ class EventType(StrEnum):
     AGENT_RECONCILED = "agent.reconciled"
     AGENT_RESTART_ATTEMPTED = "agent.restart_attempted"
     AGENT_RESTARTED = "agent.restarted"
+    PLAN_CREATED = "plan.created"
+    PLAN_STATE_CHANGED = "plan.state_changed"
+    PLAN_STEP_CREATED = "plan_step.created"
+    PLAN_STEP_STATE_CHANGED = "plan_step.state_changed"
 
 
 @dataclass(frozen=True, slots=True)

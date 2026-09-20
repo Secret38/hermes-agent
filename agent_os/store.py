@@ -19,9 +19,19 @@ from .agents.records import (
 )
 from .contracts import ActionRecord, TaskRecord, utc_now_iso
 from .events import EventRecord, EventType
+from .orchestration.plan import (
+    PlanRecord,
+    PlanState,
+    PlanStepKind,
+    PlanStepRecord,
+    PlanStepState,
+    validate_plan_graph,
+    validate_plan_transition,
+    validate_step_transition,
+)
 from .states import ActionState, TaskState, validate_action_transition, validate_task_transition
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def default_db_path() -> Path:
@@ -108,6 +118,38 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
             FOREIGN KEY(task_id) REFERENCES tasks(id),
             FOREIGN KEY(parent_agent_id) REFERENCES agent_instances(id)
         );
+        CREATE TABLE IF NOT EXISTS plans (
+            id TEXT PRIMARY KEY,
+            task_id TEXT NOT NULL,
+            objective TEXT NOT NULL,
+            revision INTEGER NOT NULL,
+            state TEXT NOT NULL,
+            metadata_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(task_id) REFERENCES tasks(id)
+        );
+        CREATE TABLE IF NOT EXISTS plan_steps (
+            id TEXT PRIMARY KEY,
+            plan_id TEXT NOT NULL,
+            task_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            state TEXT NOT NULL,
+            spec_json TEXT NOT NULL DEFAULT '{}',
+            priority INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(plan_id) REFERENCES plans(id) ON DELETE CASCADE,
+            FOREIGN KEY(task_id) REFERENCES tasks(id)
+        );
+        CREATE TABLE IF NOT EXISTS plan_step_dependencies (
+            step_id TEXT NOT NULL,
+            dependency_step_id TEXT NOT NULL,
+            PRIMARY KEY(step_id, dependency_step_id),
+            FOREIGN KEY(step_id) REFERENCES plan_steps(id) ON DELETE CASCADE,
+            FOREIGN KEY(dependency_step_id) REFERENCES plan_steps(id) ON DELETE CASCADE
+        );
         CREATE TABLE IF NOT EXISTS events (
             sequence INTEGER PRIMARY KEY AUTOINCREMENT,
             id TEXT NOT NULL UNIQUE,
@@ -122,6 +164,9 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_actions_task ON actions(task_id, created_at);
         CREATE INDEX IF NOT EXISTS idx_agents_task ON agent_instances(task_id, created_at);
         CREATE INDEX IF NOT EXISTS idx_agents_state ON agent_instances(state, updated_at);
+        CREATE INDEX IF NOT EXISTS idx_plans_task ON plans(task_id, revision);
+        CREATE INDEX IF NOT EXISTS idx_plan_steps_plan_state ON plan_steps(plan_id, state, priority, created_at);
+        CREATE INDEX IF NOT EXISTS idx_plan_deps_step ON plan_step_dependencies(step_id);
         CREATE INDEX IF NOT EXISTS idx_events_task_seq ON events(task_id, sequence);
         CREATE INDEX IF NOT EXISTS idx_events_action_seq ON events(action_id, sequence);
         """
@@ -417,6 +462,294 @@ class AgentOSStore:
             raise
         finally:
             conn.close()
+
+    def create_plan(
+        self,
+        plan: PlanRecord,
+        steps: list[PlanStepRecord],
+        dependencies: dict[str, list[str]] | None = None,
+    ) -> PlanRecord:
+        dependencies = dependencies or {}
+        validate_plan_graph(steps, dependencies)
+        if any(step.plan_id != plan.id or step.task_id != plan.task_id for step in steps):
+            raise ValueError("all plan steps must belong to the supplied plan/task")
+
+        conn = self._connect()
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            if conn.execute("SELECT 1 FROM tasks WHERE id = ?", (plan.task_id,)).fetchone() is None:
+                raise KeyError(f"unknown task: {plan.task_id}")
+            conn.execute(
+                """INSERT INTO plans(id, task_id, objective, revision, state, metadata_json, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    plan.id, plan.task_id, plan.objective, plan.revision, plan.state.value,
+                    _json(plan.metadata), plan.created_at, plan.updated_at,
+                ),
+            )
+            for step in steps:
+                conn.execute(
+                    """INSERT INTO plan_steps(
+                        id, plan_id, task_id, title, kind, state, spec_json,
+                        priority, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        step.id, step.plan_id, step.task_id, step.title, step.kind.value,
+                        step.state.value, _json(step.spec), step.priority,
+                        step.created_at, step.updated_at,
+                    ),
+                )
+                self._insert_event(
+                    conn,
+                    EventRecord.create(
+                        task_id=plan.task_id,
+                        type=EventType.PLAN_STEP_CREATED,
+                        payload={
+                            "plan_id": plan.id,
+                            "step_id": step.id,
+                            "kind": step.kind.value,
+                            "state": step.state.value,
+                        },
+                    ),
+                )
+            for step_id, dependency_ids in dependencies.items():
+                for dependency_id in set(dependency_ids):
+                    conn.execute(
+                        "INSERT INTO plan_step_dependencies(step_id, dependency_step_id) VALUES (?, ?)",
+                        (step_id, dependency_id),
+                    )
+            self._insert_event(
+                conn,
+                EventRecord.create(
+                    task_id=plan.task_id,
+                    type=EventType.PLAN_CREATED,
+                    payload={"plan_id": plan.id, "revision": plan.revision, "step_count": len(steps)},
+                ),
+            )
+            conn.commit()
+            return plan
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def get_plan(self, plan_id: str) -> PlanRecord | None:
+        conn = self._connect()
+        try:
+            row = conn.execute("SELECT * FROM plans WHERE id = ?", (plan_id,)).fetchone()
+            return None if row is None else self._plan_from_row(row)
+        finally:
+            conn.close()
+
+    def list_plan_steps(self, plan_id: str) -> list[PlanStepRecord]:
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                "SELECT * FROM plan_steps WHERE plan_id = ? ORDER BY priority DESC, created_at, id",
+                (plan_id,),
+            ).fetchall()
+            return [self._plan_step_from_row(row) for row in rows]
+        finally:
+            conn.close()
+
+    def transition_plan(self, plan_id: str, target: PlanState) -> PlanRecord:
+        conn = self._connect()
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute("SELECT * FROM plans WHERE id = ?", (plan_id,)).fetchone()
+            if row is None:
+                raise KeyError(f"unknown plan: {plan_id}")
+            current = PlanState(row["state"])
+            validate_plan_transition(current, target)
+            now = utc_now_iso()
+            conn.execute("UPDATE plans SET state = ?, updated_at = ? WHERE id = ?", (target.value, now, plan_id))
+            self._insert_event(
+                conn,
+                EventRecord.create(
+                    task_id=row["task_id"],
+                    type=EventType.PLAN_STATE_CHANGED,
+                    payload={"plan_id": plan_id, "from": current.value, "to": target.value},
+                ),
+            )
+            conn.commit()
+            return replace(self._plan_from_row(row), state=target, updated_at=now)
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def transition_plan_step(self, step_id: str, target: PlanStepState) -> PlanStepRecord:
+        conn = self._connect()
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute("SELECT * FROM plan_steps WHERE id = ?", (step_id,)).fetchone()
+            if row is None:
+                raise KeyError(f"unknown plan step: {step_id}")
+            current = PlanStepState(row["state"])
+            validate_step_transition(current, target)
+            now = utc_now_iso()
+            conn.execute("UPDATE plan_steps SET state = ?, updated_at = ? WHERE id = ?", (target.value, now, step_id))
+            self._insert_event(
+                conn,
+                EventRecord.create(
+                    task_id=row["task_id"],
+                    type=EventType.PLAN_STEP_STATE_CHANGED,
+                    payload={
+                        "plan_id": row["plan_id"],
+                        "step_id": step_id,
+                        "from": current.value,
+                        "to": target.value,
+                    },
+                ),
+            )
+            conn.commit()
+            return replace(self._plan_step_from_row(row), state=target, updated_at=now)
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def refresh_plan_readiness(self, plan_id: str) -> dict[str, list[str]]:
+        conn = self._connect()
+        ready_ids: list[str] = []
+        blocked_ids: list[str] = []
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            plan = conn.execute("SELECT * FROM plans WHERE id = ?", (plan_id,)).fetchone()
+            if plan is None:
+                raise KeyError(f"unknown plan: {plan_id}")
+            if PlanState(plan["state"]) is not PlanState.ACTIVE:
+                conn.commit()
+                return {"ready": ready_ids, "blocked": blocked_ids}
+
+            rows = conn.execute(
+                "SELECT * FROM plan_steps WHERE plan_id = ? ORDER BY priority DESC, created_at, id",
+                (plan_id,),
+            ).fetchall()
+            state_by_id = {row["id"]: PlanStepState(row["state"]) for row in rows}
+            deps_rows = conn.execute(
+                """SELECT d.step_id, d.dependency_step_id
+                     FROM plan_step_dependencies d
+                     JOIN plan_steps s ON s.id = d.step_id
+                    WHERE s.plan_id = ?""",
+                (plan_id,),
+            ).fetchall()
+            deps: dict[str, list[str]] = {}
+            for dep_row in deps_rows:
+                deps.setdefault(dep_row["step_id"], []).append(dep_row["dependency_step_id"])
+
+            now = utc_now_iso()
+            for row in rows:
+                current = PlanStepState(row["state"])
+                if current not in {PlanStepState.PENDING, PlanStepState.BLOCKED}:
+                    continue
+                dependency_states = [state_by_id[dep] for dep in deps.get(row["id"], [])]
+                if any(state in {PlanStepState.FAILED, PlanStepState.CANCELLED} for state in dependency_states):
+                    target = PlanStepState.BLOCKED
+                elif all(state is PlanStepState.SUCCEEDED for state in dependency_states):
+                    target = PlanStepState.READY
+                else:
+                    continue
+                if current == target:
+                    continue
+                validate_step_transition(current, target)
+                conn.execute(
+                    "UPDATE plan_steps SET state = ?, updated_at = ? WHERE id = ?",
+                    (target.value, now, row["id"]),
+                )
+                self._insert_event(
+                    conn,
+                    EventRecord.create(
+                        task_id=row["task_id"],
+                        type=EventType.PLAN_STEP_STATE_CHANGED,
+                        payload={
+                            "plan_id": plan_id,
+                            "step_id": row["id"],
+                            "from": current.value,
+                            "to": target.value,
+                            "reason": "dependency_refresh",
+                        },
+                    ),
+                )
+                state_by_id[row["id"]] = target
+                (ready_ids if target is PlanStepState.READY else blocked_ids).append(row["id"])
+            conn.commit()
+            return {"ready": ready_ids, "blocked": blocked_ids}
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def claim_next_plan_step(self, plan_id: str) -> PlanStepRecord | None:
+        conn = self._connect()
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                """SELECT * FROM plan_steps
+                    WHERE plan_id = ? AND state = ?
+                    ORDER BY priority DESC, created_at, id
+                    LIMIT 1""",
+                (plan_id, PlanStepState.READY.value),
+            ).fetchone()
+            if row is None:
+                conn.commit()
+                return None
+            now = utc_now_iso()
+            updated = conn.execute(
+                "UPDATE plan_steps SET state = ?, updated_at = ? WHERE id = ? AND state = ?",
+                (PlanStepState.RUNNING.value, now, row["id"], PlanStepState.READY.value),
+            )
+            if updated.rowcount != 1:
+                conn.rollback()
+                return None
+            self._insert_event(
+                conn,
+                EventRecord.create(
+                    task_id=row["task_id"],
+                    type=EventType.PLAN_STEP_STATE_CHANGED,
+                    payload={
+                        "plan_id": plan_id,
+                        "step_id": row["id"],
+                        "from": PlanStepState.READY.value,
+                        "to": PlanStepState.RUNNING.value,
+                        "reason": "scheduler_claim",
+                    },
+                ),
+            )
+            conn.commit()
+            return replace(
+                self._plan_step_from_row(row),
+                state=PlanStepState.RUNNING,
+                updated_at=now,
+            )
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def evaluate_plan_state(self, plan_id: str) -> PlanState | None:
+        plan = self.get_plan(plan_id)
+        if plan is None:
+            raise KeyError(f"unknown plan: {plan_id}")
+        if plan.state is not PlanState.ACTIVE:
+            return plan.state if plan.state in {PlanState.COMPLETED, PlanState.FAILED, PlanState.CANCELLED} else None
+
+        states = [step.state for step in self.list_plan_steps(plan_id)]
+        if states and all(state is PlanStepState.SUCCEEDED for state in states):
+            return self.transition_plan(plan_id, PlanState.COMPLETED).state
+
+        active = {PlanStepState.PENDING, PlanStepState.READY, PlanStepState.RUNNING}
+        if states and not any(state in active for state in states) and any(
+            state in {PlanStepState.FAILED, PlanStepState.BLOCKED, PlanStepState.CANCELLED}
+            for state in states
+        ):
+            return self.transition_plan(plan_id, PlanState.FAILED).state
+        return None
 
     def create_agent(self, agent: AgentInstanceRecord) -> AgentInstanceRecord:
         conn = self._connect()
@@ -728,6 +1061,34 @@ class AgentOSStore:
             verification_result=_loads(row["verification_result_json"]),
             recovery_attempts=int(row["recovery_attempts"]), error=row["error"],
             created_at=row["created_at"], updated_at=row["updated_at"],
+        )
+
+    @staticmethod
+    def _plan_from_row(row: sqlite3.Row) -> PlanRecord:
+        return PlanRecord(
+            id=row["id"],
+            task_id=row["task_id"],
+            objective=row["objective"],
+            revision=int(row["revision"]),
+            state=PlanState(row["state"]),
+            metadata=_loads(row["metadata_json"]),
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+        )
+
+    @staticmethod
+    def _plan_step_from_row(row: sqlite3.Row) -> PlanStepRecord:
+        return PlanStepRecord(
+            id=row["id"],
+            plan_id=row["plan_id"],
+            task_id=row["task_id"],
+            title=row["title"],
+            kind=PlanStepKind(row["kind"]),
+            state=PlanStepState(row["state"]),
+            spec=_loads(row["spec_json"]),
+            priority=int(row["priority"]),
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
         )
 
     @staticmethod
