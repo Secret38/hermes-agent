@@ -18,7 +18,9 @@ import {
   host,
   type KeybindContribution,
   KEYBINDS_AREA,
+  OPERATIONS_CAPTURE_SOURCES_AREA,
   OPERATIONS_TASK_SOURCES_AREA,
+  type OperationsCaptureSource,
   type OperationsTaskSource,
   PALETTE_AREA,
   type PaletteContribution,
@@ -36,6 +38,7 @@ import {
   $boardSlug,
   bindApi,
   boardKey,
+  createTask,
   fetchBoard,
   fetchOperationsRunInspection,
   fetchOperationsSnapshot,
@@ -115,6 +118,38 @@ const plugin: HermesPlugin = {
     }
 
     ctx.registerMany([
+      {
+        id: 'operations-capture',
+        area: OPERATIONS_CAPTURE_SOURCES_AREA,
+        data: {
+          id: 'kanban',
+          label: 'Kanban inbox',
+          capture: async input => {
+            const title = input.title.trim()
+            if (!title) {
+              throw new Error('A title is required.')
+            }
+
+            const result = await createTask({
+              title,
+              body: input.body?.trim() || undefined,
+              triage: true,
+              ...(input.projectId ? { project_id: input.projectId } : {})
+            })
+            if (!result.task) {
+              throw new Error('Kanban did not return the captured task.')
+            }
+
+            return {
+              sourceId: 'kanban',
+              taskId: result.task.id,
+              status: result.task.status,
+              warning: result.warning ?? null
+            }
+          },
+          openCapturedTask: () => host.navigate('/kanban')
+        } satisfies OperationsCaptureSource
+      },
       {
         id: 'operations-source',
         area: OPERATIONS_TASK_SOURCES_AREA,
