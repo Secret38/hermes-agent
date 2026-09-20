@@ -699,6 +699,9 @@ export interface AuditListParams {
   limit?: number | null
   before_id?: number | null
   session_id?: string | null
+  task_id?: string | null
+  run_id?: number | null
+  project_id?: string | null
 }
 export interface AuditListResult {
   events: AuditEventRow[]
@@ -711,9 +714,12 @@ export interface AuditEventRow {
   request_id?: string | null
   subject?: string | null
   outcome?: string | null
+  task_id?: string | null
+  run_id?: number | null
+  project_id?: string | null
   created_at: number
 }
-export interface EstopGetParams {}
+export type EstopGetParams = Record<string, never>
 export interface EstopState {
   engaged: boolean
   reason?: string | null
@@ -4093,12 +4099,13 @@ export interface SessionReclaimedPayload {
 export interface SessionControlUpdatePayload {
   control: SessionControlSnapshot
 }
-/** ``methods_session`` billing.step_up on_verification. */
+/** Metadata-only invalidation emitted after a durable operator-audit append. */
 export interface AuditChangedPayload {
   id: number
   event: string
   subject: string
 }
+/** ``methods_session`` billing.step_up on_verification. */
 export interface BillingStepUpVerificationPayload {
   verification_url: string
   user_code: string
@@ -4282,6 +4289,8 @@ export interface RpcMethods {
   'approval.received': { params: ApprovalReceivedParams; result: ApprovalReceivedResult }
   /** Deliver the user's decision on a dangerous command (falls back to durable identity on a stale sid). */
   'approval.respond': { params: ApprovalRespondParams; result: ApprovalRespondResult }
+  /** Metadata-only durable operator/security events for the selected profile. */
+  'audit.list': { params: AuditListParams; result: AuditListResult }
   /** Enable/disable auto top-up with its threshold and reload amount (billing:manage). */
   'billing.auto_reload': { params: BillingAutoReloadParams; result: BillingMutationResult }
   /** Start a one-off top-up charge (billing:manage, idempotent). */
@@ -4328,8 +4337,6 @@ export interface RpcMethods {
   'complete.path': { params: CompletePathParams; result: CompletionItemsResult }
   /** Ranked slash-command / skill completions for a ``/`` token. */
   'complete.slash': { params: CompleteSlashParams; result: CompleteSlashResult }
-  /** Metadata-only durable operator/security events for the selected profile. */
-  'audit.list': { params: AuditListParams; result: AuditListResult }
   /** Read one normalised config value (or the whole effective config) the way the UIs render it. */
   'config.get': { params: ConfigGetParams; result: ConfigGetResult }
   /** Change one config key (persisted or session-scoped) and read back the normalised value. */
@@ -4630,10 +4637,6 @@ export interface RpcMethods {
   'session.workspace.move': { params: SessionWorkspaceMoveParams; result: SessionWorkspaceMoveResult }
   /** Strict provider check through the same runtime resolution the agent uses on session creation. */
   'setup.runtime_check': { params: SetupRuntimeCheckParams; result: SetupRuntimeCheckResult }
-  /** Read the backend-global emergency stop used by gateway, cron and Kanban new-work gates. */
-  'system.estop.get': { params: EstopGetParams; result: EstopState }
-  /** Engage or disengage the backend-global emergency stop; in-flight work is not killed. */
-  'system.estop.set': { params: EstopSetParams; result: EstopState }
   /** Loose provider check: is ANY provider auth state discoverable for the (launch or named) profile. */
   'setup.status': { params: ProfileParams; result: SetupStatusResult }
   /** Run a safe (non-dangerous) shell command captured for ``!cmd`` / inline substitution. */
@@ -4670,6 +4673,10 @@ export interface RpcMethods {
   'subscription.upgrade': { params: SubscriptionUpgradeParams; result: SubscriptionUpgradeResult }
   /** Host battery for the status bar; always resolves, ``available: false`` when unreadable. */
   'system.battery': { params: SystemBatteryParams; result: SystemBatteryResult }
+  /** Read the backend-global emergency stop used by gateway, cron and Kanban new-work gates. */
+  'system.estop.get': { params: EstopGetParams; result: EstopState }
+  /** Engage or disengage the backend-global emergency stop; in-flight work is not killed. */
+  'system.estop.set': { params: EstopSetParams; result: EstopState }
   /** Record the client's column width for server-side rendering. */
   'terminal.resize': { params: TerminalResizeParams; result: TerminalResizeResult }
   /** Persist a toolset / MCP enable-disable change and rebuild the session agent so it takes effect now. */
@@ -4723,6 +4730,7 @@ export const RPC_METHODS = [
   'approval.pending',
   'approval.received',
   'approval.respond',
+  'audit.list',
   'billing.auto_reload',
   'billing.charge',
   'billing.charge_status',
@@ -4914,6 +4922,8 @@ export const RPC_METHODS = [
   'subscription.state',
   'subscription.upgrade',
   'system.battery',
+  'system.estop.get',
+  'system.estop.set',
   'terminal.resize',
   'tools.configure',
   'tools.list',
@@ -4986,6 +4996,8 @@ export const SERVER_REQUEST_METHODS = [
 export interface BackendGatewayEventMap {
   /** Output chunk from an agent-owned background process. */
   'agent.terminal.output': TerminalOutputPayload
+  /** Durable operator/security audit changed; refetch audit.list for authoritative history. */
+  'audit.changed': AuditChangedPayload
   /** A /background side agent finished. */
   'background.complete': SideAgentCompletePayload
   /** Device-flow URL + code for the billing scope step-up; the client opens the browser. */
@@ -5066,8 +5078,6 @@ export interface BackendGatewayEventMap {
   'request.cancel': RequestCancelPayload
   /** Background review of the last turn finished. */
   'review.summary': ReviewSummaryPayload
-  /** Durable operator/security audit changed; refetch audit.list for authoritative history. */
-  'audit.changed': AuditChangedPayload
   /** Persisted goal / loop / heartbeat state changed. */
   'session.control.update': SessionControlUpdatePayload
   /** Live session settings snapshot (``server._session_info``); also the ``info`` of create/resume/activate. */
