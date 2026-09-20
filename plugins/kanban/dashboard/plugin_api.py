@@ -983,6 +983,49 @@ def terminate_run_endpoint(run_id: int, payload: TerminateRunBody, board: Option
 
 # --- Recovery actions — reclaim / specify / reassign / estimate -------------
 
+class ApprovePlanBody(BaseModel):
+    actor: Optional[str] = None
+
+
+@router.post("/tasks/{task_id}/approve-plan")
+def approve_plan_endpoint(
+    task_id: str,
+    payload: ApprovePlanBody,
+    board: Optional[str] = Query(None),
+):
+    """Approve a shaped plan while preserving Kanban's dependency graph."""
+    with _board_conn(board) as (board, conn):
+        from hermes_cli.kanban_db_graph import approve_decomposed_plan
+
+        ok, promoted, held, reason = approve_decomposed_plan(
+            conn, task_id, actor=(payload.actor or "hermes-os")
+        )
+        if not ok:
+            raise _conflict(reason or f"cannot approve plan for {task_id}")
+        task = kanban_db.get_task(conn, task_id)
+
+    try:
+        from hermes_cli.operations_audit import append_event
+
+        append_event(
+            "plan.approved",
+            category="control",
+            session_id=task.session_id if task else None,
+            subject="kanban_plan",
+            outcome="approved",
+            task_id=task_id,
+            project_id=task.project_id if task else None,
+        )
+    except Exception:
+        log.debug("kanban plan approval audit append failed", exc_info=True)
+
+    return {
+        "ok": True,
+        "task_id": task_id,
+        "promoted_ids": promoted,
+        "held_ids": held,
+    }
+
 class ReclaimBody(BaseModel):
     reason: Optional[str] = None
 
