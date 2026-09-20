@@ -159,8 +159,48 @@ def _fire_kanban_lifecycle_hook(event: str, task_id: str, **fields: Any) -> None
         _log.debug("kanban lifecycle hook %s failed: %s", event, exc)
 
 
+_TASK_AUDIT_EVENTS = {
+    "kanban_task_claimed": ("run.started", "running"),
+    "kanban_task_completed": ("run.completed", "completed"),
+}
+
+
+def _audit_task_lifecycle(
+    event: str,
+    task: Optional["Task"],
+    task_id: str,
+    run_id: Optional[int],
+) -> None:
+    """Mirror selected committed Kanban transitions into the metadata-only OS audit ledger.
+
+    Kanban remains the task/run authority. The audit row stores only identifiers and a
+    normalized lifecycle fact so cross-cutting Timeline views can correlate execution
+    without copying task bodies, summaries, errors, commands, or artifacts.
+    """
+    mapped = _TASK_AUDIT_EVENTS.get(event)
+    if mapped is None:
+        return
+    event_name, outcome = mapped
+    try:
+        from hermes_cli.operations_audit import append_event
+
+        append_event(
+            event_name,
+            category="execution",
+            session_id=task.session_id if task else None,
+            subject="kanban",
+            outcome=outcome,
+            task_id=task_id,
+            run_id=run_id,
+            project_id=task.project_id if task else None,
+        )
+    except Exception:  # pragma: no cover - best-effort observer
+        _log.debug("kanban audit append failed for %s", event, exc_info=True)
+
+
 def _fire_task_hook(event: str, task: Optional["Task"], task_id: str, run_id: Optional[int], **fields: Any) -> None:
-    """Lifecycle hook for a task transition; ``assignee`` from the (possibly missing) row."""
+    """Post-commit lifecycle observer plus metadata-only OS audit correlation."""
+    _audit_task_lifecycle(event, task, task_id, run_id)
     _fire_kanban_lifecycle_hook(
         event, task_id, board=get_current_board(),
         assignee=task.assignee if task else None, run_id=run_id, **fields,
@@ -193,12 +233,29 @@ def _fire_worker_spawned_hook(
     board: Optional[str] = None,
 ) -> None:
     """``on_kanban_worker_spawned`` AFTER the PID is durably persisted; best-effort."""
+    run_id = _current_run_id(conn, task.id)
+    try:
+        from hermes_cli.operations_audit import append_event
+
+        append_event(
+            "worker.started",
+            category="execution",
+            session_id=task.session_id,
+            subject="kanban_worker",
+            outcome="running",
+            task_id=task.id,
+            run_id=run_id,
+            project_id=task.project_id,
+        )
+    except Exception:  # pragma: no cover - best-effort observer
+        _log.debug("kanban worker audit append failed", exc_info=True)
+
     if not _kanban_observer_consumed("on_kanban_worker_spawned"):
         return
     try:
         _fire_kanban_lifecycle_hook(
             "on_kanban_worker_spawned", task.id, board=board or get_current_board(),
-            assignee=task.assignee, run_id=_current_run_id(conn, task.id),
+            assignee=task.assignee, run_id=run_id,
             worker_pid=int(pid) if pid else None, workspace_path=str(workspace_path),
         )
     except Exception as exc:  # pragma: no cover - defensive
@@ -3379,6 +3436,22 @@ def request_review(
         if staged_copies:
             _discard_staged_copies(staged_copies, staged_copies[0].parent)
         raise
+    try:
+        from hermes_cli.operations_audit import append_event
+
+        task = get_task(conn, task_id)
+        append_event(
+            "review.requested",
+            category="execution",
+            session_id=task.session_id if task else None,
+            subject="kanban",
+            outcome="waiting",
+            task_id=task_id,
+            run_id=run_id,
+            project_id=task.project_id if task else None,
+        )
+    except Exception:  # pragma: no cover - best-effort observer
+        _log.debug("kanban review audit append failed", exc_info=True)
     return _ret(True)
 
 
@@ -3469,6 +3542,22 @@ def request_changes(
             },
             run_id=run_id,
         )
+    try:
+        from hermes_cli.operations_audit import append_event
+
+        task = get_task(conn, task_id)
+        append_event(
+            "review.changes_requested",
+            category="execution",
+            session_id=task.session_id if task else None,
+            subject="kanban",
+            outcome="changes_requested",
+            task_id=task_id,
+            run_id=run_id,
+            project_id=task.project_id if task else None,
+        )
+    except Exception:  # pragma: no cover - best-effort observer
+        _log.debug("kanban changes-requested audit append failed", exc_info=True)
     return True, implementer
 
 
