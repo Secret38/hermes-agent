@@ -59,8 +59,17 @@ def _schema_version(conn: sqlite3.Connection) -> int:
         raise RuntimeError("agent_os.db has an invalid schema_version")
 
 
+def _execute_ddl(conn: sqlite3.Connection, script: str) -> None:
+    """Execute DDL statement-by-statement without sqlite3.executescript auto-commits."""
+
+    for statement in script.split(";"):
+        statement = statement.strip()
+        if statement:
+            conn.execute(statement)
+
+
 def _migration_1(conn: sqlite3.Connection) -> None:
-    conn.executescript(
+    _execute_ddl(conn, 
         """
         CREATE TABLE IF NOT EXISTS tasks (
             id TEXT PRIMARY KEY,
@@ -121,7 +130,7 @@ def _migration_1(conn: sqlite3.Connection) -> None:
 
 
 def _migration_2(conn: sqlite3.Connection) -> None:
-    conn.executescript(
+    _execute_ddl(conn, 
         """
         CREATE TABLE IF NOT EXISTS agent_instances (
             id TEXT PRIMARY KEY,
@@ -152,7 +161,7 @@ def _migration_2(conn: sqlite3.Connection) -> None:
 
 
 def _migration_3(conn: sqlite3.Connection) -> None:
-    conn.executescript(
+    _execute_ddl(conn, 
         """
         CREATE TABLE IF NOT EXISTS plans (
             id TEXT PRIMARY KEY,

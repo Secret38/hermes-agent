@@ -4,6 +4,7 @@ import sqlite3
 
 import pytest
 
+import agent_os.store as store_module
 from agent_os.agents.records import AgentInstanceRecord
 from agent_os.contracts import TaskRecord
 from agent_os.orchestration.plan import PlanRecord
@@ -174,3 +175,44 @@ def test_v3_database_adds_execution_binding_column(tmp_path):
 
     assert "execution_id" in columns
     assert version == str(SCHEMA_VERSION)
+
+
+def test_failed_migration_rolls_back_schema_and_version(tmp_path, monkeypatch):
+    path = tmp_path / "agent_os.db"
+    conn = sqlite3.connect(path)
+    try:
+        conn.execute(
+            "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+        )
+        conn.execute(
+            "INSERT INTO meta(key, value) VALUES ('schema_version', '3')"
+        )
+        conn.execute(
+            "CREATE TABLE plan_steps (id TEXT PRIMARY KEY)"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    def broken_migration(conn):
+        conn.execute("ALTER TABLE plan_steps ADD COLUMN transient_col TEXT")
+        raise RuntimeError("synthetic migration failure")
+
+    monkeypatch.setitem(store_module._MIGRATIONS, 4, broken_migration)
+
+    with pytest.raises(RuntimeError, match="synthetic migration failure"):
+        AgentOSStore(path).get_task("unused")
+
+    conn = sqlite3.connect(path)
+    try:
+        columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(plan_steps)").fetchall()
+        }
+        version = conn.execute(
+            "SELECT value FROM meta WHERE key='schema_version'"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+
+    assert "transient_col" not in columns
+    assert version == "3"
