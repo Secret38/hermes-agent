@@ -1,28 +1,24 @@
 import {
+  $goalsBySession,
   Button,
   Codicon,
+  goToProject,
   host,
   type OperationsTaskSnapshot,
   type OperationsTaskSource,
   type PluginProfileRoute,
-  useQuery,
-  useValue
-} from '@hermes/plugin-sdk'
-
-import { useStore } from '@nanostores/react'
-import { useEffect, useState } from 'react'
-
-import type { SessionInfo } from '@/hermes'
-import type { SidebarProjectTree } from '@/app/chat/sidebar/projects/workspace-groups'
-import { $goalsBySession } from '@/store/goals'
-import { goToProject } from '@/store/projects'
-import {
+  type SessionInfo,
   Sheet,
   SheetContent,
   SheetDescription,
   SheetHeader,
-  SheetTitle
-} from '@/components/ui/sheet'
+  SheetTitle,
+  type SidebarProjectTree,
+  useQuery,
+  useValue
+} from '@hermes/plugin-sdk'
+import { useStore } from '@nanostores/react'
+import { useEffect, useState } from 'react'
 
 import { ExecutionInspector, type ExecutionInspectorSelection } from './execution-inspector'
 import { sourceForSnapshot } from './operations-data'
