@@ -20,12 +20,14 @@ describe('hermes-os plugin shell', () => {
       '/hermes-os/projects',
       '/hermes-os/fleet',
       '/hermes-os/timeline',
+      '/hermes-os/automations',
+      '/hermes-os/knowledge',
       '/hermes-os/security'
     ])
 
     expect(nav).toHaveLength(1)
     expect(nav[0]?.data).toMatchObject({ label: 'Hermes OS', path: '/hermes-os' })
-    expect(palette).toHaveLength(6)
+    expect(palette).toHaveLength(8)
     expect(status).toHaveLength(1)
   })
 })
