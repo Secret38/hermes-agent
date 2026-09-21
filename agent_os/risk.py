@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+import re
 from typing import Protocol
 
 from .contracts import ActionRecord
@@ -45,21 +46,31 @@ class ConservativeRiskClassifier:
         "password", "secret", "token", "disable firewall", "bcdedit",
     )
 
+    @staticmethod
+    def _matches(haystack: str, hint: str) -> bool:
+        hint = hint.lower()
+        if any(ch.isspace() for ch in hint) or any(ch in hint for ch in "/\\-"):
+            return hint in haystack
+        return re.search(
+            rf"(?<![A-Za-z0-9_]){re.escape(hint)}(?![A-Za-z0-9_])",
+            haystack,
+        ) is not None
+
     def classify(self, action: ActionRecord) -> RiskAssessment:
         haystack = " ".join([action.tool, action.operation, str(action.input)]).lower()
-        if any(hint in haystack for hint in self._DESTRUCTIVE_HINTS):
+        if any(self._matches(haystack, hint) for hint in self._DESTRUCTIVE_HINTS):
             return RiskAssessment(
                 RiskLevel.L4_DESTRUCTIVE_OR_SENSITIVE,
                 "destructive or security-sensitive operation detected",
                 type(self).__name__,
             )
-        if any(hint in haystack for hint in self._EXTERNAL_HINTS):
+        if any(self._matches(haystack, hint) for hint in self._EXTERNAL_HINTS):
             return RiskAssessment(
                 RiskLevel.L3_EXTERNAL_SIDE_EFFECT,
                 "external side effect detected",
                 type(self).__name__,
             )
-        if any(hint in haystack for hint in self._READ_HINTS):
+        if any(self._matches(haystack, hint) for hint in self._READ_HINTS):
             return RiskAssessment(
                 RiskLevel.L0_OBSERVE,
                 "read-only/observation operation detected",

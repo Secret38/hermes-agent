@@ -143,3 +143,26 @@ def test_no_verification_pass_means_no_success(tmp_path):
 
     assert result.state is ActionState.FAILED
     assert result.verification_result["verdict"] == "FAILED"
+
+
+def test_risk_classifier_uses_token_boundaries_not_substrings():
+    from agent_os.risk import ConservativeRiskClassifier, RiskLevel
+
+    task = TaskRecord.create("risk")
+    target_arg = ActionRecord.create(
+        task.id,
+        tool="terminal",
+        operation="install package",
+        input={"command": "python -m pip install --target ./vendor ."},
+    )
+    read_action = ActionRecord.create(
+        task.id,
+        tool="terminal",
+        operation="read status",
+        input={"command": "git status"},
+    )
+
+    classifier = ConservativeRiskClassifier()
+
+    assert classifier.classify(target_arg).level is RiskLevel.L2_PERSISTENT_LOCAL
+    assert classifier.classify(read_action).level is RiskLevel.L0_OBSERVE
