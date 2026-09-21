@@ -216,9 +216,10 @@ def _browser_probe() -> bool:
 
 
 def _computer_use_probe() -> bool:
-    from .adapters.hermes_computer import computer_use_available
+    from tools.computer_use.permissions import computer_use_status
 
-    return computer_use_available()
+    status = computer_use_status()
+    return bool(status.get("ready") is True)
 
 
 def collect_agent_os_health(

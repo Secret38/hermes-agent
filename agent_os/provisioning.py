@@ -31,9 +31,9 @@ def _browser_ready() -> bool:
 
 
 def _computer_use_ready() -> bool:
-    from .adapters.hermes_computer import computer_use_available
+    from tools.computer_use.permissions import computer_use_status
 
-    return computer_use_available()
+    return bool(computer_use_status().get("ready") is True)
 
 
 def _install_browser() -> None:
