@@ -16,6 +16,7 @@ from .adapters.hermes_terminal import HermesTerminalExecutor, TerminalResultVeri
 from .adapters.hermes_verifier import HermesProjectVerifier
 from .capabilities import CapabilityCatalog
 from .kernel import AgentOSKernel
+from .permissions import PermissionGate
 from .runtime import AgentOSRuntime
 from .store import AgentOSStore
 from .verification.router import VerifierRouter
@@ -28,6 +29,7 @@ def build_hermes_agent_os_runtime(
     planner_kwargs: dict[str, Any] | None = None,
     approval_callback: Callable | None = None,
     approval_timeout_seconds: int | None = None,
+    permission_gate: PermissionGate | None = None,
     subagent_service: SubagentLifecycleService | None = None,
     host_local_terminal: bool = False,
     scheduler_owner_id: str | None = None,
@@ -41,7 +43,7 @@ def build_hermes_agent_os_runtime(
     """
 
     store = store or AgentOSStore()
-    approval_gate = HermesApprovalGate(
+    approval_gate = permission_gate or HermesApprovalGate(
         approval_callback=approval_callback,
         timeout_seconds=approval_timeout_seconds,
     )

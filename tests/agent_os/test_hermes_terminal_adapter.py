@@ -83,3 +83,21 @@ def test_terminal_result_verifier_fails_missing_assertion():
 
     assert result.verdict is VerificationVerdict.FAILED
     assert "needle" in result.reason
+
+
+def test_executor_allows_explicitly_expected_nonzero_exit(monkeypatch):
+    monkeypatch.setattr(
+        "agent_os.adapters.hermes_terminal.terminal_tool",
+        lambda **kwargs: json.dumps(
+            {"output": "SyntaxError", "exit_code": 1, "error": None}
+        ),
+    )
+
+    result = HermesTerminalExecutor().execute(
+        action(
+            expected={"exit_code": 1, "output_contains": "SyntaxError"},
+            operation="diagnose build",
+        )
+    )
+
+    assert result.actual_state["exit_code"] == 1

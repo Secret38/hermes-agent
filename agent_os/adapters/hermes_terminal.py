@@ -75,7 +75,8 @@ class HermesTerminalExecutor:
             "approval_required",
             "pending_approval",
         }
-        if exit_code not in (None, 0):
+        expected_exit = action.expected_state.get("exit_code", 0)
+        if exit_code not in (None, 0) and exit_code != expected_exit:
             hard_failure = True
         if hard_failure:
             detail = error or f"terminal exit_code={exit_code} status={status or 'unknown'}"
