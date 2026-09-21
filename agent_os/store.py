@@ -797,7 +797,14 @@ class AgentOSStore:
                 ),
             )
             conn.commit()
-            return replace(self._plan_step_from_row(row), state=target, updated_at=now)
+            return replace(
+                self._plan_step_from_row(row),
+                state=target,
+                claim_token=None if clear_claim else row["claim_token"],
+                claim_owner=None if clear_claim else row["claim_owner"],
+                claim_expires_at=None if clear_claim else row["claim_expires_at"],
+                updated_at=now,
+            )
         except Exception:
             conn.rollback()
             raise

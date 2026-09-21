@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from agent_os.contracts import TaskRecord
+from agent_os.contracts import ActionRecord, TaskRecord
 from agent_os.orchestration.plan import (
     InvalidPlan,
     PlanRecord,
