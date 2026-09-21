@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from typing import Any, Mapping
 
 from agent.auxiliary_client import call_llm, extract_content_or_reasoning
 
+from agent_os.capabilities import CapabilityCatalog
 from agent_os.contracts import TaskRecord
 from agent_os.orchestration.plan import PlanStepKind
 from agent_os.orchestration.planner import PlanProposal
@@ -68,24 +68,7 @@ _RESPONSE_FORMAT = {
 }
 
 
-@dataclass(frozen=True, slots=True)
-class PlannerCapabilities:
-    action_tools: tuple[str, ...]
-    agent_runtimes: tuple[str, ...] = ()
-
-    def normalized_action_tools(self) -> frozenset[str]:
-        return frozenset(item.strip() for item in self.action_tools if item.strip())
-
-    def normalized_agent_runtimes(self) -> frozenset[str]:
-        return frozenset(item.strip() for item in self.agent_runtimes if item.strip())
-
-    def prompt_text(self) -> str:
-        tools = ", ".join(sorted(self.normalized_action_tools())) or "(none)"
-        runtimes = ", ".join(sorted(self.normalized_agent_runtimes())) or "(none)"
-        return (
-            f"Allowed ACTION/VERIFICATION tools: {tools}.\n"
-            f"Allowed AGENT runtimes: {runtimes}."
-        )
+PlannerCapabilities = CapabilityCatalog
 
 
 class HermesPlanner:
@@ -93,7 +76,7 @@ class HermesPlanner:
 
     def __init__(
         self,
-        capabilities: PlannerCapabilities,
+        capabilities: CapabilityCatalog,
         *,
         provider: str | None = None,
         model: str | None = None,
