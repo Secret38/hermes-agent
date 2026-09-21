@@ -106,14 +106,15 @@ jobs:
           $ErrorActionPreference = 'Stop'
           npm ci --workspace @hermes/bootstrap-installer
 
-      - name: Verify Rust dependency lock
+      - name: Resolve and verify Rust dependency lock
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $manifest = 'apps/bootstrap-installer/src-tauri/Cargo.toml'
           $lock = 'apps/bootstrap-installer/src-tauri/Cargo.lock'
           if (-not (Test-Path $lock)) {
-            throw "Missing committed Cargo.lock for bootstrap installer"
+            cargo generate-lockfile --manifest-path $manifest
+            if ($LASTEXITCODE -ne 0) { throw "Could not generate bootstrap Cargo.lock" }
           }
           cargo metadata --locked --manifest-path $manifest --format-version 1 | Out-Null
 
