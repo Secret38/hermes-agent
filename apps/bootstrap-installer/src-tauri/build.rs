@@ -117,6 +117,8 @@ fn resolve_repository() -> String {
     let name = parts.next().unwrap_or_default();
     let valid_part = |part: &str| {
         !part.is_empty()
+            && part != "."
+            && part != ".."
             && part
                 .chars()
                 .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
