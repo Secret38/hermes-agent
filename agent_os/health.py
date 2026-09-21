@@ -248,7 +248,7 @@ def collect_agent_os_health(
             required_for_full=True,
             success="Hermes browser runtime is available",
             failure="Hermes browser runtime is unavailable",
-            remediation="Run hermes doctor --fix or install agent-browser plus Chromium.",
+            remediation="Run hermes agent-os provision to install and verify the browser runtime.",
         ),
         _probe_check(
             "computer_use",
@@ -257,7 +257,7 @@ def collect_agent_os_health(
             required_for_full=True,
             success="Hermes computer-use runtime is available",
             failure="Hermes computer-use runtime is unavailable",
-            remediation="Run hermes computer-use install, then hermes computer-use doctor.",
+            remediation="Run hermes agent-os provision, then re-run hermes agent-os status --require-full.",
         ),
     ]
 
