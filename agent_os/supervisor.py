@@ -40,7 +40,7 @@ class AgentSupervisor:
         self.store = store
         self.runtimes = {runtime.runtime_name: runtime for runtime in runtimes}
 
-    def launch_agent(
+    def prepare_agent(
         self,
         *,
         task_id: str,
@@ -51,8 +51,8 @@ class AgentSupervisor:
         launch_spec: dict | None = None,
         max_restarts: int = 1,
     ) -> AgentInstanceRecord:
-        adapter = self._runtime(runtime)
-        agent = self.store.create_agent(
+        self._runtime(runtime)
+        return self.store.create_agent(
             AgentInstanceRecord.create(
                 task_id=task_id,
                 runtime=runtime,
@@ -63,6 +63,16 @@ class AgentSupervisor:
                 max_restarts=max_restarts,
             )
         )
+
+    def start_agent(self, agent_id: str) -> AgentInstanceRecord:
+        agent = self.store.get_agent(agent_id)
+        if agent is None:
+            raise KeyError(f"unknown agent: {agent_id}")
+        if agent.state is not AgentInstanceState.CREATED:
+            raise RuntimeError(
+                f"agent must be CREATED before initial start: {agent.id} is {agent.state.value}"
+            )
+        adapter = self._runtime(agent.runtime)
         agent = self.store.transition_agent(agent.id, AgentInstanceState.STARTING)
         try:
             launched = adapter.launch(agent)
@@ -86,12 +96,43 @@ class AgentSupervisor:
                 diagnostic=f"launch failed: {type(exc).__name__}",
             )
 
+    def launch_agent(
+        self,
+        *,
+        task_id: str,
+        runtime: str,
+        goal: str,
+        parent_agent_id: str | None = None,
+        role: str = "leaf",
+        launch_spec: dict | None = None,
+        max_restarts: int = 1,
+    ) -> AgentInstanceRecord:
+        agent = self.prepare_agent(
+            task_id=task_id,
+            runtime=runtime,
+            goal=goal,
+            parent_agent_id=parent_agent_id,
+            role=role,
+            launch_spec=launch_spec,
+            max_restarts=max_restarts,
+        )
+        return self.start_agent(agent.id)
+
     def reconcile_active(self) -> ReconcileReport:
         items = [self._reconcile_one(agent) for agent in self.store.list_agents(active_only=True)]
         return ReconcileReport(tuple(items))
 
     def _reconcile_one(self, agent: AgentInstanceRecord) -> ReconcileItem:
         before = agent.state
+        if agent.state is AgentInstanceState.CREATED:
+            started = self.start_agent(agent.id)
+            return ReconcileItem(
+                agent.id,
+                before,
+                started.state,
+                started.state in {AgentInstanceState.STARTING, AgentInstanceState.RUNNING},
+                diagnostic=started.diagnostic,
+            )
         adapter = self.runtimes.get(agent.runtime)
         if adapter is None:
             updated = self._orphan(
