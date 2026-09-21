@@ -41,7 +41,11 @@ on:
         required: false
         default: true
       agent_os_e2e:
-        description: Run real Agent OS native-Windows computer-use Golden Task E2E.
+        description: >-
+          Agent OS changed. Hosted Windows still runs OS unit coverage, but live
+          computer-use E2E is release-qualified only on an interactive
+          self-hosted Windows runner because GitHub-hosted runners run without
+          a user desktop.
         type: boolean
         required: false
         default: false
@@ -101,14 +105,6 @@ jobs:
 
       - name: Minimize uv cache
         run: uv cache prune --ci
-      - name: Provision Agent OS Windows full runtime
-        if: matrix.marker == 'windows_only' && inputs.agent_os_e2e
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          uv run --no-sync hermes agent-os provision
-          uv run --no-sync hermes agent-os status --require-full --json
-
       - name: Run ${{ matrix.marker }} tests
         # Two-step selection:
         #
@@ -192,24 +188,8 @@ jobs:
           OPENAI_API_KEY: ""
           NOUS_API_KEY: ""
 
-      - name: Run Agent OS Windows Golden E2E
-        if: matrix.marker == 'windows_only' && inputs.agent_os_e2e
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          uv run --no-sync python -m pytest tests/agent_os/test_windows_golden_e2e.py -m "windows_only and integration" -v --tb=short
-        env:
-          OPENROUTER_API_KEY: ""
-          OPENAI_API_KEY: ""
-          NOUS_API_KEY: ""
-
-      - name: Prove Agent OS V1 20/20 Golden Tasks on Windows
-        if: matrix.marker == 'windows_only' && inputs.agent_os_e2e
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          uv run --no-sync python scripts/agent_os_golden.py --json
-        env:
-          OPENROUTER_API_KEY: ""
-          OPENAI_API_KEY: ""
-          NOUS_API_KEY: ""
+      # Live GT-12/13 and the canonical 20/20 proof intentionally do not run
+      # on GitHub-hosted Windows. Those runners execute in a non-interactive
+      # service session, where Win32/UIA window-driving APIs cannot see a user
+      # desktop. The production release workflow gates them on the trusted
+      # self-hosted label: [self-hosted, windows, x64, agent-os-gui].
