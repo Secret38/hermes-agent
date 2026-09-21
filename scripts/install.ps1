@@ -2612,8 +2612,8 @@ function Install-Repository {
     }
 
     # Keep managed installs bound to the repository selected by the bootstrap.
-    # This matters for fork/release installers: a reinstall over an older
-    # upstream checkout must not silently keep fetching from that old remote.
+    # A fork/release reinstall over an older checkout must not keep fetching
+    # from that checkout's previous origin.
     try {
         & git -c windows.appendAtomically=false -C $InstallDir remote set-url origin $RepoUrlHttps 2>$null
     } catch {
