@@ -299,16 +299,27 @@ def _running_in_docker() -> bool:
         return False
 
 
-def check_browser_requirements() -> bool:
-    """Whether the browser tools should be advertised.
+def reset_browser_install_cache() -> None:
+    """Forget browser-install discovery results after an explicit provision/update.
 
-    Local mode needs the ``agent-browser`` CLI plus a Chromium build (except Lightpanda-only text workflows);
-    cloud mode needs the CLI plus provider credentials (the provider hosts its own Chromium).
+    Requirement probes intentionally cache filesystem discovery. An installer can change
+    that filesystem in the same Python process, so Agent OS provisioning must invalidate
+    the negative cache before it re-probes readiness.
     """
     _bt = _origin()
-    # Browser Use CLI backend: browser_exec replaces the whole browser_* surface (incl. browser_cdp/browser_dialog check_fns).
-    if _bt._is_browser_use_cli_mode():
-        return False
+    _bt._cached_chromium_installed = None
+    _bt._cached_agent_browser = None
+    _bt._agent_browser_resolved = False
+
+
+def check_builtin_browser_requirements() -> bool:
+    """Whether Hermes' built-in agent-browser runtime is executable.
+
+    This deliberately ignores the higher-level ``browser.backend`` exposure choice.
+    Agent OS owns a typed built-in browser adapter and provisions this runtime explicitly,
+    even when regular Hermes sessions expose the Browser Use CLI instead.
+    """
+    _bt = _origin()
     # Camofox only needs the server URL, no agent-browser CLI.
     if _bt._is_camofox_mode():
         return True
@@ -332,6 +343,15 @@ def check_browser_requirements() -> bool:
         return True
     # Local Chrome mode needs Chromium on disk or the CLI hangs until the command timeout.
     return _chromium_installed()
+
+
+def check_browser_requirements() -> bool:
+    """Whether the built-in browser tools should be advertised to normal Hermes sessions."""
+    _bt = _origin()
+    # Browser Use CLI backend: browser_exec replaces the whole browser_* surface (incl. browser_cdp/browser_dialog check_fns).
+    if _bt._is_browser_use_cli_mode():
+        return False
+    return check_builtin_browser_requirements()
 
 
 def check_browser_vision_requirements() -> bool:
