@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from agent_os.evaluation.browser_handlers import browser_handlers
+from agent_os.evaluation.control_plane_handlers import control_plane_handlers
+from agent_os.evaluation.integration_handlers import integration_handlers
+from agent_os.evaluation.software_handlers import software_handlers
+from agent_os.evaluation.windows_handlers import windows_handlers
 from agent_os.evaluation.golden import (
     GoldenTaskDefinition,
     GoldenTaskOutcome,
@@ -82,3 +87,27 @@ def test_manifest_contains_all_twenty_canonical_tasks():
         f"GT-{number:02d}" for number in range(1, 21)
     ]
     assert all(task.verification_required for task in definitions)
+
+
+def test_all_twenty_canonical_tasks_have_registered_v1_handlers():
+    manifest = (
+        Path(__file__).resolve().parents[2]
+        / "evals"
+        / "agent_os"
+        / "golden_tasks.json"
+    )
+    definitions = load_golden_tasks(manifest)
+    handlers = {
+        **control_plane_handlers(),
+        **integration_handlers(),
+        **software_handlers(),
+        **browser_handlers(),
+        **windows_handlers(),
+    }
+
+    missing = {
+        definition.id: definition.handler
+        for definition in definitions
+        if definition.handler not in handlers
+    }
+    assert missing == {}
