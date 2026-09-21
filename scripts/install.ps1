@@ -2296,6 +2296,14 @@ function Install-Repository {
             $ErrorActionPreference = "Continue"
             $autostashRef = ""
             try {
+                # Bind the managed checkout to the repository selected by the
+                # bootstrap BEFORE any fetch. Otherwise a fork/release installer
+                # laid over an older upstream checkout would fetch the wrong repo.
+                git -c windows.appendAtomically=false remote set-url origin $RepoUrlHttps
+                if ($LASTEXITCODE -ne 0) {
+                    throw "failed to bind origin to $RepoUrlHttps (exit $LASTEXITCODE)"
+                }
+
                 # This is a MANAGED checkout, not a repo the user edits. Git for
                 # Windows defaults to core.autocrlf=true, which renormalizes the
                 # repo's LF-only text files to CRLF in the working tree -- so
@@ -2614,15 +2622,6 @@ function Install-Repository {
         if (-not $cloneSuccess) {
             throw "Failed to download repository (tried git clone SSH, HTTPS, and ZIP)"
         }
-    }
-
-    # Keep managed installs bound to the repository selected by the bootstrap.
-    # A fork/release reinstall over an older checkout must not keep fetching
-    # from that checkout's previous origin.
-    try {
-        & git -c windows.appendAtomically=false -C $InstallDir remote set-url origin $RepoUrlHttps 2>$null
-    } catch {
-        Write-Warn "Could not update origin remote to $RepoUrlHttps; continuing with existing remote"
     }
 
     # Set per-repo config (harmless if it fails)
