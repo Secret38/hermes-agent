@@ -163,7 +163,7 @@ def test_agent_step_is_bound_before_runtime_launch(tmp_path):
     assert runtime.launches == 1
 
 
-def test_reconcile_starts_prepared_agent_after_restart(tmp_path):
+def test_unbound_prepared_agent_stays_dormant_on_reconcile(tmp_path):
     store = AgentOSStore(tmp_path / "agent_os.db")
     task = store.create_task(TaskRecord.create("prepared recovery"))
     runtime = FakeRuntime()
@@ -171,12 +171,51 @@ def test_reconcile_starts_prepared_agent_after_restart(tmp_path):
     agent = supervisor.prepare_agent(
         task_id=task.id,
         runtime="fake",
-        goal="resume me",
+        goal="do not start until bound",
     )
 
-    assert agent.state is AgentInstanceState.CREATED
     report = supervisor.reconcile_active()
 
     assert report.items[0].before is AgentInstanceState.CREATED
-    assert store.get_agent(agent.id).state is AgentInstanceState.RUNNING
+    assert store.get_agent(agent.id).state is AgentInstanceState.CREATED
+    assert runtime.launches == 0
+
+
+def test_engine_resumes_bound_prepared_agent_after_restart(tmp_path):
+    path = tmp_path / "agent_os.db"
+    store = AgentOSStore(path)
+    task = store.create_task(TaskRecord.create("bound prepared recovery"))
+    plan = PlanRecord.create(task_id=task.id, objective="resume bound agent")
+    step = PlanStepRecord.create(
+        plan_id=plan.id,
+        task_id=task.id,
+        title="agent work",
+        kind=PlanStepKind.AGENT,
+        spec={"runtime": "fake", "goal": "resume me"},
+    )
+    store.create_plan(plan, [step], {})
+    store.transition_plan(plan.id, PlanState.ACTIVE)
+    claimed = DurablePlanScheduler(store, owner_id="before-crash").claim_next(plan.id)
+
+    runtime = FakeRuntime()
+    supervisor = AgentSupervisor(store, [runtime])
+    agent = supervisor.prepare_agent(
+        task_id=task.id,
+        runtime="fake",
+        goal="resume me",
+    )
+    store.bind_plan_step_execution(claimed.id, agent.id)
+
+    reopened = AgentOSStore(path)
+    resumed_supervisor = AgentSupervisor(reopened, [runtime])
+    engine = PlanExecutionEngine(
+        reopened,
+        action_kernels={},
+        agent_supervisor=resumed_supervisor,
+    )
+    result = engine.run_once(plan.id)
+
+    assert result.outcome is EngineOutcome.AGENT_RESUMED
+    assert result.execution_id == agent.id
+    assert reopened.get_agent(agent.id).state is AgentInstanceState.RUNNING
     assert runtime.launches == 1

@@ -125,13 +125,12 @@ class AgentSupervisor:
     def _reconcile_one(self, agent: AgentInstanceRecord) -> ReconcileItem:
         before = agent.state
         if agent.state is AgentInstanceState.CREATED:
-            started = self.start_agent(agent.id)
             return ReconcileItem(
                 agent.id,
                 before,
-                started.state,
-                started.state in {AgentInstanceState.STARTING, AgentInstanceState.RUNNING},
-                diagnostic=started.diagnostic,
+                AgentInstanceState.CREATED,
+                False,
+                diagnostic="PREPARED_NOT_STARTED",
             )
         adapter = self.runtimes.get(agent.runtime)
         if adapter is None:
