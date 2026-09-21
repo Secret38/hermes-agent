@@ -96,6 +96,13 @@ jobs:
 
       - name: Minimize uv cache
         run: uv cache prune --ci
+      - name: Provision Agent OS Windows computer-use runtime
+        if: matrix.marker == 'windows_only'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          uv run --no-sync hermes computer-use install
+          uv run --no-sync hermes computer-use status
 
       - name: Run ${{ matrix.marker }} tests
         # Two-step selection:
@@ -176,6 +183,17 @@ jobs:
         env:
           # Belt-and-suspenders with tests/conftest.py's env blanking: no
           # test may reach a real provider API.
+          OPENROUTER_API_KEY: ""
+          OPENAI_API_KEY: ""
+          NOUS_API_KEY: ""
+
+      - name: Run Agent OS Windows Golden E2E
+        if: matrix.marker == 'windows_only'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          uv run --no-sync python -m pytest tests/agent_os/test_windows_golden_e2e.py -m "windows_only and integration" -v --tb=short
+        env:
           OPENROUTER_API_KEY: ""
           OPENAI_API_KEY: ""
           NOUS_API_KEY: ""

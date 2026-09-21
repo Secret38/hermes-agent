@@ -219,3 +219,18 @@ jobs:
           OPENROUTER_API_KEY: ""
           OPENAI_API_KEY: ""
           NOUS_API_KEY: ""
+
+      - name: Provision Agent OS browser runtime
+        run: |
+          set -euo pipefail
+          npx --ignore-scripts -y agent-browser@^0.26.0 install --with-deps
+          npx --ignore-scripts --prefer-offline -y agent-browser@^0.26.0 --version
+
+      - name: Run Agent OS browser Golden E2E
+        run: |
+          source .venv/bin/activate
+          python -m pytest tests/agent_os/test_browser_golden_e2e.py -m integration -v --tb=short
+        env:
+          OPENROUTER_API_KEY: ""
+          OPENAI_API_KEY: ""
+          NOUS_API_KEY: ""
