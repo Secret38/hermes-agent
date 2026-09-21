@@ -22,3 +22,29 @@ def test_agent_browser_managed_chrome_cache_is_discovered(tmp_path, monkeypatch)
     assert str(managed_root) in install._chromium_search_roots()
     assert install._has_chromium_build(str(managed_root))
     assert install._chromium_installed() is True
+
+
+def test_builtin_runtime_probe_is_independent_of_browser_use_exposure(monkeypatch):
+    monkeypatch.setattr(browser_tool, "_is_browser_use_cli_mode", lambda: True)
+    monkeypatch.setattr(browser_tool, "_is_camofox_mode", lambda: False)
+    monkeypatch.setattr(install._cdp, "_get_cdp_override_raw", lambda: "")
+    monkeypatch.setattr(install, "_find_agent_browser", lambda validate=False: browser_tool.NPX_AGENT_BROWSER_SENTINEL)
+    monkeypatch.setattr(install, "_requires_real_termux_browser_install", lambda command: False)
+    monkeypatch.setattr(install._cloud, "_get_cloud_provider", lambda: None)
+    monkeypatch.setattr(install._lp, "_using_lightpanda_engine", lambda: False)
+    monkeypatch.setattr(install, "_chromium_installed", lambda: True)
+
+    assert install.check_builtin_browser_requirements() is True
+    assert install.check_browser_requirements() is False
+
+
+def test_reset_browser_install_cache_clears_negative_discovery(monkeypatch):
+    monkeypatch.setattr(browser_tool, "_cached_chromium_installed", False)
+    monkeypatch.setattr(browser_tool, "_cached_agent_browser", "stale")
+    monkeypatch.setattr(browser_tool, "_agent_browser_resolved", True)
+
+    install.reset_browser_install_cache()
+
+    assert browser_tool._cached_chromium_installed is None
+    assert browser_tool._cached_agent_browser is None
+    assert browser_tool._agent_browser_resolved is False
