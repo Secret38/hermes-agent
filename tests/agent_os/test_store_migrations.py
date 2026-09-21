@@ -216,3 +216,34 @@ def test_failed_migration_rolls_back_schema_and_version(tmp_path, monkeypatch):
 
     assert "transient_col" not in columns
     assert version == "3"
+
+
+def test_v4_database_adds_plan_claim_lease_columns(tmp_path):
+    path = tmp_path / "agent_os.db"
+    store = AgentOSStore(path)
+    task = store.create_task(TaskRecord.create("lease migration"))
+
+    conn = sqlite3.connect(path)
+    try:
+        conn.execute("UPDATE meta SET value = '4' WHERE key = 'schema_version'")
+        conn.execute("DROP INDEX IF EXISTS idx_plan_steps_claim")
+        conn.commit()
+    finally:
+        conn.close()
+
+    upgraded = AgentOSStore(path)
+    assert upgraded.get_task(task.id) is not None
+
+    conn = sqlite3.connect(path)
+    try:
+        columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(plan_steps)").fetchall()
+        }
+        version = conn.execute(
+            "SELECT value FROM meta WHERE key='schema_version'"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+
+    assert {"claim_token", "claim_owner", "claim_expires_at"} <= columns
+    assert version == str(SCHEMA_VERSION)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import time
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -17,7 +18,7 @@ from .agents.records import (
     agent_is_terminal,
     validate_agent_transition,
 )
-from .contracts import ActionRecord, TaskRecord, utc_now_iso
+from .contracts import ActionRecord, TaskRecord, new_id, utc_now_iso
 from .events import EventRecord, EventType
 from .orchestration.plan import (
     PlanRecord,
@@ -31,7 +32,7 @@ from .orchestration.plan import (
 )
 from .states import ActionState, TaskState, validate_action_transition, validate_task_transition
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 def default_db_path() -> Path:
@@ -215,11 +216,27 @@ def _migration_4(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migration_5(conn: sqlite3.Connection) -> None:
+    add_column_if_missing(conn, "plan_steps", "claim_token", "claim_token TEXT")
+    add_column_if_missing(conn, "plan_steps", "claim_owner", "claim_owner TEXT")
+    add_column_if_missing(
+        conn,
+        "plan_steps",
+        "claim_expires_at",
+        "claim_expires_at REAL",
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_plan_steps_claim "
+        "ON plan_steps(plan_id, state, claim_expires_at)"
+    )
+
+
 _MIGRATIONS = {
     1: _migration_1,
     2: _migration_2,
     3: _migration_3,
     4: _migration_4,
+    5: _migration_5,
 }
 
 
@@ -704,7 +721,10 @@ class AgentOSStore:
 
             now = utc_now_iso()
             conn.execute(
-                "UPDATE plan_steps SET execution_id = ?, updated_at = ? WHERE id = ?",
+                """UPDATE plan_steps
+                      SET execution_id = ?, claim_token = NULL, claim_owner = NULL,
+                          claim_expires_at = NULL, updated_at = ?
+                    WHERE id = ?""",
                 (execution_id, now, step_id),
             )
             self._insert_event(
@@ -724,6 +744,9 @@ class AgentOSStore:
             return replace(
                 self._plan_step_from_row(row),
                 execution_id=execution_id,
+                claim_token=None,
+                claim_owner=None,
+                claim_expires_at=None,
                 updated_at=now,
             )
         except Exception:
@@ -742,7 +765,24 @@ class AgentOSStore:
             current = PlanStepState(row["state"])
             validate_step_transition(current, target)
             now = utc_now_iso()
-            conn.execute("UPDATE plan_steps SET state = ?, updated_at = ? WHERE id = ?", (target.value, now, step_id))
+            clear_claim = target is not PlanStepState.RUNNING
+            conn.execute(
+                """UPDATE plan_steps
+                      SET state = ?,
+                          claim_token = CASE WHEN ? THEN NULL ELSE claim_token END,
+                          claim_owner = CASE WHEN ? THEN NULL ELSE claim_owner END,
+                          claim_expires_at = CASE WHEN ? THEN NULL ELSE claim_expires_at END,
+                          updated_at = ?
+                    WHERE id = ?""",
+                (
+                    target.value,
+                    int(clear_claim),
+                    int(clear_claim),
+                    int(clear_claim),
+                    now,
+                    step_id,
+                ),
+            )
             self._insert_event(
                 conn,
                 EventRecord.create(
@@ -836,7 +876,82 @@ class AgentOSStore:
         finally:
             conn.close()
 
-    def claim_next_plan_step(self, plan_id: str) -> PlanStepRecord | None:
+    def reclaim_expired_unbound_plan_steps(
+        self,
+        plan_id: str,
+        *,
+        now: float | None = None,
+    ) -> list[str]:
+        cutoff = time.time() if now is None else float(now)
+        conn = self._connect()
+        reclaimed: list[str] = []
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            rows = conn.execute(
+                """SELECT * FROM plan_steps
+                    WHERE plan_id = ?
+                      AND state = ?
+                      AND execution_id IS NULL
+                      AND claim_expires_at IS NOT NULL
+                      AND claim_expires_at <= ?
+                    ORDER BY claim_expires_at, id""",
+                (plan_id, PlanStepState.RUNNING.value, cutoff),
+            ).fetchall()
+            updated_at = utc_now_iso()
+            for row in rows:
+                updated = conn.execute(
+                    """UPDATE plan_steps
+                          SET state = ?, claim_token = NULL, claim_owner = NULL,
+                              claim_expires_at = NULL, updated_at = ?
+                        WHERE id = ? AND state = ? AND execution_id IS NULL
+                          AND claim_expires_at IS NOT NULL
+                          AND claim_expires_at <= ?""",
+                    (
+                        PlanStepState.READY.value,
+                        updated_at,
+                        row["id"],
+                        PlanStepState.RUNNING.value,
+                        cutoff,
+                    ),
+                )
+                if updated.rowcount != 1:
+                    continue
+                reclaimed.append(row["id"])
+                self._insert_event(
+                    conn,
+                    EventRecord.create(
+                        task_id=row["task_id"],
+                        type=EventType.PLAN_STEP_STATE_CHANGED,
+                        payload={
+                            "plan_id": plan_id,
+                            "step_id": row["id"],
+                            "from": PlanStepState.RUNNING.value,
+                            "to": PlanStepState.READY.value,
+                            "reason": "claim_lease_expired_unbound",
+                            "previous_claim_owner": row["claim_owner"],
+                            "previous_claim_token": row["claim_token"],
+                        },
+                    ),
+                )
+            conn.commit()
+            return reclaimed
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def claim_next_plan_step(
+        self,
+        plan_id: str,
+        *,
+        claim_owner: str,
+        lease_seconds: float = 60.0,
+    ) -> PlanStepRecord | None:
+        if not claim_owner.strip():
+            raise ValueError("claim_owner must not be empty")
+        if lease_seconds <= 0:
+            raise ValueError("lease_seconds must be > 0")
         conn = self._connect()
         try:
             conn.execute("BEGIN IMMEDIATE")
@@ -850,10 +965,23 @@ class AgentOSStore:
             if row is None:
                 conn.commit()
                 return None
-            now = utc_now_iso()
+            now_iso = utc_now_iso()
+            claim_token = new_id("claim")
+            claim_expires_at = time.time() + float(lease_seconds)
             updated = conn.execute(
-                "UPDATE plan_steps SET state = ?, updated_at = ? WHERE id = ? AND state = ?",
-                (PlanStepState.RUNNING.value, now, row["id"], PlanStepState.READY.value),
+                """UPDATE plan_steps
+                      SET state = ?, claim_token = ?, claim_owner = ?,
+                          claim_expires_at = ?, updated_at = ?
+                    WHERE id = ? AND state = ?""",
+                (
+                    PlanStepState.RUNNING.value,
+                    claim_token,
+                    claim_owner,
+                    claim_expires_at,
+                    now_iso,
+                    row["id"],
+                    PlanStepState.READY.value,
+                ),
             )
             if updated.rowcount != 1:
                 conn.rollback()
@@ -869,6 +997,9 @@ class AgentOSStore:
                         "from": PlanStepState.READY.value,
                         "to": PlanStepState.RUNNING.value,
                         "reason": "scheduler_claim",
+                        "claim_owner": claim_owner,
+                        "claim_token": claim_token,
+                        "claim_expires_at": claim_expires_at,
                     },
                 ),
             )
@@ -876,7 +1007,10 @@ class AgentOSStore:
             return replace(
                 self._plan_step_from_row(row),
                 state=PlanStepState.RUNNING,
-                updated_at=now,
+                claim_token=claim_token,
+                claim_owner=claim_owner,
+                claim_expires_at=claim_expires_at,
+                updated_at=now_iso,
             )
         except Exception:
             conn.rollback()
@@ -1239,6 +1373,9 @@ class AgentOSStore:
             state=PlanStepState(row["state"]),
             spec=_loads(row["spec_json"]),
             execution_id=row["execution_id"],
+            claim_token=row["claim_token"],
+            claim_owner=row["claim_owner"],
+            claim_expires_at=row["claim_expires_at"],
             priority=int(row["priority"]),
             created_at=row["created_at"],
             updated_at=row["updated_at"],

@@ -113,3 +113,61 @@ def test_schema_version_contains_plan_tables(tmp_path):
     make_plan(store)
 
     assert SCHEMA_VERSION == 3
+
+
+def test_claim_records_owner_token_and_lease(tmp_path):
+    store = AgentOSStore(tmp_path / "agent_os.db")
+    plan, first, _ = make_plan(store)
+    scheduler = DurablePlanScheduler(
+        store,
+        owner_id="scheduler-A",
+        lease_seconds=30,
+    )
+
+    claimed = scheduler.claim_next(plan.id)
+
+    assert claimed is not None
+    assert claimed.id == first.id
+    assert claimed.claim_owner == "scheduler-A"
+    assert claimed.claim_token
+    assert claimed.claim_expires_at is not None
+
+
+def test_expired_unbound_claim_is_reclaimed_but_bound_execution_is_not(tmp_path):
+    store = AgentOSStore(tmp_path / "agent_os.db")
+    plan, first, second = make_plan(store)
+    scheduler = DurablePlanScheduler(
+        store,
+        owner_id="scheduler-A",
+        lease_seconds=30,
+    )
+
+    claimed = scheduler.claim_next(plan.id)
+    assert claimed is not None
+    reclaimed = store.reclaim_expired_unbound_plan_steps(
+        plan.id,
+        now=float(claimed.claim_expires_at) + 1,
+    )
+    assert reclaimed == [claimed.id]
+    assert store.get_plan_step(claimed.id).state is PlanStepState.READY
+
+    rebound = DurablePlanScheduler(
+        store,
+        owner_id="scheduler-B",
+        lease_seconds=30,
+    ).claim_next(plan.id)
+    action = store.create_action(
+        ActionRecord.create(
+            rebound.task_id,
+            tool="terminal",
+            operation="read status",
+        )
+    )
+    store.bind_plan_step_execution(rebound.id, action.id)
+
+    reclaimed_after_bind = store.reclaim_expired_unbound_plan_steps(
+        plan.id,
+        now=float(rebound.claim_expires_at) + 999,
+    )
+    assert rebound.id not in reclaimed_after_bind
+    assert store.get_plan_step(rebound.id).state is PlanStepState.RUNNING

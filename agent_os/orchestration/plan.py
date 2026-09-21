@@ -131,6 +131,9 @@ class PlanStepRecord:
     state: PlanStepState = PlanStepState.PENDING
     spec: dict[str, Any] = field(default_factory=dict)
     execution_id: str | None = None
+    claim_token: str | None = None
+    claim_owner: str | None = None
+    claim_expires_at: float | None = None
     priority: int = 0
     created_at: str = field(default_factory=utc_now_iso)
     updated_at: str = field(default_factory=utc_now_iso)
@@ -145,6 +148,9 @@ class PlanStepRecord:
         kind: PlanStepKind,
         spec: dict[str, Any] | None = None,
         execution_id: str | None = None,
+        claim_token: str | None = None,
+        claim_owner: str | None = None,
+        claim_expires_at: float | None = None,
         priority: int = 0,
     ) -> "PlanStepRecord":
         if not plan_id.strip():
@@ -161,6 +167,9 @@ class PlanStepRecord:
             kind=kind,
             spec=dict(spec or {}),
             execution_id=execution_id,
+            claim_token=claim_token,
+            claim_owner=claim_owner,
+            claim_expires_at=claim_expires_at,
             priority=int(priority),
         )
 
