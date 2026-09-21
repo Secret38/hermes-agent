@@ -15,8 +15,11 @@ concurrency:
 jobs:
   windows-release:
     name: qualify, sign, and publish Windows release
-    runs-on: windows-latest
-    timeout-minutes: 60
+    # Cua Driver requires an attached interactive Windows desktop. GitHub-hosted
+    # Windows runs as a service and cannot prove GT-12/13. Production release
+    # therefore requires a trusted runner that is logged into Session 1+.
+    runs-on: [self-hosted, windows, x64, agent-os-gui]
+    timeout-minutes: 75
     env:
       OPENROUTER_API_KEY: ""
       OPENAI_API_KEY: ""
@@ -28,7 +31,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Verify release tag is Agent OS branch head
+      - name: Verify release tag is current Agent OS branch head
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -60,19 +63,35 @@ jobs:
         with:
           command: uv sync --locked --python 3.11 --extra all --extra dev --extra anthropic --extra mistral --extra fal --extra modal --extra daytona --extra hindsight --extra parallel-web
 
-      - name: Provision and verify full Agent OS runtime
+      - name: Provision complete Agent OS runtime
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-
           uv run --no-sync hermes agent-os provision
           if ($LASTEXITCODE -ne 0) { throw "Agent OS provisioning failed" }
 
+      - name: Require real desktop readiness
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
           $health = uv run --no-sync hermes agent-os status --require-full --json
-          if ($LASTEXITCODE -ne 0) { throw "Agent OS full-readiness gate failed" }
+          if ($LASTEXITCODE -ne 0) {
+            throw "Agent OS full-readiness gate failed. The release runner must have an interactive Windows desktop."
+          }
           $health | Set-Content -Encoding utf8 dist/agent-os-health.json
 
+      - name: Prove native Windows GT-12 and GT-13
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          uv run --no-sync python -m pytest tests/agent_os/test_windows_golden_e2e.py -m "windows_only and integration" -v --tb=short
+          if ($LASTEXITCODE -ne 0) { throw "Native Windows Golden E2E failed" }
+
+      - name: Prove canonical Agent OS V1 20/20
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
           $golden = uv run --no-sync python scripts/agent_os_golden.py --json
           if ($LASTEXITCODE -ne 0) { throw "Agent OS 20/20 Golden Task gate failed" }
           $golden | Set-Content -Encoding utf8 dist/agent-os-golden-results.json
