@@ -4864,6 +4864,14 @@ $InstallStages += @(
     @{ Name = "path";             Title = "Adding Hermes to PATH";                Category = "finalize";     NeedsUserInput = $false; Worker = "Stage-Path" }
     @{ Name = "config-templates"; Title = "Writing configuration templates";      Category = "finalize";     NeedsUserInput = $false; Worker = "Stage-ConfigTemplates" }
     @{ Name = "platform-sdks";    Title = "Installing messaging platform SDKs";   Category = "finalize";     NeedsUserInput = $false; Worker = "Stage-PlatformSdks" }
+)
+if ($IncludeDesktop) {
+    # A Hermes-Setup.exe install is the Agent OS desktop product path. Provision
+    # its browser + native computer-use substrate before publishing the bootstrap
+    # marker, so "installed" never means "desktop exists but cannot act".
+    $InstallStages += @{ Name = "agent-os-runtime"; Title = "Provisioning Agent OS runtime"; Category = "finalize"; NeedsUserInput = $false; Worker = "Stage-AgentOSRuntime" }
+}
+$InstallStages += @(
     @{ Name = "bootstrap-marker"; Title = "Marking install complete";              Category = "finalize";     NeedsUserInput = $false; Worker = "Stage-BootstrapMarker" }
     # Interactive stages.  In non-interactive mode these become no-ops; the
     # caller (GUI / CI) handles the equivalent UX themselves.
@@ -4910,6 +4918,50 @@ function Stage-Desktop          { Install-DesktopVoiceDeps; Install-Desktop }
 function Stage-Path             { Set-PathVariable }
 function Stage-ConfigTemplates  { Copy-ConfigTemplates }
 function Stage-PlatformSdks     { Resolve-UvCmd; Install-PlatformSdks }
+function Stage-AgentOSRuntime   {
+    $hermesExe = Join-Path $InstallDir "venv\Scripts\hermes.exe"
+    if (-not (Test-Path -LiteralPath $hermesExe -PathType Leaf)) {
+        throw "Agent OS runtime provisioning requires the Hermes venv launcher: $hermesExe"
+    }
+
+    $previousHermesHome = $env:HERMES_HOME
+    try {
+        $env:HERMES_HOME = $HermesHome
+
+        # Capture child output so stage-driver stdout remains exactly one JSON
+        # frame. The GUI receives the stage lifecycle from Invoke-Stage instead
+        # of trying to parse nested installer chatter.
+        $provisionOutput = @(& $hermesExe agent-os provision 2>&1)
+        $provisionExit = $LASTEXITCODE
+        if ($provisionExit -ne 0) {
+            $tail = ($provisionOutput | Select-Object -Last 12) -join [Environment]::NewLine
+            throw "Agent OS runtime provisioning failed (exit $provisionExit). $tail"
+        }
+
+        # Trust actual post-install health, never the installer return code.
+        $healthOutput = @(& $hermesExe agent-os status --require-full --json 2>&1)
+        $healthExit = $LASTEXITCODE
+        if ($healthExit -ne 0) {
+            $tail = ($healthOutput | Select-Object -Last 12) -join [Environment]::NewLine
+            throw "Agent OS full-readiness gate failed (exit $healthExit). $tail"
+        }
+
+        try {
+            $health = ($healthOutput -join [Environment]::NewLine) | ConvertFrom-Json
+        } catch {
+            throw "Agent OS health command returned invalid JSON: $_"
+        }
+        if (-not $health.full_ready) {
+            throw "Agent OS health report did not confirm full_ready=true"
+        }
+    } finally {
+        if ($null -eq $previousHermesHome) {
+            Remove-Item Env:HERMES_HOME -ErrorAction SilentlyContinue
+        } else {
+            $env:HERMES_HOME = $previousHermesHome
+        }
+    }
+}
 function Stage-BootstrapMarker  { Write-BootstrapMarker }
 function Stage-Configure        { Invoke-SetupWizard }
 function Stage-Gateway          { Start-GatewayIfConfigured }
