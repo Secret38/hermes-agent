@@ -52,15 +52,11 @@ jobs:
             libssl-dev \
             patchelf
 
-      # Keyed on Cargo.toml, not Cargo.lock: apps/bootstrap-installer/.gitignore
-      # excludes the lockfile (a create-tauri-app scaffold default), so there is
-      # nothing pinned to hash and `--locked` cannot be used. That also means
-      # this crate re-resolves its whole dependency graph on every build, which
-      # is a real gap for a signed installer given the pinning policy in
-      # AGENTS.md — tracking separately rather than widening this PR.
-      #
-      # No restore-keys: a partial hit leaves a stale target dir, and cargo
-      # re-resolves correctly on top of a Cargo.toml-keyed hit anyway.
+      # Until the first Cargo.lock is committed, key the cache on Cargo.toml.
+      # The job uploads the resolver-generated lockfile below so the release
+      # branch can commit it, then this lane is switched to Cargo.lock + --locked.
+      # No restore-keys: partial Rust target caches are not trusted across
+      # dependency graph changes.
       - name: Restore cargo cache
         uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
         with:
@@ -74,3 +70,12 @@ jobs:
       # (vite dist) that this lane deliberately does not produce.
       - name: cargo test
         run: cargo test --lib
+
+      - name: Capture resolved Cargo lockfile
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bootstrap-installer-cargo-lock
+          path: apps/bootstrap-installer/src-tauri/Cargo.lock
+          if-no-files-found: error
+          retention-days: 1
