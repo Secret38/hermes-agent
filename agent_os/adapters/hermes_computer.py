@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from tools.computer_use.permissions import computer_use_status
 from tools.computer_use.tool import (
-    check_computer_use_requirements,
     handle_computer_use,
     release_computer_use_session,
 )
@@ -22,8 +22,9 @@ class ComputerUseExecutionError(RuntimeError):
 
 
 def computer_use_available() -> bool:
+    """Return true only when the installed CUA runtime is actually healthy."""
     try:
-        return bool(check_computer_use_requirements())
+        return bool(computer_use_status().get("ready") is True)
     except Exception:
         return False
 
