@@ -63,6 +63,10 @@ impl ScriptKind {
     }
 }
 
+pub(crate) fn build_repository() -> &'static str {
+    option_env!("BUILD_REPOSITORY").unwrap_or("NousResearch/hermes-agent")
+}
+
 /// Validates a string looks like a git SHA (7+ hex chars). Mirrors
 /// `STAMP_COMMIT_RE` from bootstrap-runner.ts.
 fn is_valid_commit(s: &str) -> bool {
@@ -126,7 +130,7 @@ pub async fn resolve(
     //
     // Commit SHAs are immutable — permanent cache reuse is safe.
     // Branch/tag pins are moving refs: always try to refresh so "Retry install"
-    // cannot keep reusing a poisoned install-main.ps1 forever (#67193).
+    // cannot keep reusing a poisoned install-NousResearch_hermes-agent-main.ps1 forever (#67193).
     let (commit_or_ref, immutable) = match (&pin.commit, &pin.branch) {
         (Some(c), _) if is_valid_commit(c) => (c.clone(), true),
         (_, Some(b)) if !b.trim().is_empty() => (b.clone(), false),
@@ -142,12 +146,14 @@ pub async fn resolve(
         }
     };
 
-    let cached = cached_path(kind, &commit_or_ref);
+    let repository = build_repository();
+    let cached = cached_path(kind, repository, &commit_or_ref);
     match cache_plan(immutable, cached.exists()) {
         CachePlan::Reuse => {
             emit_log(&format!(
-                "[bootstrap] using cached {} for {}",
+                "[bootstrap] using cached {} from {} for {}",
                 kind.filename(),
+                repository,
                 truncate_ref(&commit_or_ref)
             ));
             // Immutable pins are cached forever, so a .ps1 cached by a
@@ -163,8 +169,9 @@ pub async fn resolve(
         }
         CachePlan::Fetch { stale_ok } => {
             emit_log(&format!(
-                "[bootstrap] downloading {} for {} {} from GitHub",
+                "[bootstrap] downloading {} from {} for {} {}",
                 kind.filename(),
+                repository,
                 if immutable {
                     "commit"
                 } else {
@@ -173,7 +180,7 @@ pub async fn resolve(
                 truncate_ref(&commit_or_ref)
             ));
 
-            match download(kind, &commit_or_ref, &cached).await {
+            match download(kind, repository, &commit_or_ref, &cached).await {
                 Ok(()) => {
                     emit_log(&format!("[bootstrap] cached to {}", cached.display()));
                     Ok(ResolvedScript {
@@ -211,11 +218,12 @@ pub struct Pin {
     pub branch: Option<String>,
 }
 
-fn cached_path(kind: ScriptKind, commit_or_ref: &str) -> PathBuf {
-    let safe = sanitize_ref(commit_or_ref);
+fn cached_path(kind: ScriptKind, repository: &str, commit_or_ref: &str) -> PathBuf {
+    let safe_repo = sanitize_ref(repository);
+    let safe_ref = sanitize_ref(commit_or_ref);
     let filename = match kind {
-        ScriptKind::Ps1 => format!("install-{safe}.ps1"),
-        ScriptKind::Sh => format!("install-{safe}.sh"),
+        ScriptKind::Ps1 => format!("install-{safe_repo}-{safe_ref}.ps1"),
+        ScriptKind::Sh => format!("install-{safe_repo}-{safe_ref}.sh"),
     };
     paths::bootstrap_cache_dir().join(filename)
 }
@@ -322,9 +330,15 @@ fn upgrade_cached_script(kind: ScriptKind, cached: &Path, emit_log: &impl Fn(&st
 /// black-holed connection (captive portal, hung proxy, silently dropped
 /// packets) never errors — the whole bootstrap would hang here instead of
 /// falling back to the cached script.
-async fn download(kind: ScriptKind, commit_or_ref: &str, dest_path: &Path) -> Result<()> {
+async fn download(
+    kind: ScriptKind,
+    repository: &str,
+    commit_or_ref: &str,
+    dest_path: &Path,
+) -> Result<()> {
     let url = format!(
-        "https://raw.githubusercontent.com/NousResearch/hermes-agent/{}/scripts/{}",
+        "https://raw.githubusercontent.com/{}/{}/scripts/{}",
+        repository,
         commit_or_ref,
         kind.filename()
     );
@@ -409,6 +423,24 @@ mod tests {
         assert_eq!(sanitize_ref("bb/gui"), "bb_gui");
         assert_eq!(sanitize_ref("main"), "main");
         assert_eq!(sanitize_ref("release/1.2.3"), "release_1.2.3");
+    }
+
+    #[test]
+    fn build_repository_is_owner_repo_slug() {
+        let repository = build_repository();
+        let mut parts = repository.split('/');
+        assert!(!parts.next().unwrap_or_default().is_empty());
+        assert!(!parts.next().unwrap_or_default().is_empty());
+        assert!(parts.next().is_none());
+    }
+
+    #[test]
+    fn cache_paths_are_repository_scoped() {
+        let upstream = cached_path(ScriptKind::Ps1, "NousResearch/hermes-agent", "main");
+        let fork = cached_path(ScriptKind::Ps1, "Secret38/hermes-agent", "main");
+        assert_ne!(upstream, fork);
+        assert!(upstream.to_string_lossy().contains("NousResearch_hermes-agent"));
+        assert!(fork.to_string_lossy().contains("Secret38_hermes-agent"));
     }
 
     #[test]
