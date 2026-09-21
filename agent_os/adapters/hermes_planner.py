@@ -59,7 +59,10 @@ _RESPONSE_FORMAT = {
     "type": "json_schema",
     "json_schema": {
         "name": "agent_os_plan",
-        "strict": True,
+        # spec is intentionally tool-specific and therefore open-ended. The
+        # provider schema is a formatting aid; PlanProposal + PlanCompiler are
+        # the authoritative validation/security boundary.
+        "strict": False,
         "schema": _PLAN_SCHEMA,
     },
 }

@@ -67,7 +67,7 @@ def test_hermes_planner_uses_structured_auxiliary_call(monkeypatch):
     assert proposal.steps[1].kind is PlanStepKind.VERIFICATION
     fmt = captured["extra_body"]["response_format"]
     assert fmt["type"] == "json_schema"
-    assert fmt["json_schema"]["strict"] is True
+    assert fmt["json_schema"]["strict"] is False
     assert captured["task"] == "agent_os_planner"
     assert "Allowed ACTION/VERIFICATION tools: terminal" in captured["messages"][0]["content"]
 
