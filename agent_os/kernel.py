@@ -98,7 +98,7 @@ class AgentOSKernel:
             if checkpoint_id:
                 action = self.store.bind_checkpoint(action.id, checkpoint_id)
 
-        action = self.store.transition_action(action.id, ActionState.EXECUTING)
+        action = self.store.start_action_execution(action.id)
         attempts = action.recovery_attempts
 
         while True:
@@ -165,7 +165,7 @@ class AgentOSKernel:
 
             if recovery.action is RecoveryAction.RETRY:
                 action = self.store.transition_action(action.id, ActionState.RECOVERING)
-                action = self.store.transition_action(action.id, ActionState.EXECUTING)
+                action = self.store.start_action_execution(action.id)
                 continue
 
             if recovery.action is RecoveryAction.ROLLBACK and self.checkpoint_provider and action.checkpoint_id:

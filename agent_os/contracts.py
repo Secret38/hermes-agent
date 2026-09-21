@@ -78,6 +78,9 @@ class ActionRecord:
     actual_state: dict[str, Any] = field(default_factory=dict)
     verification_result: dict[str, Any] = field(default_factory=dict)
     recovery_attempts: int = 0
+    execution_owner_pid: int | None = None
+    execution_owner_create_time: float | None = None
+    execution_attempts: int = 0
     error: str | None = None
     created_at: str = field(default_factory=utc_now_iso)
     updated_at: str = field(default_factory=utc_now_iso)

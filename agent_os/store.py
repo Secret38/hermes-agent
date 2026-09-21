@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import time
 from dataclasses import replace
+
+import psutil
 from pathlib import Path
 from typing import Any
 
@@ -32,7 +35,7 @@ from .orchestration.plan import (
 )
 from .states import ActionState, TaskState, validate_action_transition, validate_task_transition
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 def default_db_path() -> Path:
@@ -231,12 +234,38 @@ def _migration_5(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migration_6(conn: sqlite3.Connection) -> None:
+    add_column_if_missing(
+        conn,
+        "actions",
+        "execution_owner_pid",
+        "execution_owner_pid INTEGER",
+    )
+    add_column_if_missing(
+        conn,
+        "actions",
+        "execution_owner_create_time",
+        "execution_owner_create_time REAL",
+    )
+    add_column_if_missing(
+        conn,
+        "actions",
+        "execution_attempts",
+        "execution_attempts INTEGER NOT NULL DEFAULT 0",
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_actions_execution_owner "
+        "ON actions(state, execution_owner_pid, execution_owner_create_time)"
+    )
+
+
 _MIGRATIONS = {
     1: _migration_1,
     2: _migration_2,
     3: _migration_3,
     4: _migration_4,
     5: _migration_5,
+    6: _migration_6,
 }
 
 
@@ -399,6 +428,91 @@ class AgentOSStore:
         try:
             row = conn.execute("SELECT * FROM actions WHERE id = ?", (action_id,)).fetchone()
             return None if row is None else self._action_from_row(row)
+        finally:
+            conn.close()
+
+    def list_actions(
+        self,
+        *,
+        states: set[ActionState] | None = None,
+    ) -> list[ActionRecord]:
+        conn = self._connect()
+        try:
+            if states:
+                values = sorted(state.value for state in states)
+                marks = ",".join("?" for _ in values)
+                rows = conn.execute(
+                    f"SELECT * FROM actions WHERE state IN ({marks}) ORDER BY created_at, id",
+                    values,
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM actions ORDER BY created_at, id"
+                ).fetchall()
+            return [self._action_from_row(row) for row in rows]
+        finally:
+            conn.close()
+
+    def start_action_execution(self, action_id: str) -> ActionRecord:
+        conn = self._connect()
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute("SELECT * FROM actions WHERE id = ?", (action_id,)).fetchone()
+            if row is None:
+                raise KeyError(f"unknown action: {action_id}")
+            current = ActionState(row["state"])
+            validate_action_transition(current, ActionState.EXECUTING)
+
+            pid = os.getpid()
+            try:
+                create_time = float(psutil.Process(pid).create_time())
+            except (psutil.Error, OSError) as exc:
+                raise RuntimeError("cannot fingerprint action execution owner") from exc
+
+            attempts = int(row["execution_attempts"] or 0) + 1
+            now = utc_now_iso()
+            conn.execute(
+                """UPDATE actions
+                      SET state = ?, execution_owner_pid = ?,
+                          execution_owner_create_time = ?, execution_attempts = ?,
+                          updated_at = ?
+                    WHERE id = ?""",
+                (
+                    ActionState.EXECUTING.value,
+                    pid,
+                    create_time,
+                    attempts,
+                    now,
+                    action_id,
+                ),
+            )
+            self._insert_event(
+                conn,
+                EventRecord.create(
+                    task_id=row["task_id"],
+                    action_id=action_id,
+                    type=EventType.ACTION_STATE_CHANGED,
+                    payload={
+                        "from": current.value,
+                        "to": ActionState.EXECUTING.value,
+                        "execution_owner_pid": pid,
+                        "execution_owner_create_time": create_time,
+                        "execution_attempt": attempts,
+                    },
+                ),
+            )
+            conn.commit()
+            return replace(
+                self._action_from_row(row),
+                state=ActionState.EXECUTING,
+                execution_owner_pid=pid,
+                execution_owner_create_time=create_time,
+                execution_attempts=attempts,
+                updated_at=now,
+            )
+        except Exception:
+            conn.rollback()
+            raise
         finally:
             conn.close()
 
@@ -1352,7 +1466,11 @@ class AgentOSStore:
             retry_budget=int(row["retry_budget"]), verification_required=bool(row["verification_required"]),
             verification_method=row["verification_method"], actual_state=_loads(row["actual_state_json"]),
             verification_result=_loads(row["verification_result_json"]),
-            recovery_attempts=int(row["recovery_attempts"]), error=row["error"],
+            recovery_attempts=int(row["recovery_attempts"]),
+            execution_owner_pid=row["execution_owner_pid"],
+            execution_owner_create_time=row["execution_owner_create_time"],
+            execution_attempts=int(row["execution_attempts"] or 0),
+            error=row["error"],
             created_at=row["created_at"], updated_at=row["updated_at"],
         )
 

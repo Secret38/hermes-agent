@@ -166,3 +166,22 @@ def test_risk_classifier_uses_token_boundaries_not_substrings():
 
     assert classifier.classify(target_arg).level is RiskLevel.L2_PERSISTENT_LOCAL
     assert classifier.classify(read_action).level is RiskLevel.L0_OBSERVE
+
+
+def test_retry_creates_distinct_execution_attempts(tmp_path):
+    store = AgentOSStore(tmp_path / "agent_os.db")
+    action = make_action(store, retry_budget=1)
+    executor = SequenceExecutor([RuntimeError("first"), {"exit_code": 0}])
+    verifier = SequenceVerifier([VerificationVerdict.PASSED])
+    kernel = AgentOSKernel(
+        store,
+        executor=executor,
+        verifier=verifier,
+        risk_classifier=FixedRisk(RiskLevel.L0_OBSERVE),
+        permission_gate=FixedPermission(True),
+    )
+
+    result = kernel.execute_action(action.id)
+
+    assert result.state is ActionState.SUCCEEDED
+    assert result.execution_attempts == 2

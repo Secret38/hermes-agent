@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Mapping
 
+from agent_os.action_supervisor import ActionSupervisor
 from agent_os.agents.records import AgentInstanceState
 from agent_os.contracts import ActionRecord
 from agent_os.kernel import AgentOSKernel
@@ -60,12 +61,14 @@ class PlanExecutionEngine:
         self.agent_supervisor = agent_supervisor
         self.scheduler = scheduler or DurablePlanScheduler(store)
         self.task_supervisor = TaskSupervisor(store)
+        self.action_supervisor = ActionSupervisor(store)
 
     def run_once(self, plan_id: str) -> EngineTickResult:
         plan = self.store.get_plan(plan_id)
         if plan is None:
             raise KeyError(f"unknown plan: {plan_id}")
 
+        self.action_supervisor.reconcile_inflight()
         self.agent_supervisor.reconcile_active()
 
         resumed = self._resume_bound_execution(plan_id)
