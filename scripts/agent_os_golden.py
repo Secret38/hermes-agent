@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Inspect or run the Agent OS Golden Task manifest.
+"""Run the canonical Agent OS Golden Task manifest.
 
-Handlers are intentionally not auto-invented. Until an end-to-end handler is
-registered for a task, it reports NOT_IMPLEMENTED and the production gate stays
-red.
+All twenty V1 handlers are registered. Live browser/computer tasks fail closed
+as BLOCKED when their real runtime or native platform is unavailable, so a
+successful exit is a genuine 20/20 verified production-readiness proof.
 """
 
 from __future__ import annotations
@@ -12,9 +12,11 @@ import argparse
 import json
 from pathlib import Path
 
+from agent_os.evaluation.browser_handlers import browser_handlers
 from agent_os.evaluation.control_plane_handlers import control_plane_handlers
 from agent_os.evaluation.integration_handlers import integration_handlers
 from agent_os.evaluation.software_handlers import software_handlers
+from agent_os.evaluation.windows_handlers import windows_handlers
 from agent_os.evaluation.golden import GoldenTaskRunner, load_golden_tasks
 
 
@@ -37,6 +39,8 @@ def main() -> int:
         **control_plane_handlers(),
         **integration_handlers(),
         **software_handlers(),
+        **browser_handlers(),
+        **windows_handlers(),
     }
     runner = GoldenTaskRunner(definitions, handlers=handlers)
     results = runner.run_all()
