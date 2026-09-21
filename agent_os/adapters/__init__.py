@@ -1,5 +1,5 @@
 from .hermes_planner import HermesPlanner, PlannerCapabilities
-from .hermes_file import HermesFileExecutor
+from .hermes_file import HermesFileExecutor, HermesFileVerifier
 from .hermes_approval import HermesApprovalGate
 from .hermes_checkpoint import HermesCheckpointProvider
 from .hermes_subagent import HermesSubagentRuntimeAdapter
@@ -10,6 +10,7 @@ __all__ = [
     "HermesPlanner",
     "PlannerCapabilities",
     "HermesFileExecutor",
+    "HermesFileVerifier",
     "HermesApprovalGate",
     "HermesCheckpointProvider",
     "HermesProjectVerifier",
