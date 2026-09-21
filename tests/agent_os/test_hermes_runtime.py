@@ -97,7 +97,7 @@ def test_concrete_runtime_rejects_planner_capability_drift(tmp_path):
             planner=StaticPlanner(capabilities),
             checkpoint_provider=NoopCheckpoint(),
             enable_browser=False,
-        enable_computer_use=False,
+            enable_computer_use=False,
         )
     except ValueError as exc:
         assert "does not match runtime" in str(exc)
