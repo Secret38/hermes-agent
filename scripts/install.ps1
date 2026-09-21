@@ -5230,8 +5230,7 @@ try {
     Write-Host "  Invoke-WebRequest -Uri 'https://hermes-agent.nousresearch.com/install.ps1' -OutFile install.ps1" -ForegroundColor Yellow
     Write-Host "  .\install.ps1" -ForegroundColor Yellow
     Write-Host ""
-}
-) {
+}) {
     throw "-Repository must be a GitHub owner/repository slug, got: $Repository"
 }
 $RepoUrlSsh = "git@github.com:$Repository.git"
