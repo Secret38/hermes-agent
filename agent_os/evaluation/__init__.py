@@ -1,3 +1,4 @@
+from .software_handlers import software_handlers
 from .integration_handlers import integration_handlers
 from .control_plane_handlers import control_plane_handlers
 from .golden import (
@@ -18,4 +19,5 @@ __all__ = [
     "load_golden_tasks",
     "control_plane_handlers",
     "integration_handlers",
+    "software_handlers",
 ]
