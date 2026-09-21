@@ -83,7 +83,7 @@ jobs:
 
   windows-package:
     name: build Windows Hermes-Setup.exe
-    runs-on: windows-latest-32-core
+    runs-on: windows-latest
     timeout-minutes: 35
     env:
       HERMES_BUILD_PIN_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
