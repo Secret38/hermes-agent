@@ -73,7 +73,7 @@ jobs:
 
       - name: Capture resolved Cargo lockfile
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0 # v4.6.2
         with:
           name: bootstrap-installer-cargo-lock
           path: apps/bootstrap-installer/src-tauri/Cargo.lock
