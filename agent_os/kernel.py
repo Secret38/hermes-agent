@@ -7,6 +7,7 @@ from typing import Any, Protocol
 
 from .contracts import ActionRecord
 from .events import EventRecord, EventType
+from .execution_context import authorized_execution
 from .permissions import PermissionGate, SafeDefaultPermissionGate
 from .recovery.planner import RecoveryAction, RecoveryPlanner, RetryBudgetRecoveryPlanner
 from .risk import ConservativeRiskClassifier, RiskClassifier, RiskLevel
@@ -105,7 +106,8 @@ class AgentOSKernel:
             execution_error: Exception | None = None
             verification: VerificationResult | None = None
             try:
-                result = self.executor.execute(action)
+                with authorized_execution(action, risk, decision):
+                    result = self.executor.execute(action)
                 action = self.store.transition_action(
                     action.id,
                     ActionState.OBSERVING,
