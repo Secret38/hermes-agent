@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from contextlib import suppress
@@ -18,6 +19,7 @@ from hermes_cli._subprocess_compat import windows_hide_flags
 
 _RUNTIME_PLATFORMS = frozenset({"darwin", "win32", "linux"})  # mirrors the toolset platform_gate
 _BOOLS = ("accessibility", "screen_recording", "screen_recording_capturable")
+_OK_PROBE_STATUSES = frozenset({"ok", "pass", "passed", "ready", "success"})
 
 def _child_env() -> Dict[str, str]:
     """cua-driver child env (telemetry policy + provider secrets stripped); ``os.environ`` on import error.
@@ -50,6 +52,68 @@ def _doctor(binary: str) -> Optional[Dict[str, Any]]:
         return None
     checks = [{k: str(p.get(k, "")) for k in ("label", "status", "message")} for p in data.get("probes", []) if isinstance(p, dict)]
     return {"ok": bool(data.get("ok")), "checks": checks}
+
+def _probe_is_ok(check: Dict[str, str]) -> bool:
+    return str(check.get("status") or "").strip().lower() in _OK_PROBE_STATUSES
+
+
+def _windows_interactive_daemon_ready(binary: str) -> bool:
+    """Whether a running Cua Driver daemon is attached to Session 1+.
+
+    Session 0 has no interactive desktop. A caller in Session 0 may still drive
+    Windows safely when it is proxying to a daemon that was launched from an
+    interactive console/RDP session.
+    """
+    try:
+        result = _run(binary, "status", timeout=5)
+    except Exception:
+        return False
+    if result.returncode != 0:
+        return False
+    match = re.search(r"(?im)^\\s*session:\\s*(\\d+)\\s*$", result.stdout or "")
+    return bool(match and int(match.group(1)) > 0)
+
+
+def _doctor_desktop_ready(
+    platform: str,
+    doctor: Dict[str, Any],
+    binary: str,
+) -> bool:
+    """Turn doctor probes into a desktop-usable readiness verdict.
+
+    doctor.ok can remain true when Cua Driver reports environment warnings.
+    Agent OS full readiness is stricter: Windows must have an interactive
+    desktop (directly or through an interactive-session daemon), and Linux must
+    have passing display/accessibility probes.
+    """
+    if not doctor.get("ok"):
+        return False
+
+    checks = list(doctor.get("checks") or [])
+    if platform == "win32":
+        session_checks = [
+            check
+            for check in checks
+            if "interactive session" in str(check.get("label") or "").lower()
+        ]
+        if not session_checks:
+            return True  # compatibility with older driver releases
+        if all(_probe_is_ok(check) for check in session_checks):
+            return True
+        return _windows_interactive_daemon_ready(binary)
+
+    if platform == "linux":
+        desktop_checks = [
+            check
+            for check in checks
+            if any(
+                marker in str(check.get("label") or "").lower()
+                for marker in ("interactive session", "display", "at-spi", "accessibility")
+            )
+        ]
+        return not desktop_checks or all(_probe_is_ok(check) for check in desktop_checks)
+
+    return True
 
 def _mac_permissions(binary: str, out: Dict[str, Any]) -> None:
     """Fold ``cua-driver permissions status --json`` booleans (+ ``source``) into ``out``."""
@@ -86,7 +150,13 @@ def computer_use_status(driver_cmd: Optional[str] = None) -> Dict[str, Any]:
         if out["error"] is None:
             out["ready"] = out["accessibility"] is True and out["screen_recording"] is True
     elif doctor is not None:
-        out["ready"] = doctor["ok"]  # no TCC model off macOS
+        out["ready"] = _doctor_desktop_ready(plat, doctor, binary)
+        if doctor.get("ok") and out["ready"] is False and out["error"] is None:
+            out["error"] = (
+                "cua-driver is installed but no interactive Windows desktop is reachable"
+                if plat == "win32"
+                else "cua-driver is installed but desktop accessibility/display probes are not ready"
+            )
     return out
 
 def request_permissions_grant(driver_cmd: Optional[str] = None) -> int:
