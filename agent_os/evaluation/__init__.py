@@ -1,3 +1,4 @@
+from .windows_handlers import windows_handlers
 from .browser_handlers import browser_handlers
 from .software_handlers import software_handlers
 from .integration_handlers import integration_handlers
@@ -22,4 +23,5 @@ __all__ = [
     "browser_handlers",
     "integration_handlers",
     "software_handlers",
+    "windows_handlers",
 ]
