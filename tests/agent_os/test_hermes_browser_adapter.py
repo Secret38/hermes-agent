@@ -8,6 +8,7 @@ from agent_os.adapters.hermes_browser import (
     BrowserExecutionError,
     HermesBrowserExecutor,
     HermesBrowserVerifier,
+    browser_available,
 )
 from agent_os.contracts import ActionRecord, TaskRecord
 from agent_os.verification.gate import VerificationVerdict
@@ -82,3 +83,16 @@ def test_browser_verifier_blocks_empty_completion_claim(monkeypatch):
     result = HermesBrowserVerifier().verify(action("snapshot"), {"success": True})
 
     assert result.verdict is VerificationVerdict.BLOCKED
+
+
+def test_agent_os_browser_availability_uses_builtin_runtime_probe(monkeypatch):
+    monkeypatch.setattr(
+        "agent_os.adapters.hermes_browser.browser_tool_install.check_builtin_browser_requirements",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "agent_os.adapters.hermes_browser.browser_tool.check_browser_routed_requirements",
+        lambda action: False,
+    )
+
+    assert browser_available() is True
