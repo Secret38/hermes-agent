@@ -31,6 +31,17 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Require an interactive Windows runner session
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sessionId = (Get-Process -Id $PID).SessionId
+          if ($sessionId -le 0) {
+            throw "Production GUI qualification cannot run from Windows Session 0. Start the self-hosted agent-os-gui runner interactively from a logged-in user desktop."
+          }
+          "AGENT_OS_RELEASE_SESSION_ID=$sessionId" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Release runner is attached to interactive Windows session $sessionId"
+
       - name: Verify release tag is current Agent OS branch head
         shell: pwsh
         run: |
