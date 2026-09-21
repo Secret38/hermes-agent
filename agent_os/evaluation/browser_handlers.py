@@ -162,6 +162,7 @@ def browser_analysis(definition: GoldenTaskDefinition) -> GoldenTaskResult:
                     input={"url": fixture.base_url + "/analysis"},
                     expected={
                         "success": True,
+                        "full_snapshot": True,
                         "snapshot_contains": ["AGENT_OS_BROWSER_ANALYSIS", "architecture-marker-42"],
                     },
                     workspace=root,
@@ -170,9 +171,10 @@ def browser_analysis(definition: GoldenTaskDefinition) -> GoldenTaskResult:
                     "verify",
                     "Verify analysis source state",
                     "snapshot",
-                    input={"full": False},
+                    input={"full": True},
                     expected={
                         "success": True,
+                        "full_snapshot": True,
                         "snapshot_contains": ["AGENT_OS_BROWSER_ANALYSIS", "architecture-marker-42"],
                     },
                     workspace=root,
