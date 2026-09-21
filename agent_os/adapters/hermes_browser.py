@@ -6,6 +6,7 @@ import json
 from typing import Any
 
 from tools import browser_tool
+from tools import browser_tool_install
 from tools.browser_tool_lifecycle import cleanup_browser
 
 from agent_os.contracts import ActionRecord
@@ -18,8 +19,14 @@ class BrowserExecutionError(RuntimeError):
 
 
 def browser_available() -> bool:
+    """Return readiness for the concrete browser runtime Agent OS executes.
+
+    Agent OS calls Hermes' built-in typed browser functions directly. Normal Hermes tool
+    exposure may select Browser Use instead; that UI/backend choice must not make the
+    separately provisioned Agent OS runtime appear unavailable.
+    """
     try:
-        return bool(browser_tool.check_browser_routed_requirements("browser_snapshot"))
+        return bool(browser_tool_install.check_builtin_browser_requirements())
     except Exception:
         return False
 
