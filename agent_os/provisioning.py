@@ -38,8 +38,10 @@ def _computer_use_ready() -> bool:
 
 def _install_browser() -> None:
     from hermes_cli.tools_config_post_setup import _post_setup_agent_browser
+    from tools.browser_tool_install import reset_browser_install_cache
 
     _post_setup_agent_browser("agent_browser")
+    reset_browser_install_cache()
 
 
 def _install_computer_use() -> bool:
