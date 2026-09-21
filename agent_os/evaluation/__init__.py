@@ -1,3 +1,4 @@
+from .integration_handlers import integration_handlers
 from .control_plane_handlers import control_plane_handlers
 from .golden import (
     GoldenTaskDefinition,
@@ -16,4 +17,5 @@ __all__ = [
     "GoldenTaskSummary",
     "load_golden_tasks",
     "control_plane_handlers",
+    "integration_handlers",
 ]

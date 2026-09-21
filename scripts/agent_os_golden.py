@@ -13,6 +13,7 @@ import json
 from pathlib import Path
 
 from agent_os.evaluation.control_plane_handlers import control_plane_handlers
+from agent_os.evaluation.integration_handlers import integration_handlers
 from agent_os.evaluation.golden import GoldenTaskRunner, load_golden_tasks
 
 
@@ -31,7 +32,8 @@ def main() -> int:
     args = parser.parse_args()
 
     definitions = load_golden_tasks(args.manifest)
-    runner = GoldenTaskRunner(definitions, handlers=control_plane_handlers())
+    handlers = {**control_plane_handlers(), **integration_handlers()}
+    runner = GoldenTaskRunner(definitions, handlers=handlers)
     results = runner.run_all()
     summary = runner.summarize(results)
 
