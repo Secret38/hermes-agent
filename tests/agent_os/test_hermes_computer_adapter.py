@@ -87,3 +87,19 @@ def test_verifier_checks_fresh_app_listing(monkeypatch):
     )
 
     assert result.verdict is VerificationVerdict.PASSED
+
+
+def test_computer_use_availability_requires_healthy_driver(monkeypatch):
+    from agent_os.adapters.hermes_computer import computer_use_available
+
+    monkeypatch.setattr(
+        "agent_os.adapters.hermes_computer.computer_use_status",
+        lambda: {"installed": True, "ready": False},
+    )
+    assert computer_use_available() is False
+
+    monkeypatch.setattr(
+        "agent_os.adapters.hermes_computer.computer_use_status",
+        lambda: {"installed": True, "ready": True},
+    )
+    assert computer_use_available() is True
