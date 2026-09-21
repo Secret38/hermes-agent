@@ -323,6 +323,21 @@ class AgentOSStore:
             initialize=_ensure_schema,
         )
 
+    def initialize(self) -> dict[str, Any]:
+        """Create/migrate the durable store and verify its SQLite integrity."""
+
+        conn = self._connect()
+        try:
+            row = conn.execute("PRAGMA quick_check").fetchone()
+            integrity = str(row[0] if row else "")
+            return {
+                "path": str(self.path),
+                "schema_version": _schema_version(conn),
+                "integrity": integrity,
+            }
+        finally:
+            conn.close()
+
     def create_task(self, task: TaskRecord) -> TaskRecord:
         event = EventRecord.create(task_id=task.id, type=EventType.TASK_CREATED, payload={"state": task.state.value})
         conn = self._connect()
