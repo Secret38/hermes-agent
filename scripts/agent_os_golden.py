@@ -12,6 +12,7 @@ import argparse
 import json
 from pathlib import Path
 
+from agent_os.evaluation.control_plane_handlers import control_plane_handlers
 from agent_os.evaluation.golden import GoldenTaskRunner, load_golden_tasks
 
 
@@ -30,7 +31,7 @@ def main() -> int:
     args = parser.parse_args()
 
     definitions = load_golden_tasks(args.manifest)
-    runner = GoldenTaskRunner(definitions)
+    runner = GoldenTaskRunner(definitions, handlers=control_plane_handlers())
     results = runner.run_all()
     summary = runner.summarize(results)
 
