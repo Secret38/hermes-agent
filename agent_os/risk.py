@@ -34,7 +34,7 @@ class ConservativeRiskClassifier:
 
     _READ_HINTS = (
         "read", "list", "get", "inspect", "status", "show", "search", "find",
-        "screenshot", "observe", "query",
+        "screenshot", "snapshot", "capture", "observe", "query",
     )
     _EXTERNAL_HINTS = (
         "send", "post", "publish", "upload", "submit", "email", "message",
@@ -76,10 +76,24 @@ class ConservativeRiskClassifier:
                 "read-only/observation operation detected",
                 type(self).__name__,
             )
-        if action.tool.lower() in {"browser", "computer"}:
+        tool = action.tool.lower()
+        operation = action.operation.lower().strip()
+        if tool == "browser":
+            if operation in {"navigate", "open", "back", "scroll"}:
+                return RiskAssessment(
+                    RiskLevel.L1_REVERSIBLE,
+                    "reversible browser navigation operation",
+                    type(self).__name__,
+                )
+            return RiskAssessment(
+                RiskLevel.L2_PERSISTENT_LOCAL,
+                "browser input may mutate page or remote application state",
+                type(self).__name__,
+            )
+        if tool in {"computer", "computer_use"} and operation == "wait":
             return RiskAssessment(
                 RiskLevel.L1_REVERSIBLE,
-                "interactive navigation/input operation",
+                "desktop wait has no persistent side effect",
                 type(self).__name__,
             )
         return RiskAssessment(

@@ -185,3 +185,27 @@ def test_retry_creates_distinct_execution_attempts(tmp_path):
 
     assert result.state is ActionState.SUCCEEDED
     assert result.execution_attempts == 2
+
+
+def test_interactive_risk_levels_distinguish_observation_navigation_and_input():
+    from agent_os.risk import ConservativeRiskClassifier, RiskLevel
+
+    task = TaskRecord.create("interactive risk")
+    classifier = ConservativeRiskClassifier()
+
+    snapshot = ActionRecord.create(task.id, tool="browser", operation="snapshot")
+    navigate = ActionRecord.create(task.id, tool="browser", operation="navigate")
+    click = ActionRecord.create(task.id, tool="browser", operation="click", input={"ref": "@e1"})
+    capture = ActionRecord.create(task.id, tool="computer_use", operation="capture")
+    desktop_click = ActionRecord.create(
+        task.id,
+        tool="computer_use",
+        operation="click",
+        input={"action": "click", "element": 1},
+    )
+
+    assert classifier.classify(snapshot).level is RiskLevel.L0_OBSERVE
+    assert classifier.classify(navigate).level is RiskLevel.L1_REVERSIBLE
+    assert classifier.classify(click).level is RiskLevel.L2_PERSISTENT_LOCAL
+    assert classifier.classify(capture).level is RiskLevel.L0_OBSERVE
+    assert classifier.classify(desktop_click).level is RiskLevel.L2_PERSISTENT_LOCAL

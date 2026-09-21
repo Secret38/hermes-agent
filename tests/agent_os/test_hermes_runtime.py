@@ -59,6 +59,7 @@ def test_concrete_runtime_exposes_only_assembled_capabilities(tmp_path):
         host_local_terminal=True,
         checkpoint_provider=NoopCheckpoint(),
         enable_browser=False,
+        enable_computer_use=False,
     )
 
     assert runtime.status().action_tools == ("file", "terminal")
@@ -80,6 +81,7 @@ def test_concrete_runtime_adds_subagent_capability_when_service_present(tmp_path
         subagent_service=Service(),
         checkpoint_provider=NoopCheckpoint(),
         enable_browser=False,
+        enable_computer_use=False,
     )
 
     assert runtime.status().agent_runtimes == ("hermes-subagent",)
@@ -95,6 +97,7 @@ def test_concrete_runtime_rejects_planner_capability_drift(tmp_path):
             planner=StaticPlanner(capabilities),
             checkpoint_provider=NoopCheckpoint(),
             enable_browser=False,
+        enable_computer_use=False,
         )
     except ValueError as exc:
         assert "does not match runtime" in str(exc)
@@ -112,6 +115,23 @@ def test_concrete_runtime_can_expose_browser_capability_explicitly(tmp_path):
         planner=StaticPlanner(capabilities),
         checkpoint_provider=NoopCheckpoint(),
         enable_browser=True,
+        enable_computer_use=False,
     )
 
     assert runtime.status().action_tools == ("browser", "file", "terminal")
+
+
+def test_concrete_runtime_can_expose_computer_use_capability_explicitly(tmp_path):
+    capabilities = CapabilityCatalog.create(
+        action_tools=("terminal", "file", "computer_use"),
+    )
+    store = AgentOSStore(tmp_path / "agent_os.db")
+    runtime = build_hermes_agent_os_runtime(
+        store,
+        planner=StaticPlanner(capabilities),
+        checkpoint_provider=NoopCheckpoint(),
+        enable_browser=False,
+        enable_computer_use=True,
+    )
+
+    assert runtime.status().action_tools == ("computer_use", "file", "terminal")

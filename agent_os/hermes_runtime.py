@@ -14,6 +14,11 @@ from .adapters.hermes_browser import (
     browser_available,
 )
 from .adapters.hermes_checkpoint import HermesCheckpointProvider
+from .adapters.hermes_computer import (
+    HermesComputerUseExecutor,
+    HermesComputerUseVerifier,
+    computer_use_available,
+)
 from .adapters.hermes_file import HermesFileExecutor, HermesFileVerifier
 from .adapters.hermes_planner import HermesPlanner
 from .adapters.hermes_subagent import HermesSubagentRuntimeAdapter
@@ -37,6 +42,7 @@ def build_hermes_agent_os_runtime(
     permission_gate: PermissionGate | None = None,
     subagent_service: SubagentLifecycleService | None = None,
     enable_browser: bool | None = None,
+    enable_computer_use: bool | None = None,
     host_local_terminal: bool = False,
     scheduler_owner_id: str | None = None,
     scheduler_lease_seconds: float = 60.0,
@@ -88,6 +94,20 @@ def build_hermes_agent_os_runtime(
             store,
             executor=HermesBrowserExecutor(),
             verifier=HermesBrowserVerifier(),
+            permission_gate=approval_gate,
+            checkpoint_provider=None,
+        )
+
+    computer_enabled = (
+        computer_use_available()
+        if enable_computer_use is None
+        else bool(enable_computer_use)
+    )
+    if computer_enabled:
+        kernels["computer_use"] = AgentOSKernel(
+            store,
+            executor=HermesComputerUseExecutor(),
+            verifier=HermesComputerUseVerifier(),
             permission_gate=approval_gate,
             checkpoint_provider=None,
         )
