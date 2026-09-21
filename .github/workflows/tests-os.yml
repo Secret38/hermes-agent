@@ -40,6 +40,11 @@ on:
         type: boolean
         required: false
         default: true
+      agent_os_e2e:
+        description: Run real Agent OS native-Windows computer-use Golden Task E2E.
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -97,7 +102,7 @@ jobs:
       - name: Minimize uv cache
         run: uv cache prune --ci
       - name: Provision Agent OS Windows computer-use runtime
-        if: matrix.marker == 'windows_only'
+        if: matrix.marker == 'windows_only' && inputs.agent_os_e2e
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -188,7 +193,7 @@ jobs:
           NOUS_API_KEY: ""
 
       - name: Run Agent OS Windows Golden E2E
-        if: matrix.marker == 'windows_only'
+        if: matrix.marker == 'windows_only' && inputs.agent_os_e2e
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'

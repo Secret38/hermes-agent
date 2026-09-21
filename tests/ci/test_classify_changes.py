@@ -42,13 +42,14 @@ DEFAULT = {
     "npm_lock": True,
     "installer": True,
     "desktop_updater": True,
+    "agent_os_e2e": True,
     "rust": True,
     "mcp_catalog": False,
     "ci_review": True,
 }
 
 
-def _lanes(python=False, frontend=False, site=False, scan=False, deps=False, uv_lock=False, npm_lock=False, installer=False, desktop_updater=False, rust=False, mcp_catalog=False, docker_meta=False, ci_review=False, python_prod=None, nix=None, docker=None) -> dict[str, bool]:
+def _lanes(python=False, frontend=False, site=False, scan=False, deps=False, uv_lock=False, npm_lock=False, installer=False, desktop_updater=False, agent_os_e2e=False, rust=False, mcp_catalog=False, docker_meta=False, ci_review=False, python_prod=None, nix=None, docker=None) -> dict[str, bool]:
     # python_prod tracks python except for tests-only diffs; default it to
     # python so the majority of cases don't need to spell it out.
     #
@@ -71,6 +72,7 @@ def _lanes(python=False, frontend=False, site=False, scan=False, deps=False, uv_
         "npm_lock": npm_lock,
         "installer": installer,
         "desktop_updater": desktop_updater,
+        "agent_os_e2e": agent_os_e2e,
         "rust": rust,
         "mcp_catalog": mcp_catalog,
         "ci_review": ci_review,
@@ -182,6 +184,22 @@ CASES = {
         _lanes(frontend=True, desktop_updater=True),
     ),
     "python source alone → no desktop_updater lane": (["hermes_state.py"], _lanes(python=True, scan=True)),
+    "agent os runtime → agent_os_e2e": (
+        ["agent_os/runtime.py"],
+        _lanes(python=True, scan=True, agent_os_e2e=True),
+    ),
+    "agent os test → agent_os_e2e without python_prod": (
+        ["tests/agent_os/test_kernel.py"],
+        _lanes(python=True, python_prod=False, scan=True, agent_os_e2e=True),
+    ),
+    "browser runtime → agent_os_e2e": (
+        ["tools/browser_tool.py"],
+        _lanes(python=True, scan=True, agent_os_e2e=True),
+    ),
+    "computer use runtime → agent_os_e2e": (
+        ["tools/computer_use/tool.py"],
+        _lanes(python=True, scan=True, agent_os_e2e=True),
+    ),
     # `.rs` lives under apps/, so it matches `frontend` too. That lane builds
     # TypeScript and cannot notice a Rust error — before `rust` existed it was
     # the ONLY lane a Rust change ran, and the crate's tests never executed.
