@@ -37,7 +37,7 @@ def test_local_integration_golden_tasks_pass_with_verification():
     assert all(result.verified for result in results)
 
 
-def test_combined_current_golden_baseline_is_sixteen_of_twenty():
+def test_non_live_core_handlers_cover_sixteen_of_twenty():
     handlers = {
         **control_plane_handlers(),
         **integration_handlers(),
