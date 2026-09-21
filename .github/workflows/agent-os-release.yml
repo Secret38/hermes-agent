@@ -13,23 +13,108 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  windows-release:
-    name: qualify, sign, and publish Windows release
-    # Cua Driver requires an attached interactive Windows desktop. GitHub-hosted
-    # Windows runs as a service and cannot prove GT-12/13. Production release
-    # therefore requires a trusted runner that is logged into Session 1+.
-    runs-on: [self-hosted, windows, x64, agent-os-gui]
-    timeout-minutes: 75
+  build-windows:
+    name: build immutable Windows release candidate
+    runs-on: windows-latest
+    timeout-minutes: 45
     env:
-      OPENROUTER_API_KEY: ""
-      OPENAI_API_KEY: ""
-      NOUS_API_KEY: ""
       HERMES_BUILD_REPOSITORY: ${{ github.repository }}
+      HERMES_BUILD_PIN_COMMIT: ${{ github.sha }}
+      HERMES_BUILD_PIN_BRANCH: agent-os-v1
     steps:
       - name: Checkout tagged source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
+
+      - name: Require tag at current Agent OS branch head
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $commit = (git rev-parse HEAD).Trim()
+          git fetch origin agent-os-v1 --depth=1
+          $branchHead = (git rev-parse origin/agent-os-v1).Trim()
+          if ($commit -ne $branchHead) {
+            throw "Release tag must point at current agent-os-v1 HEAD. tag=$commit branch=$branchHead"
+          }
+
+      - name: Set up Node.js 26
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install workspace dependencies
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          npm ci
+
+      - name: Verify locked Rust dependency graph
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cargo metadata --locked --manifest-path apps/bootstrap-installer/src-tauri/Cargo.toml --format-version 1 | Out-Null
+
+      - name: Build pinned Hermes-Setup.exe
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          npm run tauri:build --workspace @hermes/bootstrap-installer -- --no-bundle
+          git diff --exit-code -- apps/bootstrap-installer/src-tauri/Cargo.lock
+
+          $exe = 'apps/bootstrap-installer/src-tauri/target/release/Hermes-Setup.exe'
+          if (-not (Test-Path $exe -PathType Leaf)) {
+            throw "Expected bootstrap executable was not produced: $exe"
+          }
+
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item -LiteralPath $exe -Destination dist/Hermes-Setup.exe -Force
+          $hash = (Get-FileHash -Algorithm SHA256 dist/Hermes-Setup.exe).Hash.ToLowerInvariant()
+
+          [ordered]@{
+            repository = $env:HERMES_BUILD_REPOSITORY
+            commit = $env:HERMES_BUILD_PIN_COMMIT
+            branch = $env:HERMES_BUILD_PIN_BRANCH
+            tag = $env:GITHUB_REF_NAME
+            unsigned_sha256 = $hash
+          } | ConvertTo-Json | Set-Content -Encoding utf8 dist/source-build-metadata.json
+
+      - name: Upload immutable unsigned build
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
+        with:
+          name: agent-os-release-build-${{ github.sha }}
+          path: |
+            dist/Hermes-Setup.exe
+            dist/source-build-metadata.json
+          if-no-files-found: error
+          retention-days: 7
+
+  qualify-windows-gui:
+    name: prove full runtime and 20/20 on interactive Windows
+    runs-on: [self-hosted, windows, x64, agent-os-gui]
+    timeout-minutes: 60
+    env:
+      OPENROUTER_API_KEY: ""
+      OPENAI_API_KEY: ""
+      NOUS_API_KEY: ""
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Require tag at current Agent OS branch head
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $commit = (git rev-parse HEAD).Trim()
+          git fetch origin agent-os-v1 --depth=1
+          $branchHead = (git rev-parse origin/agent-os-v1).Trim()
+          if ($commit -ne $branchHead) {
+            throw "Release tag must point at current agent-os-v1 HEAD. tag=$commit branch=$branchHead"
+          }
 
       - name: Require an interactive Windows runner session
         shell: pwsh
@@ -41,19 +126,6 @@ jobs:
           }
           "AGENT_OS_RELEASE_SESSION_ID=$sessionId" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           Write-Host "Release runner is attached to interactive Windows session $sessionId"
-
-      - name: Verify release tag is current Agent OS branch head
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $commit = (git rev-parse HEAD).Trim()
-          git fetch origin agent-os-v1 --depth=1
-          $branchHead = (git rev-parse origin/agent-os-v1).Trim()
-          if ($commit -ne $branchHead) {
-            throw "Release tag must point at current agent-os-v1 HEAD. tag=$commit branch=$branchHead"
-          }
-          "HERMES_BUILD_PIN_COMMIT=$commit" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "HERMES_BUILD_PIN_BRANCH=agent-os-v1" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Install uv
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # 8.2.0
@@ -69,7 +141,7 @@ jobs:
         with:
           command: uv python install 3.11
 
-      - name: Install release qualification dependencies
+      - name: Install qualification dependencies
         uses: ./.github/actions/retry
         with:
           command: uv sync --locked --python 3.11 --extra all --extra dev --extra anthropic --extra mistral --extra fal --extra modal --extra daytona --extra hindsight --extra parallel-web
@@ -78,19 +150,19 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          New-Item -ItemType Directory -Force -Path qualification | Out-Null
           uv run --no-sync hermes agent-os provision
           if ($LASTEXITCODE -ne 0) { throw "Agent OS provisioning failed" }
 
-      - name: Require real desktop readiness
+      - name: Require full runtime readiness
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $health = uv run --no-sync hermes agent-os status --require-full --json
           if ($LASTEXITCODE -ne 0) {
-            throw "Agent OS full-readiness gate failed. The release runner must have an interactive Windows desktop."
+            throw "Agent OS full-readiness gate failed on the interactive Windows release runner"
           }
-          $health | Set-Content -Encoding utf8 dist/agent-os-health.json
+          $health | Set-Content -Encoding utf8 qualification/agent-os-health.json
 
       - name: Prove native Windows GT-12 and GT-13
         shell: pwsh
@@ -105,44 +177,68 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $golden = uv run --no-sync python scripts/agent_os_golden.py --json
           if ($LASTEXITCODE -ne 0) { throw "Agent OS 20/20 Golden Task gate failed" }
-          $golden | Set-Content -Encoding utf8 dist/agent-os-golden-results.json
+          $golden | Set-Content -Encoding utf8 qualification/agent-os-golden-results.json
 
-      - name: Set up Node.js 26
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+          [ordered]@{
+            repository = $env:GITHUB_REPOSITORY
+            commit = $env:GITHUB_SHA
+            tag = $env:GITHUB_REF_NAME
+            windows_session_id = [int]$env:AGENT_OS_RELEASE_SESSION_ID
+            full_ready = $true
+            golden_tasks = "20/20"
+          } | ConvertTo-Json | Set-Content -Encoding utf8 qualification/qualification-metadata.json
+
+      - name: Upload qualification evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
         with:
-          node-version: 26
-          cache: npm
-          cache-dependency-path: package-lock.json
+          name: agent-os-qualification-${{ github.sha }}
+          path: qualification/
+          if-no-files-found: error
+          retention-days: 30
 
-      - name: Install bootstrap frontend dependencies
+  sign-publish:
+    name: sign and publish production release
+    needs: [build-windows, qualify-windows-gui]
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Download immutable Windows build
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: agent-os-release-build-${{ github.sha }}
+          path: dist
+
+      - name: Download qualification evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: agent-os-qualification-${{ github.sha }}
+          path: qualification
+
+      - name: Verify build and qualification identity
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          npm ci --workspace @hermes/bootstrap-installer
+          $build = Get-Content -Raw dist/source-build-metadata.json | ConvertFrom-Json
+          $qualification = Get-Content -Raw qualification/qualification-metadata.json | ConvertFrom-Json
 
-      - name: Verify locked Rust dependency graph
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $manifest = 'apps/bootstrap-installer/src-tauri/Cargo.toml'
-          $lock = 'apps/bootstrap-installer/src-tauri/Cargo.lock'
-          if (-not (Test-Path $lock -PathType Leaf)) {
-            throw "Missing committed Cargo.lock for bootstrap installer"
+          if ($build.commit -ne $env:GITHUB_SHA -or $qualification.commit -ne $env:GITHUB_SHA) {
+            throw "Release evidence commit identity mismatch"
           }
-          cargo metadata --locked --manifest-path $manifest --format-version 1 | Out-Null
-
-      - name: Build pinned Hermes-Setup.exe
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          npm run tauri:build --workspace @hermes/bootstrap-installer -- --no-bundle
-          git diff --exit-code -- apps/bootstrap-installer/src-tauri/Cargo.lock
-
-          $exe = 'apps/bootstrap-installer/src-tauri/target/release/Hermes-Setup.exe'
-          if (-not (Test-Path $exe -PathType Leaf)) {
-            throw "Expected bootstrap executable was not produced: $exe"
+          if ($build.tag -ne $env:GITHUB_REF_NAME -or $qualification.tag -ne $env:GITHUB_REF_NAME) {
+            throw "Release evidence tag identity mismatch"
           }
-          Copy-Item -LiteralPath $exe -Destination dist/Hermes-Setup.exe -Force
+          if (-not $qualification.full_ready -or $qualification.golden_tasks -ne "20/20") {
+            throw "Qualification evidence is not production-ready"
+          }
+
+          $actualUnsigned = (Get-FileHash -Algorithm SHA256 dist/Hermes-Setup.exe).Hash.ToLowerInvariant()
+          if ($actualUnsigned -ne $build.unsigned_sha256) {
+            throw "Unsigned installer hash differs from immutable build metadata"
+          }
+          "UNSIGNED_SHA256=$actualUnsigned" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Authenticode-sign Hermes-Setup.exe
         shell: pwsh
@@ -167,7 +263,7 @@ jobs:
               Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
               Sort-Object FullName -Descending |
               Select-Object -First 1
-            if (-not $signtool) { throw "signtool.exe was not found on the runner" }
+            if (-not $signtool) { throw "signtool.exe was not found on the hosted signing runner" }
 
             & $signtool.FullName sign /fd SHA256 /tr "http://timestamp.digicert.com" /td SHA256 /f $pfx /p $env:WINDOWS_CODE_SIGN_PASSWORD dist/Hermes-Setup.exe
             if ($LASTEXITCODE -ne 0) { throw "signtool sign failed" }
@@ -185,19 +281,23 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $hash = (Get-FileHash -Algorithm SHA256 dist/Hermes-Setup.exe).Hash.ToLowerInvariant()
-          "$hash  Hermes-Setup.exe" | Set-Content -Encoding ascii dist/SHA256SUMS.txt
+          $signedHash = (Get-FileHash -Algorithm SHA256 dist/Hermes-Setup.exe).Hash.ToLowerInvariant()
+          "$signedHash  Hermes-Setup.exe" | Set-Content -Encoding ascii dist/SHA256SUMS.txt
 
           $signature = Get-AuthenticodeSignature dist/Hermes-Setup.exe
           [ordered]@{
-            repository = $env:HERMES_BUILD_REPOSITORY
-            commit = $env:HERMES_BUILD_PIN_COMMIT
-            branch = $env:HERMES_BUILD_PIN_BRANCH
+            repository = $env:GITHUB_REPOSITORY
+            commit = $env:GITHUB_SHA
             tag = $env:GITHUB_REF_NAME
-            sha256 = $hash
+            unsigned_sha256 = $env:UNSIGNED_SHA256
+            signed_sha256 = $signedHash
             signature_status = [string]$signature.Status
             signer = [string]$signature.SignerCertificate.Subject
           } | ConvertTo-Json | Set-Content -Encoding utf8 dist/build-metadata.json
+
+          Copy-Item qualification/agent-os-health.json dist/agent-os-health.json
+          Copy-Item qualification/agent-os-golden-results.json dist/agent-os-golden-results.json
+          Copy-Item qualification/qualification-metadata.json dist/qualification-metadata.json
 
       - name: Upload signed release evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
@@ -207,8 +307,10 @@ jobs:
             dist/Hermes-Setup.exe
             dist/SHA256SUMS.txt
             dist/build-metadata.json
+            dist/source-build-metadata.json
             dist/agent-os-health.json
             dist/agent-os-golden-results.json
+            dist/qualification-metadata.json
           if-no-files-found: error
           retention-days: 30
 
@@ -218,4 +320,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
-          gh release create $env:GITHUB_REF_NAME dist/Hermes-Setup.exe dist/SHA256SUMS.txt dist/build-metadata.json dist/agent-os-health.json dist/agent-os-golden-results.json --verify-tag --title "Agent OS $env:GITHUB_REF_NAME" --generate-notes
+          gh release create $env:GITHUB_REF_NAME dist/Hermes-Setup.exe dist/SHA256SUMS.txt dist/build-metadata.json dist/source-build-metadata.json dist/agent-os-health.json dist/agent-os-golden-results.json dist/qualification-metadata.json --verify-tag --title "Agent OS $env:GITHUB_REF_NAME" --generate-notes
