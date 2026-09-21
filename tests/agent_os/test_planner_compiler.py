@@ -147,3 +147,53 @@ def test_plan_proposal_from_dict_parses_untrusted_model_shape():
 
     assert proposal.steps[0].kind is PlanStepKind.ACTION
     assert proposal.steps[1].depends_on == ("work",)
+
+
+def test_compiler_rejects_unavailable_tool_and_runtime(tmp_path):
+    store = AgentOSStore(tmp_path / "agent_os.db")
+    task = store.create_task(TaskRecord.create("capability fence"))
+    proposal = PlanProposal(
+        objective="fenced",
+        steps=(
+            ProposedStep(
+                "work",
+                "Work",
+                PlanStepKind.AGENT,
+                spec={"runtime": "invented-runtime"},
+            ),
+            ProposedStep(
+                "verify",
+                "Verify",
+                PlanStepKind.VERIFICATION,
+                spec={"tool": "invented-tool", "operation": "check"},
+                depends_on=("work",),
+            ),
+        ),
+    )
+
+    compiler = PlanCompiler(
+        store,
+        allowed_action_tools={"terminal"},
+        allowed_agent_runtimes={"hermes-subagent"},
+    )
+    with pytest.raises(InvalidPlan, match="unavailable"):
+        compiler.compile(task, proposal)
+
+
+def test_compiler_requires_action_semantics_in_spec(tmp_path):
+    store = AgentOSStore(tmp_path / "agent_os.db")
+    task = store.create_task(TaskRecord.create("typed spec"))
+    proposal = PlanProposal(
+        objective="typed",
+        steps=(
+            ProposedStep(
+                "verify",
+                "Verify",
+                PlanStepKind.VERIFICATION,
+                spec={},
+            ),
+        ),
+    )
+
+    with pytest.raises(InvalidPlan, match="spec.tool"):
+        PlanCompiler(store).compile(task, proposal)

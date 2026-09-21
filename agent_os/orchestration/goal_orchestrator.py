@@ -19,10 +19,16 @@ class GoalSubmission:
 
 
 class GoalOrchestrator:
-    def __init__(self, store: AgentOSStore, planner: Planner):
+    def __init__(
+        self,
+        store: AgentOSStore,
+        planner: Planner,
+        *,
+        compiler: PlanCompiler | None = None,
+    ):
         self.store = store
         self.planner = planner
-        self.compiler = PlanCompiler(store)
+        self.compiler = compiler or PlanCompiler(store)
 
     def submit(
         self,

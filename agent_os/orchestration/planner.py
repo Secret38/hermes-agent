@@ -94,12 +94,24 @@ class PlanCompiler:
         *,
         max_steps: int = 100,
         require_verification_coverage: bool = True,
+        allowed_action_tools: set[str] | frozenset[str] | None = None,
+        allowed_agent_runtimes: set[str] | frozenset[str] | None = None,
     ):
         if max_steps < 1:
             raise ValueError("max_steps must be >= 1")
         self.store = store
         self.max_steps = max_steps
         self.require_verification_coverage = require_verification_coverage
+        self.allowed_action_tools = (
+            None
+            if allowed_action_tools is None
+            else frozenset(str(item).strip() for item in allowed_action_tools if str(item).strip())
+        )
+        self.allowed_agent_runtimes = (
+            None
+            if allowed_agent_runtimes is None
+            else frozenset(str(item).strip() for item in allowed_agent_runtimes if str(item).strip())
+        )
 
     def compile(
         self,
@@ -160,8 +172,39 @@ class PlanCompiler:
             if step.key in step.depends_on:
                 raise InvalidPlan(f"step {step.key!r} cannot depend on itself")
 
+        self._validate_capabilities(proposal)
         if self.require_verification_coverage:
             self._validate_verification_coverage(proposal)
+
+    def _validate_capabilities(self, proposal: PlanProposal) -> None:
+        for step in proposal.steps:
+            if step.kind in {PlanStepKind.ACTION, PlanStepKind.VERIFICATION}:
+                tool = str(step.spec.get("tool") or "").strip()
+                operation = str(step.spec.get("operation") or "").strip()
+                if not tool or not operation:
+                    raise InvalidPlan(
+                        f"{step.kind.value} step {step.key!r} requires spec.tool and spec.operation"
+                    )
+                if (
+                    self.allowed_action_tools is not None
+                    and tool not in self.allowed_action_tools
+                ):
+                    raise InvalidPlan(
+                        f"step {step.key!r} requests unavailable action tool: {tool}"
+                    )
+            elif step.kind is PlanStepKind.AGENT:
+                runtime = str(step.spec.get("runtime") or "").strip()
+                if not runtime:
+                    raise InvalidPlan(
+                        f"AGENT step {step.key!r} requires spec.runtime"
+                    )
+                if (
+                    self.allowed_agent_runtimes is not None
+                    and runtime not in self.allowed_agent_runtimes
+                ):
+                    raise InvalidPlan(
+                        f"step {step.key!r} requests unavailable agent runtime: {runtime}"
+                    )
 
     @staticmethod
     def _validate_verification_coverage(proposal: PlanProposal) -> None:
