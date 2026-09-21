@@ -146,6 +146,31 @@ def _file_step(
     )
 
 
+def _file_read_step(
+    key: str,
+    title: str,
+    *,
+    path: Path,
+    workspace: Path,
+    contains: str,
+    depends_on: tuple[str, ...] = (),
+) -> ProposedStep:
+    return ProposedStep(
+        key,
+        title,
+        PlanStepKind.ACTION,
+        spec={
+            "tool": "file",
+            "operation": "read_file",
+            "input": {"path": str(path), "offset": 1, "limit": 500},
+            "expected_state": {"content_contains": contains},
+            "workspace_id": str(workspace),
+            "verification_required": True,
+        },
+        depends_on=depends_on,
+    )
+
+
 def _run_plan(
     definition: GoldenTaskDefinition,
     root: Path,
@@ -332,12 +357,20 @@ def build_repair(definition: GoldenTaskDefinition) -> GoldenTaskResult:
         proposal = PlanProposal(
             objective="repair the broken source and verify it compiles",
             steps=(
+                _file_read_step(
+                    "inspect",
+                    "Inspect broken source before repair",
+                    path=target,
+                    workspace=project,
+                    contains="def value(:",
+                ),
                 _file_step(
                     "repair",
                     "Repair broken source",
                     path=target,
                     content=fixed,
                     workspace=project,
+                    depends_on=("inspect",),
                 ),
                 _terminal_step(
                     "verify",
@@ -382,12 +415,20 @@ def code_change(definition: GoldenTaskDefinition) -> GoldenTaskResult:
         proposal = PlanProposal(
             objective="implement requested behavior and verify it",
             steps=(
+                _file_read_step(
+                    "inspect",
+                    "Inspect source before code change",
+                    path=target,
+                    workspace=project,
+                    contains="return a - b",
+                ),
                 _file_step(
                     "change",
                     "Implement requested code change",
                     path=target,
                     content=fixed,
                     workspace=project,
+                    depends_on=("inspect",),
                 ),
                 _terminal_step(
                     "verify",
@@ -625,13 +666,21 @@ def repo_to_running_app(definition: GoldenTaskDefinition) -> GoldenTaskResult:
                     workspace=root,
                     expected={"exit_code": 0},
                 ),
+                _file_read_step(
+                    "inspect",
+                    "Inspect cloned broken source",
+                    path=target / "app.py",
+                    workspace=target,
+                    contains="def broken(:",
+                    depends_on=("clone",),
+                ),
                 _terminal_step(
                     "diagnose",
                     "Diagnose cloned build",
                     command=_shell([sys.executable, "-m", "py_compile", "app.py"]),
                     workspace=target,
                     expected={"exit_code": 1, "output_contains": "SyntaxError"},
-                    depends_on=("clone",),
+                    depends_on=("inspect",),
                 ),
                 _file_step(
                     "repair",
