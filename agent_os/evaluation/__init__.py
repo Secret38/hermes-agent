@@ -1,3 +1,4 @@
+from .browser_handlers import browser_handlers
 from .software_handlers import software_handlers
 from .integration_handlers import integration_handlers
 from .control_plane_handlers import control_plane_handlers
@@ -18,6 +19,7 @@ __all__ = [
     "GoldenTaskSummary",
     "load_golden_tasks",
     "control_plane_handlers",
+    "browser_handlers",
     "integration_handlers",
     "software_handlers",
 ]
