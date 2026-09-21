@@ -1551,6 +1551,10 @@ clone_repo() {
             log_info "Existing installation found, updating..."
             cd "$INSTALL_DIR"
 
+            # Bind the managed checkout to the requested repository before any
+            # fetch so fork/release installers cannot update from a stale origin.
+            git remote set-url origin "$REPO_URL_HTTPS"
+
             local autostash_ref=""
             discard_update_lockfile_churn "$INSTALL_DIR"
             if [ -n "$(git status --porcelain)" ]; then
@@ -1721,11 +1725,6 @@ EOF
     fi
 
     cd "$INSTALL_DIR"
-
-    # Release/fork installers own the managed checkout's origin. Without this,
-    # reinstalling over an older upstream checkout would keep pulling from the
-    # old remote even though the bootstrap itself was built for another repo.
-    git remote set-url origin "$REPO_URL_HTTPS" 2>/dev/null || true
 
     if [ -n "$INSTALL_COMMIT" ]; then
         # Validate the commit argument: must look like a hex SHA (full 40-char
