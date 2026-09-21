@@ -221,6 +221,12 @@ if [[ ! "$REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
     echo "Invalid --repository value: $REPOSITORY (expected OWNER/REPO)" >&2
     exit 1
 fi
+REPO_OWNER="${REPOSITORY%%/*}"
+REPO_NAME="${REPOSITORY#*/}"
+if [ "$REPO_OWNER" = "." ] || [ "$REPO_OWNER" = ".." ] || [ "$REPO_NAME" = "." ] || [ "$REPO_NAME" = ".." ]; then
+    echo "Invalid --repository value: $REPOSITORY (dot path components are not allowed)" >&2
+    exit 1
+fi
 REPO_URL_SSH="git@github.com:${REPOSITORY}.git"
 REPO_URL_HTTPS="https://github.com/${REPOSITORY}.git"
 
