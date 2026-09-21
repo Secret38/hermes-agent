@@ -9,7 +9,7 @@ from agent_os.evaluation.browser_handlers import browser_handlers
 from agent_os.evaluation.golden import GoldenTaskOutcome, GoldenTaskRunner, load_golden_tasks
 
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.live_system_guard_bypass]
 
 
 def test_real_browser_golden_tasks():
