@@ -33,6 +33,10 @@ fn main() {
 
     let commit = resolve_commit_pin();
     let branch = resolve_branch_pin();
+    let repository = resolve_repository();
+
+    println!("cargo:rustc-env=BUILD_REPOSITORY={repository}");
+    println!("cargo:warning=hermes-bootstrap: repository {repository}");
 
     if let Some(c) = &commit {
         println!("cargo:rustc-env=BUILD_PIN_COMMIT={c}");
@@ -81,6 +85,7 @@ fn main() {
     }
     println!("cargo:rerun-if-env-changed=HERMES_BUILD_PIN_COMMIT");
     println!("cargo:rerun-if-env-changed=HERMES_BUILD_PIN_BRANCH");
+    println!("cargo:rerun-if-env-changed=HERMES_BUILD_REPOSITORY");
 
     // -----------------------------------------------------------------
     // Tauri windows manifest. See hermes-setup.manifest for rationale —
@@ -98,6 +103,30 @@ fn main() {
     let attrs = tauri_build::Attributes::new();
 
     tauri_build::try_build(attrs).expect("failed to run tauri-build");
+}
+
+fn resolve_repository() -> String {
+    let repository = std::env::var("HERMES_BUILD_REPOSITORY")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "NousResearch/hermes-agent".to_string());
+    let repository = repository.trim();
+
+    let mut parts = repository.split('/');
+    let owner = parts.next().unwrap_or_default();
+    let name = parts.next().unwrap_or_default();
+    let valid_part = |part: &str| {
+        !part.is_empty()
+            && part
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+    };
+    if !valid_part(owner) || !valid_part(name) || parts.next().is_some() {
+        panic!(
+            "HERMES_BUILD_REPOSITORY={repository:?} must be an owner/repository slug"
+        );
+    }
+    repository.to_string()
 }
 
 fn resolve_commit_pin() -> Option<String> {
