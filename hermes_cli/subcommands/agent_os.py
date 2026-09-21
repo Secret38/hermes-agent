@@ -49,6 +49,22 @@ def _doctor(args) -> int:
     return _run_health(args, fix=bool(getattr(args, "fix", False)))
 
 
+def _provision(args) -> int:
+    from agent_os.provisioning import provision_agent_os_runtime
+
+    report = provision_agent_os_runtime(
+        include_browser=not bool(getattr(args, "skip_browser", False)),
+        include_computer_use=not bool(getattr(args, "skip_computer_use", False)),
+    )
+    for component in report.components:
+        state = "OK" if component.ready else "FAIL"
+        suffix = f": {component.detail}" if component.detail else ""
+        print(f"[{state}] {component.name}{suffix}")
+    print("")
+    _render_human(report.health)
+    return 0 if report.success else 1
+
+
 def _add_common_flags(parser) -> None:
     add_json_flag(parser, "Emit the machine-readable Agent OS health report.")
     parser.add_argument(
@@ -93,6 +109,27 @@ def build_agent_os_parser(subparsers) -> None:
         help="Create/migrate the local Agent OS durable store and verify integrity.",
     )
     doctor.set_defaults(func=_doctor)
+
+    provision = actions.add_parser(
+        "provision",
+        help="Explicitly install/repair the Agent OS automation substrate",
+        description=(
+            "Provision browser and computer-use runtimes through Hermes' existing "
+            "installers, then verify actual readiness. This command may download "
+            "runtime dependencies and is intentionally never run by status/doctor."
+        ),
+    )
+    provision.add_argument(
+        "--skip-browser",
+        action="store_true",
+        help="Do not provision or require the browser runtime.",
+    )
+    provision.add_argument(
+        "--skip-computer-use",
+        action="store_true",
+        help="Do not provision or require the computer-use runtime.",
+    )
+    provision.set_defaults(func=_provision)
 
     def _show_help(_args):
         parser.print_help()

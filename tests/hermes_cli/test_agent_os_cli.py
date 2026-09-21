@@ -96,3 +96,19 @@ def test_agent_os_without_action_prints_help_and_fails(capsys):
 
     assert args.func(args) == 2
     assert "agent-os" in capsys.readouterr().out
+
+
+def test_provision_exit_code_comes_from_verified_provision_report(monkeypatch, capsys):
+    from types import SimpleNamespace
+    import agent_os.provisioning as provision
+
+    report = SimpleNamespace(
+        components=(SimpleNamespace(name="browser", ready=True, detail="ready"),),
+        health=_report(core=True, full=True),
+        success=True,
+    )
+    monkeypatch.setattr(provision, "provision_agent_os_runtime", lambda **kwargs: report)
+
+    args = _args(["agent-os", "provision"])
+    assert args.func(args) == 0
+    assert "[OK] browser" in capsys.readouterr().out
