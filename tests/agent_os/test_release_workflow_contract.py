@@ -6,11 +6,16 @@ import pytest
 
 _REPO = Path(__file__).resolve().parents[2]
 _WORKFLOW = _REPO / ".github" / "workflows" / "agent-os-release.yml"
+_PREFLIGHT = _REPO / ".github" / "workflows" / "agent-os-release-preflight.yml"
+
+
+def _yaml(path: Path) -> dict:
+    yaml = pytest.importorskip("yaml")
+    return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
 def _workflow() -> dict:
-    yaml = pytest.importorskip("yaml")
-    return yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8"))
+    return _yaml(_WORKFLOW)
 
 
 def _step(job: dict, name: str) -> dict:
@@ -104,3 +109,25 @@ def test_release_qualification_still_requires_runtime_repair_state_and_uninstall
     assert "Seed durable Agent OS state before repair" in names
     assert "Re-run production installer as repair/idempotency gate" in names
     assert "Prove full uninstall removes the isolated installation" in names
+
+
+
+def test_release_preflight_requires_protected_source_gui_runner_and_signing_identity():
+    jobs = _yaml(_PREFLIGHT)["jobs"]
+
+    policy = jobs["repository-policy"]
+    policy_run = _step(policy, "Require protected agent-os-v1 branch")["run"]
+    assert ".protected" in policy_run
+    assert '!= "true"' in policy_run
+
+    gui = jobs["gui-runner"]
+    assert gui["runs-on"] == ["self-hosted", "windows", "x64", "agent-os-gui"]
+    session = _step(gui, "Verify interactive desktop session")["run"]
+    assert "Session 0" in session
+
+    signing = jobs["signing"]
+    identity = _step(signing, "Validate PFX secret and code-signing EKU")["run"]
+    assert "WINDOWS_CODE_SIGN_PFX_B64" in identity
+    assert "WINDOWS_CODE_SIGN_PASSWORD" in identity
+    assert "1.3.6.1.5.5.7.3.3" in identity
+    assert "HasPrivateKey" in identity
