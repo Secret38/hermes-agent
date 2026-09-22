@@ -7,6 +7,32 @@ permissions:
   contents: read
 
 jobs:
+  repository-policy:
+    name: validate protected release source
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require preflight from agent-os-v1
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_NAME}" != "agent-os-v1" ]; then
+            echo "Run Agent OS Release Preflight from the agent-os-v1 branch, not ${GITHUB_REF_NAME}." >&2
+            exit 1
+          fi
+
+      - name: Require protected agent-os-v1 branch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          protected="$(gh api "repos/${GITHUB_REPOSITORY}/branches/agent-os-v1" --jq '.protected')"
+          if [ "$protected" != "true" ]; then
+            echo "agent-os-v1 is not protected. Enable branch protection/rules before release preflight." >&2
+            exit 1
+          fi
+
   gui-runner:
     name: validate interactive Windows GUI runner
     runs-on: [self-hosted, windows, x64, agent-os-gui]
