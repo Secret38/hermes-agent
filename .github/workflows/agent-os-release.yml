@@ -379,6 +379,9 @@ print(task.id)
           if ($signature.Status -ne 'Valid') {
             throw "Authenticode verification failed: $($signature.Status) $($signature.StatusMessage)"
           }
+          if (-not $signature.TimeStamperCertificate) {
+            throw "Authenticode signature is valid but has no trusted timestamp countersignature"
+          }
 
       - name: Finalize release evidence
         shell: pwsh
@@ -396,6 +399,7 @@ print(task.id)
             signed_sha256 = $signedHash
             signature_status = [string]$signature.Status
             signer = [string]$signature.SignerCertificate.Subject
+            timestamp_signer = [string]$signature.TimeStamperCertificate.Subject
           } | ConvertTo-Json | Set-Content -Encoding utf8 dist/build-metadata.json
 
           Copy-Item qualification/agent-os-health.json dist/agent-os-health.json
