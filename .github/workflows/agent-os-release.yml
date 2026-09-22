@@ -323,7 +323,14 @@ print(task.id)
           if ($build.tag -ne $env:GITHUB_REF_NAME -or $qualification.tag -ne $env:GITHUB_REF_NAME) {
             throw "Release evidence tag identity mismatch"
           }
-          if (-not $qualification.full_ready -or $qualification.golden_tasks -ne "20/20") {
+          if (
+            -not $qualification.clean_install `
+            -or -not $qualification.repair_reinstall `
+            -or -not $qualification.durable_state_preserved `
+            -or -not $qualification.full_ready `
+            -or $qualification.windows_golden -ne "GT-12,GT-13" `
+            -or $qualification.golden_tasks -ne "20/20"
+          ) {
             throw "Qualification evidence is not production-ready"
           }
 
