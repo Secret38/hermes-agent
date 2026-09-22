@@ -13,8 +13,26 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  repository-policy:
+    name: require protected Agent OS release source
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require protected agent-os-v1 branch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          protected="$(gh api "repos/${GITHUB_REPOSITORY}/branches/agent-os-v1" --jq '.protected')"
+          if [ "$protected" != "true" ]; then
+            echo "Refusing release: agent-os-v1 is not protected." >&2
+            exit 1
+          fi
+
   build-windows:
     name: build immutable Windows release candidate
+    needs: repository-policy
     runs-on: windows-latest
     timeout-minutes: 45
     env:
