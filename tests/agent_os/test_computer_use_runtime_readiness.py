@@ -97,3 +97,39 @@ def test_windows_daemon_status_requires_session_above_zero(monkeypatch):
         ),
     )
     assert permissions._windows_interactive_daemon_ready("cua-driver") is True
+
+
+def test_windows_missing_doctor_session_probe_requires_interactive_context(monkeypatch):
+    monkeypatch.setattr(
+        permissions,
+        "_windows_interactive_context_ready",
+        lambda binary: False,
+    )
+    assert (
+        permissions._doctor_desktop_ready(
+            "win32",
+            {"ok": True, "checks": []},
+            "cua-driver",
+        )
+        is False
+    )
+
+
+def test_windows_direct_interactive_session_satisfies_context(monkeypatch):
+    monkeypatch.setattr(permissions, "_windows_process_session_id", lambda: 3)
+    monkeypatch.setattr(
+        permissions,
+        "_windows_interactive_daemon_ready",
+        lambda binary: False,
+    )
+    assert permissions._windows_interactive_context_ready("cua-driver") is True
+
+
+def test_windows_session_zero_needs_interactive_daemon(monkeypatch):
+    monkeypatch.setattr(permissions, "_windows_process_session_id", lambda: 0)
+    monkeypatch.setattr(
+        permissions,
+        "_windows_interactive_daemon_ready",
+        lambda binary: True,
+    )
+    assert permissions._windows_interactive_context_ready("cua-driver") is True
