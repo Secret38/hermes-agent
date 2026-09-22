@@ -256,6 +256,29 @@ print(task.id)
             throw "Durable Agent OS state did not survive repair/reinstall"
           }
 
+      - name: Prove full uninstall removes the isolated installation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $hermes = Join-Path $env:AGENT_OS_INSTALL_ROOT 'venv\Scripts\hermes.exe'
+          if (-not (Test-Path $hermes -PathType Leaf)) {
+            throw "Installed Hermes launcher missing before uninstall gate"
+          }
+
+          & $hermes uninstall --yes --full
+          $uninstallExit = $LASTEXITCODE
+          if ($uninstallExit -ne 0) {
+            throw "Full uninstall returned exit $uninstallExit"
+          }
+
+          Start-Sleep -Milliseconds 500
+          if (Test-Path $env:AGENT_OS_INSTALL_ROOT) {
+            throw "Full uninstall left the installation checkout on disk: $env:AGENT_OS_INSTALL_ROOT"
+          }
+          if (Test-Path $env:HERMES_HOME) {
+            throw "Full uninstall left the isolated HERMES_HOME on disk: $env:HERMES_HOME"
+          }
+
       - name: Record qualification identity
         shell: pwsh
         run: |
@@ -268,6 +291,7 @@ print(task.id)
             clean_install = $true
             repair_reinstall = $true
             durable_state_preserved = $true
+            full_uninstall = $true
             full_ready = $true
             windows_golden = "GT-12,GT-13"
             golden_tasks = "20/20"
@@ -327,6 +351,7 @@ print(task.id)
             -not $qualification.clean_install `
             -or -not $qualification.repair_reinstall `
             -or -not $qualification.durable_state_preserved `
+            -or -not $qualification.full_uninstall `
             -or -not $qualification.full_ready `
             -or $qualification.windows_golden -ne "GT-12,GT-13" `
             -or $qualification.golden_tasks -ne "20/20"
