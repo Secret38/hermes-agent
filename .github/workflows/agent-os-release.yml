@@ -235,9 +235,13 @@ jobs:
             throw "Hermes-Setup.exe did not exit after the Launch hand-off"
           }
 
-          if (Test-Path $bootstrapLog) {
-            Copy-Item -LiteralPath $bootstrapLog -Destination qualification/bootstrap-installer.log -Force
+          if (-not (Test-Path $ahkLog -PathType Leaf)) {
+            throw "Installer GUI driver completed without producing its evidence log"
           }
+          if (-not (Test-Path $bootstrapLog -PathType Leaf)) {
+            throw "Hermes-Setup.exe completed without producing bootstrap-installer.log"
+          }
+          Copy-Item -LiteralPath $bootstrapLog -Destination qualification/bootstrap-installer.log -Force
 
           $marker = Join-Path $env:AGENT_OS_INSTALL_ROOT '.hermes-bootstrap-complete'
           $hermes = Join-Path $env:AGENT_OS_INSTALL_ROOT 'venv\Scripts\hermes.exe'
@@ -251,6 +255,38 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or $installedCommit -ne $env:GITHUB_SHA) {
             throw "Hermes-Setup.exe installed $installedCommit instead of release commit $env:GITHUB_SHA"
           }
+
+      - name: Collect installer GUI diagnostics
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path qualification | Out-Null
+          $bootstrapLog = Join-Path $env:HERMES_HOME 'logs\bootstrap-installer.log'
+          if (Test-Path $bootstrapLog -PathType Leaf) {
+            Copy-Item -LiteralPath $bootstrapLog -Destination qualification/bootstrap-installer.log -Force
+          }
+          $desktop = @(Get-Process -Name 'Hermes' -ErrorAction SilentlyContinue)
+          [ordered]@{
+            commit = $env:GITHUB_SHA
+            tag = $env:GITHUB_REF_NAME
+            session_id = (Get-Process -Id $PID).SessionId
+            desktop_process_count = $desktop.Count
+            bootstrap_log_present = (Test-Path qualification/bootstrap-installer.log -PathType Leaf)
+            ahk_log_present = (Test-Path qualification/installer-ahk.log -PathType Leaf)
+          } | ConvertTo-Json | Set-Content -Encoding utf8 qualification/installer-gui-diagnostics.json
+
+      - name: Upload installer GUI diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
+        with:
+          name: agent-os-installer-gui-${{ github.sha }}
+          path: |
+            qualification/installer-ahk.log
+            qualification/bootstrap-installer.log
+            qualification/installer-gui-diagnostics.json
+            qualification/candidate/source-build-metadata.json
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Require full readiness from the installed runtime
         shell: pwsh
