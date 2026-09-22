@@ -21,8 +21,14 @@ def _step(job: dict, name: str) -> dict:
 
 def test_release_qualification_consumes_the_exact_immutable_build():
     jobs = _workflow()["jobs"]
+    policy = jobs["repository-policy"]
+    build = jobs["build-windows"]
     qualify = jobs["qualify-windows-gui"]
 
+    policy_run = _step(policy, "Require protected agent-os-v1 branch")["run"]
+    assert ".protected" in policy_run
+    assert '!= "true"' in policy_run
+    assert build["needs"] == "repository-policy"
     assert qualify["needs"] == "build-windows"
     assert qualify["runs-on"] == ["self-hosted", "windows", "x64", "agent-os-gui"]
 
