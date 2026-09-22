@@ -70,7 +70,7 @@ def _windows_interactive_daemon_ready(binary: str) -> bool:
         return False
     if result.returncode != 0:
         return False
-    match = re.search(r"(?im)^\\s*session:\\s*(\\d+)\\s*$", result.stdout or "")
+    match = re.search(r"(?im)^\s*session:\s*(\d+)\s*$", result.stdout or "")
     return bool(match and int(match.group(1)) > 0)
 
 
