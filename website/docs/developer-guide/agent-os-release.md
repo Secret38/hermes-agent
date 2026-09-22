@@ -57,7 +57,7 @@ Before a public V1 release, repository settings should prevent accidental public
 - require the repository CI and Windows installer candidate checks before changes are accepted;
 - restrict creation or update of `agent-os-v*` tags to release operators.
 
-These controls are repository settings, not code, and must be verified by the release operator.
+These controls are repository settings, not code. The Agent OS preflight and production release workflow both read the GitHub branch metadata and fail closed unless `agent-os-v1` reports `protected=true`; the release operator must configure that protection before continuing.
 
 ## 6. Create the version tag at the exact branch head
 
