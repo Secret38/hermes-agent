@@ -35,6 +35,7 @@ jobs:
 
   gui-runner:
     name: validate interactive Windows GUI runner
+    needs: repository-policy
     runs-on: [self-hosted, windows, x64, agent-os-gui]
     timeout-minutes: 10
     steps:
@@ -60,6 +61,7 @@ jobs:
 
   signing:
     name: validate Windows signing identity
+    needs: repository-policy
     runs-on: windows-latest
     timeout-minutes: 10
     steps:
