@@ -367,6 +367,9 @@ print(task.id)
 
             & $signtool.FullName sign /fd SHA256 /tr "http://timestamp.digicert.com" /td SHA256 /f $pfx /p $env:WINDOWS_CODE_SIGN_PASSWORD dist/Hermes-Setup.exe
             if ($LASTEXITCODE -ne 0) { throw "signtool sign failed" }
+
+            & $signtool.FullName verify /pa /all /v dist/Hermes-Setup.exe
+            if ($LASTEXITCODE -ne 0) { throw "signtool Authenticode verification failed" }
           }
           finally {
             Remove-Item -LiteralPath $pfx -Force -ErrorAction SilentlyContinue
