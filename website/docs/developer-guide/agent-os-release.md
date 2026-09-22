@@ -82,18 +82,19 @@ Pushing the tag starts **Agent OS Release**. The workflow independently verifies
 The release workflow must complete all of these gates:
 
 1. Build an immutable unsigned `Hermes-Setup.exe` from the tagged SHA.
-2. Clean-install through the production PowerShell stage protocol on the interactive Windows runner.
-3. Require `hermes agent-os status --require-full --json`.
-4. Run native Windows Golden E2E for GT-12 and GT-13.
-5. Run the canonical Agent OS Golden runner and prove 20/20.
-6. Seed durable Agent OS state.
-7. Re-run the production installer as a repair/idempotency gate.
-8. Prove the durable state survived repair.
-9. Run full uninstall and prove the isolated install root and `HERMES_HOME` are removed.
-10. Verify build and qualification evidence refer to the same commit and tag.
-11. Authenticode-sign the exact qualified installer.
-12. Verify the signature with Windows trust policy and require a trusted timestamp countersignature.
-13. Publish the GitHub Release and its qualification evidence.
+2. Download that exact build artifact onto the interactive Windows runner and verify its repository, commit, tag and SHA-256 identity.
+3. Launch that exact `Hermes-Setup.exe` as a headed GUI, drive the real **Install → Launch** flow, and require a real `Hermes.exe` desktop process.
+4. Require `hermes agent-os status --require-full --json`.
+5. Run native Windows Golden E2E for GT-12 and GT-13.
+6. Run the canonical Agent OS Golden runner and prove 20/20.
+7. Seed durable Agent OS state.
+8. Re-run the production installer as a repair/idempotency gate.
+9. Prove the durable state survived repair.
+10. Run full uninstall and prove the isolated install root and `HERMES_HOME` are removed.
+11. Verify build and qualification evidence refer to the same commit and tag.
+12. Authenticode-sign the exact qualified installer.
+13. Verify the signature with Windows trust policy and require a trusted timestamp countersignature.
+14. Publish the GitHub Release and its qualification evidence.
 
 If any gate fails, there must be no production release.
 
