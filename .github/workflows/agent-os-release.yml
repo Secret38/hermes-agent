@@ -92,9 +92,10 @@ jobs:
           retention-days: 7
 
   qualify-windows-gui:
-    name: clean-install, repair, and prove 20/20 on interactive Windows
+    name: qualify exact installer, repair, and prove 20/20 on interactive Windows
+    needs: build-windows
     runs-on: [self-hosted, windows, x64, agent-os-gui]
-    timeout-minutes: 90
+    timeout-minutes: 150
     env:
       OPENROUTER_API_KEY: ""
       OPENAI_API_KEY: ""
@@ -141,27 +142,110 @@ jobs:
           "AGENT_OS_INSTALL_ROOT=$installRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           Write-Host "Clean HERMES_HOME=$releaseHome"
 
-      - name: Install through the production PowerShell stage protocol
+      - name: Download the exact immutable installer candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: agent-os-release-build-${{ github.sha }}
+          path: qualification/candidate
+
+      - name: Verify candidate identity before execution
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/install.ps1 `
-            -Repository $env:GITHUB_REPOSITORY `
-            -Branch agent-os-v1 `
-            -Commit $env:GITHUB_SHA `
-            -HermesHome $env:HERMES_HOME `
-            -InstallDir $env:AGENT_OS_INSTALL_ROOT `
-            -IncludeDesktop `
-            -NonInteractive `
-            -Json
-          if ($LASTEXITCODE -ne 0) {
-            throw "Clean production-path installation failed with exit $LASTEXITCODE"
+          $metadata = Get-Content -Raw qualification/candidate/source-build-metadata.json | ConvertFrom-Json
+          if ($metadata.repository -ne $env:GITHUB_REPOSITORY) {
+            throw "Installer repository identity mismatch: $($metadata.repository)"
+          }
+          if ($metadata.commit -ne $env:GITHUB_SHA) {
+            throw "Installer commit identity mismatch: $($metadata.commit)"
+          }
+          if ($metadata.tag -ne $env:GITHUB_REF_NAME) {
+            throw "Installer tag identity mismatch: $($metadata.tag)"
+          }
+          $setup = 'qualification/candidate/Hermes-Setup.exe'
+          $actual = (Get-FileHash -Algorithm SHA256 $setup).Hash.ToLowerInvariant()
+          if ($actual -ne $metadata.unsigned_sha256) {
+            throw "Downloaded installer hash differs from immutable build metadata"
+          }
+
+      - name: Install AutoHotkey GUI driver
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ahkRoot = Join-Path $env:RUNNER_TEMP 'agent-os-release-ahk'
+          if (Test-Path $ahkRoot) {
+            Remove-Item -LiteralPath $ahkRoot -Recurse -Force
+          }
+          New-Item -ItemType Directory -Force -Path $ahkRoot | Out-Null
+          $zip = Join-Path $ahkRoot 'ahk.zip'
+          Invoke-WebRequest -Uri 'https://github.com/AutoHotkey/AutoHotkey/releases/download/v2.0.19/AutoHotkey_2.0.19.zip' -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath $ahkRoot -Force
+          $ahk = Join-Path $ahkRoot 'AutoHotkey64.exe'
+          if (-not (Test-Path $ahk -PathType Leaf)) {
+            throw "AutoHotkey GUI driver was not provisioned"
+          }
+          Copy-Item tests/install/e2e-assets/install-and-launch.ahk $ahkRoot -Force
+          Copy-Item tests/install/e2e-assets/install-button.png $ahkRoot -Force
+          Copy-Item tests/install/e2e-assets/launch-button.png $ahkRoot -Force
+          "AGENT_OS_RELEASE_AHK=$ahk" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "AGENT_OS_RELEASE_AHK_ROOT=$ahkRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Clean-install through the exact Hermes-Setup.exe user path
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setup = (Resolve-Path 'qualification/candidate/Hermes-Setup.exe').Path
+          $driver = Join-Path $env:AGENT_OS_RELEASE_AHK_ROOT 'install-and-launch.ahk'
+          $ahkLog = Join-Path $env:GITHUB_WORKSPACE 'qualification/installer-ahk.log'
+          $bootstrapLog = Join-Path $env:HERMES_HOME 'logs\bootstrap-installer.log'
+
+          # The candidate is built with repository + commit pins. Do not allow a
+          # developer checkout override to bypass the exact release artifact.
+          Remove-Item Env:HERMES_SETUP_DEV_REPO_ROOT -ErrorAction SilentlyContinue
+
+          $installer = Start-Process -FilePath $setup -PassThru
+          $ahk = Start-Process -FilePath $env:AGENT_OS_RELEASE_AHK `
+            -ArgumentList $driver, $ahkLog, 'Hermes-Setup.exe', $bootstrapLog `
+            -PassThru
+
+          if (-not $ahk.WaitForExit(65 * 60 * 1000)) {
+            Stop-Process -Id $ahk.Id -Force -ErrorAction SilentlyContinue
+            throw "Installer GUI driver did not finish within 65 minutes"
+          }
+          if ($ahk.ExitCode -ne 0) {
+            if (Test-Path $ahkLog) { Get-Content $ahkLog | Write-Host }
+            throw "Installer GUI driver failed with exit $($ahk.ExitCode)"
+          }
+
+          $hermesDesktop = @(Get-Process -Name 'Hermes' -ErrorAction SilentlyContinue)
+          if ($hermesDesktop.Count -eq 0) {
+            throw "Hermes-Setup.exe completed but the Launch hand-off did not start Hermes.exe"
+          }
+          $hermesDesktop | Stop-Process -Force -ErrorAction SilentlyContinue
+
+          if (-not $installer.HasExited) {
+            $installer.WaitForExit(30000) | Out-Null
+          }
+          if (-not $installer.HasExited) {
+            throw "Hermes-Setup.exe did not exit after the Launch hand-off"
+          }
+
+          if (Test-Path $bootstrapLog) {
+            Copy-Item -LiteralPath $bootstrapLog -Destination qualification/bootstrap-installer.log -Force
           }
 
           $marker = Join-Path $env:AGENT_OS_INSTALL_ROOT '.hermes-bootstrap-complete'
           $hermes = Join-Path $env:AGENT_OS_INSTALL_ROOT 'venv\Scripts\hermes.exe'
-          if (-not (Test-Path $marker -PathType Leaf)) { throw "Bootstrap completion marker was not published" }
-          if (-not (Test-Path $hermes -PathType Leaf)) { throw "Installed Hermes launcher was not produced" }
+          if (-not (Test-Path $marker -PathType Leaf)) {
+            throw "Bootstrap completion marker was not published by Hermes-Setup.exe"
+          }
+          if (-not (Test-Path $hermes -PathType Leaf)) {
+            throw "Hermes-Setup.exe did not produce the Hermes launcher"
+          }
+          $installedCommit = (& git -C $env:AGENT_OS_INSTALL_ROOT rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $installedCommit -ne $env:GITHUB_SHA) {
+            throw "Hermes-Setup.exe installed $installedCommit instead of release commit $env:GITHUB_SHA"
+          }
 
       - name: Require full readiness from the installed runtime
         shell: pwsh
