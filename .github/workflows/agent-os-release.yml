@@ -92,9 +92,9 @@ jobs:
           retention-days: 7
 
   qualify-windows-gui:
-    name: prove full runtime and 20/20 on interactive Windows
+    name: clean-install, repair, and prove 20/20 on interactive Windows
     runs-on: [self-hosted, windows, x64, agent-os-gui]
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       OPENROUTER_API_KEY: ""
       OPENAI_API_KEY: ""
@@ -126,7 +126,8 @@ jobs:
           }
           "AGENT_OS_RELEASE_SESSION_ID=$sessionId" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           Write-Host "Release runner is attached to interactive Windows session $sessionId"
-      - name: Create isolated Agent OS release home
+
+      - name: Create isolated clean-install home
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -135,74 +136,99 @@ jobs:
             Remove-Item -LiteralPath $releaseHome -Recurse -Force
           }
           New-Item -ItemType Directory -Force -Path $releaseHome | Out-Null
+          $installRoot = Join-Path $releaseHome 'hermes-agent'
           "HERMES_HOME=$releaseHome" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          Write-Host "Isolated HERMES_HOME=$releaseHome"
+          "AGENT_OS_INSTALL_ROOT=$installRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Clean HERMES_HOME=$releaseHome"
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # 8.2.0
-        with:
-          version: "0.9.28"
-          enable-cache: true
-          cache-dependency-glob: |
-            pyproject.toml
-            uv.lock
+      - name: Install through the production PowerShell stage protocol
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/install.ps1 `
+            -Repository $env:GITHUB_REPOSITORY `
+            -Branch agent-os-v1 `
+            -Commit $env:GITHUB_SHA `
+            -HermesHome $env:HERMES_HOME `
+            -InstallDir $env:AGENT_OS_INSTALL_ROOT `
+            -IncludeDesktop `
+            -NonInteractive `
+            -Json
+          if ($LASTEXITCODE -ne 0) {
+            throw "Clean production-path installation failed with exit $LASTEXITCODE"
+          }
 
-      - name: Install Python 3.11
-        uses: ./.github/actions/retry
-        with:
-          command: uv python install 3.11
+          $marker = Join-Path $env:AGENT_OS_INSTALL_ROOT '.hermes-bootstrap-complete'
+          $hermes = Join-Path $env:AGENT_OS_INSTALL_ROOT 'venv\Scripts\hermes.exe'
+          if (-not (Test-Path $marker -PathType Leaf)) { throw "Bootstrap completion marker was not published" }
+          if (-not (Test-Path $hermes -PathType Leaf)) { throw "Installed Hermes launcher was not produced" }
 
-      - name: Install qualification dependencies
-        uses: ./.github/actions/retry
-        with:
-          command: uv sync --locked --python 3.11 --extra all --extra dev --extra anthropic --extra mistral --extra fal --extra modal --extra daytona --extra hindsight --extra parallel-web
-
-      - name: Provision complete Agent OS runtime twice
+      - name: Require full readiness from the installed runtime
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory -Force -Path qualification | Out-Null
-
-          uv run --no-sync hermes agent-os provision
-          if ($LASTEXITCODE -ne 0) { throw "Agent OS initial provisioning failed" }
-
-          # A production installer must be safe to re-run after interruption or
-          # after a user selects Repair. The second pass must be a verified no-op
-          # or an idempotent repair, never a destructive reinstall.
-          uv run --no-sync hermes agent-os provision
-          if ($LASTEXITCODE -ne 0) { throw "Agent OS repeated provisioning failed idempotency gate" }
-
-      - name: Require full runtime readiness
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $health = uv run --no-sync hermes agent-os status --require-full --json
+          $hermes = Join-Path $env:AGENT_OS_INSTALL_ROOT 'venv\Scripts\hermes.exe'
+          $health = & $hermes agent-os status --require-full --json
           if ($LASTEXITCODE -ne 0) {
-            throw "Agent OS full-readiness gate failed on the interactive Windows release runner"
+            throw "Installed Agent OS did not satisfy full_ready"
           }
           $health | Set-Content -Encoding utf8 qualification/agent-os-health.json
 
-      - name: Prove native Windows GT-12 and GT-13
+      - name: Prove native Windows GT-12 and GT-13 from the installed checkout
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          uv run --no-sync python -m pytest tests/agent_os/test_windows_golden_e2e.py -m "windows_only and integration" -v --tb=short
+          $python = Join-Path $env:AGENT_OS_INSTALL_ROOT 'venv\Scripts\python.exe'
+          $test = Join-Path $env:AGENT_OS_INSTALL_ROOT 'tests\agent_os\test_windows_golden_e2e.py'
+          & $python -m pytest $test -m "windows_only and integration" -v --tb=short
           if ($LASTEXITCODE -ne 0) { throw "Native Windows Golden E2E failed" }
 
-      - name: Prove canonical Agent OS V1 20/20
+      - name: Prove canonical Agent OS V1 20/20 from the installed checkout
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $golden = uv run --no-sync python scripts/agent_os_golden.py --json
+          $python = Join-Path $env:AGENT_OS_INSTALL_ROOT 'venv\Scripts\python.exe'
+          $runner = Join-Path $env:AGENT_OS_INSTALL_ROOT 'scripts\agent_os_golden.py'
+          $golden = & $python $runner --json
           if ($LASTEXITCODE -ne 0) { throw "Agent OS 20/20 Golden Task gate failed" }
           $golden | Set-Content -Encoding utf8 qualification/agent-os-golden-results.json
 
+      - name: Re-run production installer as repair/idempotency gate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/install.ps1 `
+            -Repository $env:GITHUB_REPOSITORY `
+            -Branch agent-os-v1 `
+            -Commit $env:GITHUB_SHA `
+            -HermesHome $env:HERMES_HOME `
+            -InstallDir $env:AGENT_OS_INSTALL_ROOT `
+            -IncludeDesktop `
+            -NonInteractive `
+            -Json
+          if ($LASTEXITCODE -ne 0) {
+            throw "Repair/reinstall idempotency gate failed with exit $LASTEXITCODE"
+          }
+
+          $hermes = Join-Path $env:AGENT_OS_INSTALL_ROOT 'venv\Scripts\hermes.exe'
+          $repairHealth = & $hermes agent-os status --require-full --json
+          if ($LASTEXITCODE -ne 0) { throw "Agent OS lost full readiness after repair" }
+          $repairHealth | Set-Content -Encoding utf8 qualification/agent-os-repair-health.json
+
+      - name: Record qualification identity
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
           [ordered]@{
             repository = $env:GITHUB_REPOSITORY
             commit = $env:GITHUB_SHA
             tag = $env:GITHUB_REF_NAME
             windows_session_id = [int]$env:AGENT_OS_RELEASE_SESSION_ID
+            clean_install = $true
+            repair_reinstall = $true
             full_ready = $true
+            windows_golden = "GT-12,GT-13"
             golden_tasks = "20/20"
           } | ConvertTo-Json | Set-Content -Encoding utf8 qualification/qualification-metadata.json
 
@@ -213,6 +239,7 @@ jobs:
           path: qualification/
           if-no-files-found: error
           retention-days: 30
+
       - name: Clean isolated Agent OS release home
         if: always()
         shell: pwsh
@@ -321,6 +348,7 @@ jobs:
           } | ConvertTo-Json | Set-Content -Encoding utf8 dist/build-metadata.json
 
           Copy-Item qualification/agent-os-health.json dist/agent-os-health.json
+          Copy-Item qualification/agent-os-repair-health.json dist/agent-os-repair-health.json
           Copy-Item qualification/agent-os-golden-results.json dist/agent-os-golden-results.json
           Copy-Item qualification/qualification-metadata.json dist/qualification-metadata.json
 
@@ -334,6 +362,7 @@ jobs:
             dist/build-metadata.json
             dist/source-build-metadata.json
             dist/agent-os-health.json
+            dist/agent-os-repair-health.json
             dist/agent-os-golden-results.json
             dist/qualification-metadata.json
           if-no-files-found: error
@@ -345,4 +374,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
-          gh release create $env:GITHUB_REF_NAME dist/Hermes-Setup.exe dist/SHA256SUMS.txt dist/build-metadata.json dist/source-build-metadata.json dist/agent-os-health.json dist/agent-os-golden-results.json dist/qualification-metadata.json --verify-tag --title "Agent OS $env:GITHUB_REF_NAME" --generate-notes
+          gh release create $env:GITHUB_REF_NAME dist/Hermes-Setup.exe dist/SHA256SUMS.txt dist/build-metadata.json dist/source-build-metadata.json dist/agent-os-health.json dist/agent-os-repair-health.json dist/agent-os-golden-results.json dist/qualification-metadata.json --verify-tag --title "Agent OS $env:GITHUB_REF_NAME" --generate-notes
