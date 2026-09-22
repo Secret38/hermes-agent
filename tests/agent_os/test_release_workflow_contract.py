@@ -131,3 +131,11 @@ def test_release_preflight_requires_protected_source_gui_runner_and_signing_iden
     assert "WINDOWS_CODE_SIGN_PASSWORD" in identity
     assert "1.3.6.1.5.5.7.3.3" in identity
     assert "HasPrivateKey" in identity
+
+
+    smoke = _step(signing, "Smoke-test Authenticode signing and trusted timestamp")["run"]
+    assert "signtool" in smoke
+    assert 'sign /fd SHA256 /tr "http://timestamp.digicert.com" /td SHA256' in smoke
+    assert "verify /pa /all /v" in smoke
+    assert "Get-AuthenticodeSignature" in smoke
+    assert "TimeStamperCertificate" in smoke
