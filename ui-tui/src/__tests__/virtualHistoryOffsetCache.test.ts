@@ -21,6 +21,16 @@ interface Exposed {
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
+const waitFor = async (predicate: () => boolean, timeoutMs = 500) => {
+  const deadline = Date.now() + timeoutMs
+
+  while (!predicate() && Date.now() < deadline) {
+    await delay(10)
+  }
+
+  return predicate()
+}
+
 const makeStreams = () => {
   const stdout = new PassThrough()
   const stdin = new PassThrough()
@@ -539,7 +549,7 @@ describe('useVirtualHistory offset cache reuse', () => {
 
       staleHeights.set(items[0]!.key, 1)
       instance.rerender(React.createElement(Harness, { expose, initialHeights: staleHeights, items }))
-      await delay(40)
+      expect(await waitFor(() => adjustScrollTop.mock.calls.length === 1)).toBe(true)
 
       expect(adjustScrollTop).toHaveBeenCalledOnce()
       expect(adjustScrollTop).toHaveBeenCalledWith(1)
