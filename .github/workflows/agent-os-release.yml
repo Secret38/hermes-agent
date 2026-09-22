@@ -373,6 +373,8 @@ print(task.id)
             tag = $env:GITHUB_REF_NAME
             windows_session_id = [int]$env:AGENT_OS_RELEASE_SESSION_ID
             clean_install = $true
+            exact_installer_gui = $true
+            desktop_launch_handoff = $true
             repair_reinstall = $true
             durable_state_preserved = $true
             full_uninstall = $true
@@ -433,6 +435,8 @@ print(task.id)
           }
           if (
             -not $qualification.clean_install `
+            -or -not $qualification.exact_installer_gui `
+            -or -not $qualification.desktop_launch_handoff `
             -or -not $qualification.repair_reinstall `
             -or -not $qualification.durable_state_preserved `
             -or -not $qualification.full_uninstall `
@@ -515,6 +519,12 @@ print(task.id)
           Copy-Item qualification/agent-os-repair-health.json dist/agent-os-repair-health.json
           Copy-Item qualification/agent-os-golden-results.json dist/agent-os-golden-results.json
           Copy-Item qualification/qualification-metadata.json dist/qualification-metadata.json
+          if (Test-Path qualification/installer-ahk.log) {
+            Copy-Item qualification/installer-ahk.log dist/installer-ahk.log
+          }
+          if (Test-Path qualification/bootstrap-installer.log) {
+            Copy-Item qualification/bootstrap-installer.log dist/bootstrap-installer.log
+          }
 
       - name: Upload signed release evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
@@ -529,6 +539,8 @@ print(task.id)
             dist/agent-os-repair-health.json
             dist/agent-os-golden-results.json
             dist/qualification-metadata.json
+            dist/installer-ahk.log
+            dist/bootstrap-installer.log
           if-no-files-found: error
           retention-days: 30
 
@@ -538,4 +550,17 @@ print(task.id)
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
-          gh release create $env:GITHUB_REF_NAME dist/Hermes-Setup.exe dist/SHA256SUMS.txt dist/build-metadata.json dist/source-build-metadata.json dist/agent-os-health.json dist/agent-os-repair-health.json dist/agent-os-golden-results.json dist/qualification-metadata.json --verify-tag --title "Agent OS $env:GITHUB_REF_NAME" --generate-notes
+          $assets = @(
+            'dist/Hermes-Setup.exe',
+            'dist/SHA256SUMS.txt',
+            'dist/build-metadata.json',
+            'dist/source-build-metadata.json',
+            'dist/agent-os-health.json',
+            'dist/agent-os-repair-health.json',
+            'dist/agent-os-golden-results.json',
+            'dist/qualification-metadata.json'
+          )
+          foreach ($optional in @('dist/installer-ahk.log', 'dist/bootstrap-installer.log')) {
+            if (Test-Path $optional) { $assets += $optional }
+          }
+          gh release create $env:GITHUB_REF_NAME @assets --verify-tag --title "Agent OS $env:GITHUB_REF_NAME" --generate-notes
