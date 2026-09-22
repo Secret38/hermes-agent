@@ -179,6 +179,11 @@ jobs:
           New-Item -ItemType Directory -Force -Path $ahkRoot | Out-Null
           $zip = Join-Path $ahkRoot 'ahk.zip'
           Invoke-WebRequest -Uri 'https://github.com/AutoHotkey/AutoHotkey/releases/download/v2.0.19/AutoHotkey_2.0.19.zip' -OutFile $zip
+          $expectedAhkSha256 = '4e0d0e65655066a646a210951320feaef0729a3597177131adaec4066bef5869'
+          $actualAhkSha256 = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant()
+          if ($actualAhkSha256 -ne $expectedAhkSha256) {
+            throw "AutoHotkey GUI driver archive hash mismatch"
+          }
           Expand-Archive -Path $zip -DestinationPath $ahkRoot -Force
           $ahk = Join-Path $ahkRoot 'AutoHotkey64.exe'
           if (-not (Test-Path $ahk -PathType Leaf)) {
