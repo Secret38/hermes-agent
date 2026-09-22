@@ -57,6 +57,30 @@ def _probe_is_ok(check: Dict[str, str]) -> bool:
     return str(check.get("status") or "").strip().lower() in _OK_PROBE_STATUSES
 
 
+def _windows_process_session_id() -> Optional[int]:
+    """Return this process Windows session id, or None when unavailable."""
+    if sys.platform != "win32":
+        return None
+    try:
+        import ctypes
+
+        session_id = ctypes.c_uint32()
+        ok = ctypes.windll.kernel32.ProcessIdToSessionId(
+            os.getpid(),
+            ctypes.byref(session_id),
+        )
+        return int(session_id.value) if ok else None
+    except Exception:
+        return None
+
+
+def _windows_interactive_context_ready(binary: str) -> bool:
+    """True for a direct interactive process or an interactive Cua Driver daemon."""
+    session_id = _windows_process_session_id()
+    if session_id is not None and session_id > 0:
+        return True
+    return _windows_interactive_daemon_ready(binary)
+
 def _windows_interactive_daemon_ready(binary: str) -> bool:
     """Whether a running Cua Driver daemon is attached to Session 1+.
 
@@ -97,9 +121,9 @@ def _doctor_desktop_ready(
             if "interactive session" in str(check.get("label") or "").lower()
         ]
         if not session_checks:
-            return True  # compatibility with older driver releases
+            return _windows_interactive_context_ready(binary)
         if all(_probe_is_ok(check) for check in session_checks):
-            return True
+            return _windows_interactive_context_ready(binary)
         return _windows_interactive_daemon_ready(binary)
 
     if platform == "linux":
