@@ -121,11 +121,13 @@ def test_release_preflight_requires_protected_source_gui_runner_and_signing_iden
     assert '!= "true"' in policy_run
 
     gui = jobs["gui-runner"]
+    assert gui["needs"] == "repository-policy"
     assert gui["runs-on"] == ["self-hosted", "windows", "x64", "agent-os-gui"]
     session = _step(gui, "Verify interactive desktop session")["run"]
     assert "Session 0" in session
 
     signing = jobs["signing"]
+    assert signing["needs"] == "repository-policy"
     identity = _step(signing, "Validate PFX secret and code-signing EKU")["run"]
     assert "WINDOWS_CODE_SIGN_PFX_B64" in identity
     assert "WINDOWS_CODE_SIGN_PASSWORD" in identity
