@@ -194,6 +194,30 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Agent OS 20/20 Golden Task gate failed" }
           $golden | Set-Content -Encoding utf8 qualification/agent-os-golden-results.json
 
+      - name: Seed durable Agent OS state before repair
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $python = Join-Path $env:AGENT_OS_INSTALL_ROOT 'venv\Scripts\python.exe'
+          $code = @'
+from agent_os.contracts import TaskRecord
+from agent_os.store import AgentOSStore
+
+store = AgentOSStore()
+task = TaskRecord.create(
+    "release-qualification-preservation-sentinel",
+    metadata={"release_qualification": True},
+)
+store.create_task(task)
+print(task.id)
+'@
+          $taskId = (& $python -c $code | Select-Object -Last 1).Trim()
+          if ([string]::IsNullOrWhiteSpace($taskId)) {
+            throw "Could not create durable Agent OS sentinel task"
+          }
+          "AGENT_OS_RELEASE_SENTINEL_TASK=$taskId" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Created durable sentinel task $taskId"
+
       - name: Re-run production installer as repair/idempotency gate
         shell: pwsh
         run: |
@@ -216,6 +240,22 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Agent OS lost full readiness after repair" }
           $repairHealth | Set-Content -Encoding utf8 qualification/agent-os-repair-health.json
 
+          $python = Join-Path $env:AGENT_OS_INSTALL_ROOT 'venv\Scripts\python.exe'
+          $verifyCode = @'
+import os
+from agent_os.store import AgentOSStore
+
+task_id = os.environ["AGENT_OS_RELEASE_SENTINEL_TASK"]
+task = AgentOSStore().get_task(task_id)
+if task is None or task.metadata.get("release_qualification") is not True:
+    raise SystemExit("durable Agent OS sentinel was lost across repair")
+print(task.id)
+'@
+          & $python -c $verifyCode
+          if ($LASTEXITCODE -ne 0) {
+            throw "Durable Agent OS state did not survive repair/reinstall"
+          }
+
       - name: Record qualification identity
         shell: pwsh
         run: |
@@ -227,6 +267,7 @@ jobs:
             windows_session_id = [int]$env:AGENT_OS_RELEASE_SESSION_ID
             clean_install = $true
             repair_reinstall = $true
+            durable_state_preserved = $true
             full_ready = $true
             windows_golden = "GT-12,GT-13"
             golden_tasks = "20/20"
