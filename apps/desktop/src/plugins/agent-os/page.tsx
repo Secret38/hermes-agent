@@ -9,6 +9,7 @@ import {
   AGENT_OS_SNAPSHOT_KEY,
   fetchAgentOSSnapshot
 } from './api'
+import { useAgentOSAudit } from './audit-data'
 import { ExternalConnectionsSection, SemanticMemorySection } from './context'
 import { MissionControlActions } from './control'
 import { useHermesOperations, useLiveFleet } from './operations-data'
@@ -1578,6 +1579,7 @@ function ConnectionsView({ snapshot }: { snapshot: AgentOSSnapshot }) {
 
 function OperationsView() {
   const operations = useHermesOperations()
+  const audit = useAgentOSAudit()
   const routes = operations.routes.data ?? []
   const rows = operations.snapshots.flatMap(snapshot =>
     snapshot.tasks.map(task => ({ snapshot, task }))
@@ -1682,6 +1684,56 @@ function OperationsView() {
             </div>
           </div>
         )}
+      </section>
+
+      <section className="aos-panel overflow-hidden">
+        <SectionHeader
+          icon="history"
+          meta={audit.data ? `${audit.data.events.length} recent` : undefined}
+          title="Operator audit"
+        />
+        {audit.isLoading ? (
+          <div className="grid min-h-32 place-items-center text-xs text-(--ui-text-tertiary)">
+            Reading metadata-only audit history…
+          </div>
+        ) : audit.error ? (
+          <div className="p-4 text-xs text-destructive">
+            {audit.error instanceof Error ? audit.error.message : String(audit.error)}
+          </div>
+        ) : !audit.data?.events.length ? (
+          <div className="grid min-h-32 place-items-center text-xs text-(--ui-text-tertiary)">
+            No durable operator events recorded yet.
+          </div>
+        ) : (
+          <div className="aos-scrollbar max-h-[24rem] overflow-y-auto p-2.5">
+            <div className="space-y-1">
+              {audit.data.events.map(event => (
+                <div
+                  className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 rounded border border-(--ui-stroke-tertiary) bg-(--ui-bg-secondary) px-2.5 py-2"
+                  key={event.id}
+                >
+                  <div className="min-w-0">
+                    <div className="truncate text-[0.66rem] font-medium text-foreground">{humanize(event.event)}</div>
+                    <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-1 text-[0.56rem] text-(--ui-text-tertiary)">
+                      <span>{event.category}</span>
+                      {event.subject && <span>{event.subject}</span>}
+                      {event.outcome && <span>{event.outcome}</span>}
+                      {event.task_id && <span>task {compactId(event.task_id)}</span>}
+                      {event.run_id != null && <span>run {event.run_id}</span>}
+                      {event.project_id && <span>project {compactId(event.project_id)}</span>}
+                    </div>
+                  </div>
+                  <span className="shrink-0 text-[0.56rem] tabular-nums text-(--ui-text-quaternary)">
+                    {formatDateTime(new Date(event.created_at * 1000).toISOString())}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="border-t border-(--ui-stroke-tertiary) px-3 py-2 text-[0.56rem] leading-relaxed text-(--ui-text-quaternary)">
+          Metadata only · no prompt text, command text, secrets, verification codes, URLs, headers or tool output are stored.
+        </div>
       </section>
     </div>
   )
