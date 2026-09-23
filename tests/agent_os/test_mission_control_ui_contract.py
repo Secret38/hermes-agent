@@ -60,3 +60,23 @@ def test_mission_control_refresh_covers_live_and_slow_context():
     assert "refetch()" in page
     assert "invalidateQueries({ queryKey: AGENT_OS_CONTEXT_KEY })" in page
     assert "Refresh Agent OS state, memory and connections" in page
+
+
+
+def test_mission_control_keeps_new_mission_and_approval_contract():
+    page = _source("page.tsx")
+    control = _source("control.tsx")
+    api = _source("api.ts")
+
+    assert "MissionControlActions" in page
+    assert "New mission" in control
+    assert "Approval inbox" in control
+    assert "Allow once" in control
+    assert "Deny" in control
+    assert "L0/L1 execute automatically" in control
+    assert "Plan & run" in control
+
+    assert "createAgentOSMission" in api
+    assert "resolveAgentOSApproval" in api
+    assert "AGENT_OS_APPROVALS_KEY" in api
+    assert "AGENT_OS_MISSIONS_KEY" in api
