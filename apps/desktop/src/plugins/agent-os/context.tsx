@@ -1,5 +1,5 @@
 import { cn, Codicon, host, useQuery } from '@hermes/plugin-sdk'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 
 import { AGENT_OS_CONTEXT_KEY, fetchAgentOSContext } from './api'
 import type {
@@ -87,28 +87,20 @@ export function SemanticMemorySection() {
   }
 
   const graph = data.learning
-  const orderedNodes = useMemo(
-    () =>
-      [...graph.nodes].sort(
-        (a, b) =>
-          Number(b.kind === 'memory') - Number(a.kind === 'memory') ||
-          (b.useCount ?? 0) - (a.useCount ?? 0) ||
-          a.label.localeCompare(b.label)
-      ),
-    [graph.nodes]
+  const orderedNodes = [...graph.nodes].sort(
+    (a, b) =>
+      Number(b.kind === 'memory') - Number(a.kind === 'memory') ||
+      (b.useCount ?? 0) - (a.useCount ?? 0) ||
+      a.label.localeCompare(b.label)
   )
   const selected = selectedId ? graph.nodes.find(node => node.id === selectedId) : orderedNodes[0]
   const selectedCard = memoryCardForNode(selected, graph.memory)
-  const edgeCountByNode = useMemo(() => {
-    const counts = new Map<string, number>()
+  const edgeCountByNode = new Map<string, number>()
 
-    for (const edge of graph.edges) {
-      counts.set(edge.source, (counts.get(edge.source) ?? 0) + 1)
-      counts.set(edge.target, (counts.get(edge.target) ?? 0) + 1)
-    }
-
-    return counts
-  }, [graph.edges])
+  for (const edge of graph.edges) {
+    edgeCountByNode.set(edge.source, (edgeCountByNode.get(edge.source) ?? 0) + 1)
+    edgeCountByNode.set(edge.target, (edgeCountByNode.get(edge.target) ?? 0) + 1)
+  }
 
   return (
     <div className="space-y-3">
