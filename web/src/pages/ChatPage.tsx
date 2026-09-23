@@ -602,6 +602,10 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
       // Browser-embedded chat runs the TUI in inline mode. Keep transcript
       // history in xterm.js so the browser wheel can scroll it directly.
       scrollback: 5000,
+      // xterm's accessibility tree mirrors terminal rows into DOM nodes for
+      // screen readers. Without this the chat transcript is primarily a
+      // canvas/WebGL surface and is effectively opaque to assistive tech.
+      screenReaderMode: true,
       theme: terminalTheme,
     });
     termRef.current = term;
@@ -1926,6 +1930,7 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
         >
           <div
             ref={hostRef}
+            aria-label="Hermes chat terminal"
             className="hermes-chat-xterm-host min-h-0 min-w-0 flex-1"
           />
 
@@ -1948,166 +1953,3 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
                     aria-label="Reconnect chat"
                   >
                     Reconnect now
-                  </Button>
-                  {ptyState === "closed" && reconnectGaveUp && (
-                    <Button
-                      size="sm"
-                      ghost
-                      onClick={() => navigate("/system")}
-                      aria-label="Check server status"
-                    >
-                      Check server status
-                    </Button>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {showResumeLoadingOverlay && (
-            <div
-              className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center"
-              role="status"
-              aria-live="polite"
-              aria-label={PTY_RESUME_LOADING_MESSAGE}
-            >
-              <div className="max-w-[min(28rem,calc(100vw-3rem))] border border-current/30 bg-black/80 px-4 py-3 text-center text-xs tracking-wide text-white/85 shadow-lg">
-                {PTY_RESUME_LOADING_MESSAGE}
-              </div>
-            </div>
-          )}
-
-          {/* NS-504: the agent process exited (e.g. `/exit` or a new session).
-              Offer an in-place restart so the user never has to refresh the
-              whole page to get a working chat back. */}
-          {ptyState === "ended" && (
-            <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-black/60">
-              <div className="max-w-[min(32rem,calc(100vw-3rem))] text-center text-sm tracking-wide text-white/80">
-                {endedReason === "start-failed"
-                  ? PTY_START_FAILED_MESSAGE
-                  : PTY_SESSION_ENDED_MESSAGE}
-              </div>
-              <div className="flex flex-wrap justify-center gap-2">
-                <Button
-                  onClick={startFreshPty}
-                  prefix={<RotateCcw className="h-4 w-4" />}
-                  aria-label="Start a new chat session"
-                >
-                  Start new session
-                </Button>
-                {endedReason === "exited" && (
-                  <Button
-                    outlined
-                    onClick={() => navigate("/logs")}
-                    aria-label="Open logs"
-                  >
-                    Open logs
-                  </Button>
-                )}
-              </div>
-            </div>
-          )}
-
-          <Button
-            ghost
-            onClick={handleCopyLast}
-            title="Copy last assistant response as raw markdown"
-            aria-label="Copy last assistant response"
-            className={cn(
-              "absolute z-10",
-              "normal-case tracking-normal font-normal",
-              "rounded border border-current/30",
-              "bg-black/20",
-              "opacity-70 hover:opacity-100 hover:border-current/60",
-              "transition-opacity duration-150",
-              "bottom-2 right-2 px-2 py-1 text-xs sm:bottom-3 sm:right-3 sm:px-2.5 sm:py-1.5",
-              "lg:bottom-4 lg:right-4",
-            )}
-            style={{ color: terminalFg }}
-          >
-            <span className="inline-flex items-center gap-1.5">
-              <Copy className="h-3 w-3 shrink-0" />
-              <span className="hidden min-[400px]:inline tracking-wide">
-                {copyState === "copied" ? "copied" : "copy last response"}
-              </span>
-            </span>
-          </Button>
-
-          {chatPanelCollapsed && (
-            <Button
-              ghost
-              onClick={toggleChatPanel}
-              title="Show side panel (model + sessions)"
-              aria-label="Show chat side panel"
-              className={cn(
-                "absolute z-10",
-                "normal-case tracking-normal font-normal",
-                "rounded border border-current/30",
-                "bg-black/20",
-                "opacity-70 hover:opacity-100 hover:border-current/60",
-                "transition-opacity duration-150",
-                "top-2 right-2 px-2 py-1 text-xs sm:top-3 sm:right-3",
-              )}
-              style={{ color: terminalFg }}
-            >
-              <span className="inline-flex items-center gap-1">
-                <PanelRight className="h-3 w-3 shrink-0" />
-                <span className="hidden min-[400px]:inline tracking-wide">
-                  panel
-                </span>
-              </span>
-            </Button>
-          )}
-        </div>
-
-        {!narrow && !chatPanelCollapsed && (
-          <div
-            id="chat-side-panel"
-            role="complementary"
-            aria-label={modelToolsLabel}
-            className="flex min-h-0 shrink-0 flex-col gap-3 overflow-hidden lg:h-full lg:w-60"
-          >
-            <div className="flex h-8 shrink-0 items-center justify-end pr-1">
-              <Button
-                ghost
-                size="icon"
-                onClick={toggleChatPanel}
-                aria-label="Collapse chat side panel"
-                title="Collapse side panel"
-                className="text-text-secondary hover:text-midground"
-              >
-                <X />
-              </Button>
-            </div>
-            {/* Model picker — keeps the rail thin. */}
-            <div className="shrink-0">
-              <ChatSidebar
-                channel={channel}
-                profile={scopedProfile}
-                onDashboardNewSessionRequest={startFreshDashboardChat}
-                onSessionTitleChange={handleSessionTitleChange}
-              />
-            </div>
-
-            {/* Session switcher fills the remaining height below the model box. */}
-            <div className="min-h-0 flex-1 overflow-hidden">
-              <ChatSessionList
-                activeSessionId={resumeParam}
-                profile={scopedProfile}
-                onNewChat={startFreshDashboardChat}
-              />
-            </div>
-          </div>
-        )}
-      </div>
-      <PluginSlot name="chat:bottom" />
-    </div>
-  );
-}
-
-declare global {
-  interface Window {
-    __HERMES_SESSION_TOKEN__?: string;
-    __HERMES_AUTH_REQUIRED__?: boolean;
-  }
-}
