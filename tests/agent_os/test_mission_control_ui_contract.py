@@ -165,3 +165,21 @@ def test_mission_control_keeps_authoritative_projects_workspace_contract():
         "revealDesktopPane('terminal')",
     ):
         assert marker in workspace
+
+
+def test_mission_control_keeps_global_new_work_emergency_stop_contract():
+    control = _source("control.tsx")
+    control_data = _source("control-data.ts")
+
+    for marker in (
+        "Pause new work",
+        "Resume new work",
+        "NEW WORK PAUSED",
+        "Existing in-flight work",
+        "estop.data?.engaged",
+    ):
+        assert marker in control
+
+    assert "system.estop.get" in control_data
+    assert "system.estop.set" in control_data
+    assert "audit.changed" in control_data
