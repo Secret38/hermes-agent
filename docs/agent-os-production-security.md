@@ -12,6 +12,7 @@ approvals:
   cron_mode: deny
   single_query_mode: deny
   unattended_mode: deny
+  confirm_host_mutations: true
 
 security:
   tirith_enabled: true
@@ -29,24 +30,35 @@ The release-critical policy decisions are:
    auto-approve a flagged action merely because no human approval UI exists.
 4. `approvals.unattended_mode: deny` — webhook, MS Graph webhook and API
    server sessions fail closed when an action needs approval.
-5. `security.tirith_fail_open: false` — when Tirith scanning is enabled but
+5. `approvals.confirm_host_mutations: true` — host shell commands and
+   high-impact host/persistent mutation tools cross an exact, one-shot human
+   consent boundary. Session allowlists, `/yolo` and `approvals.mode: off`
+   do not bypass this production floor.
+6. `security.tirith_fail_open: false` — when Tirith scanning is enabled but
    unavailable or errors, the scanner failure must not become permission to
    execute.
-6. **No `SUDO_PASSWORD` in the Agent process environment** — production must
+7. **No `SUDO_PASSWORD` in the Agent process environment** — production must
    not preload a reusable sudo password for model-driven shell execution.
    Legitimate elevation should cross an explicit human approval/authentication
    boundary instead of turning sudo into a stored capability.
 
-Keep `security.tirith_enabled: true` unless the deployment has an equivalent
-independent scanner. The setting is listed separately because the critical
-policy decision above is fail-closed behavior when the scanner path fails.
+Keep `security.tirith_enabled: true`. Production readiness requires the
+configured Tirith process to pass a bounded `tirith --version` health probe;
+a configuration value or supported release target alone is not sufficient.
+Agent OS provisioning installs the verified upstream Tirith release
+synchronously when needed. Native Windows x64 releases use
+`tirith-x86_64-pc-windows-msvc.zip` and install as
+`$HERMES_HOME/bin/tirith.exe`; an explicit locally built scanner path remains
+valid on platforms without an official auto-install target.
 
 ## Why parser hardening is still required
 
-Approval settings only govern actions the classifier recognizes. Arbitrary
-shell is an interpreter boundary: variable-expanded command names, nested
-shell evaluation, privilege escalation and data-flow pipelines cannot be made
-safe by a flat list of destructive command spellings.
+Pattern classifiers are defense-in-depth, not the production authority
+boundary. Arbitrary shell is an interpreter boundary: variable-expanded
+command names, nested shell evaluation, privilege escalation and data-flow
+pipelines cannot be made safe by a flat list of destructive command spellings.
+With `confirm_host_mutations: true`, even commands that produce no classifier
+finding still require exact one-shot consent before host execution.
 
 The Agent OS release branch therefore also enforces structural floors for:
 
@@ -55,9 +67,13 @@ The Agent OS release branch therefore also enforces structural floors for:
 - environment/secret streams sent to stdin-consuming network clients,
 - explicit sudo privilege boundaries.
 
-Hardline confidentiality/ambiguity floors are non-bypassable. Sudo itself
-uses the normal human approval gate so an operator can authorize a legitimate
-administrative action.
+Hardline confidentiality/ambiguity floors remain non-bypassable. Recoverable
+host commands use the exact production consent gate. `execute_code` is also
+one-shot because Python can mutate files, spawn processes, or use the network
+without passing through terminal command parsing. High-impact non-shell tools
+such as file writes, process/cron mutation, outbound messaging, memory/skill
+mutation, and Computer Use are routed through the same exact production
+authority boundary.
 
 ## Remote-channel rule
 
