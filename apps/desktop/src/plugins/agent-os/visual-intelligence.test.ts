@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
 import type { AgentOSTask } from './types'
-import { buildExecutionCanvasModel, buildKnowledgeCanvasModel } from './visual-intelligence'
+import {
+  buildExecutionCanvasModel,
+  buildKnowledgeCanvasModel,
+  buildRuntimeTopologyCanvasModel
+} from './visual-intelligence'
 
 function taskFixture(): AgentOSTask {
   return {
@@ -254,5 +258,32 @@ describe('Agent OS semantic knowledge canvas', () => {
 
     expect(model.nodes.map(node => node.id)).toEqual(['memory:1', 'skill:2'])
     expect(model.edges).toEqual([{ source: 'memory:1', target: 'skill:2' }])
+  })
+})
+
+describe('Agent OS runtime topology canvas', () => {
+  it('lays out known runtime edges from the Agent OS core without inventing links', () => {
+    const nodes = [
+      { id: 'agent-os', kind: 'core', label: 'Agent OS', status: 'PASS' },
+      { id: 'browser', kind: 'capability', label: 'Browser', status: 'PASS' },
+      { id: 'computer', kind: 'capability', label: 'Computer Use', status: 'WARN' },
+      { id: 'orphan', kind: 'tool', label: 'Unlinked tool', status: 'PASS' }
+    ]
+    const edges = [
+      { source: 'agent-os', target: 'browser', relation: 'executes' },
+      { source: 'agent-os', target: 'computer', relation: 'executes' },
+      { source: 'missing', target: 'orphan', relation: 'invalid' }
+    ]
+
+    const model = buildRuntimeTopologyCanvasModel(nodes, edges)
+
+    expect(model.edges).toEqual([
+      { source: 'agent-os', target: 'browser', relation: 'executes' },
+      { source: 'agent-os', target: 'computer', relation: 'executes' }
+    ])
+    expect(model.nodes.find(node => node.id === 'agent-os')?.column).toBe(0)
+    expect(model.nodes.find(node => node.id === 'browser')?.column).toBe(1)
+    expect(model.nodes.find(node => node.id === 'computer')?.column).toBe(1)
+    expect(model.nodes.find(node => node.id === 'orphan')?.column).toBe(2)
   })
 })
