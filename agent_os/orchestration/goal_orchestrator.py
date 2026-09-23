@@ -35,8 +35,17 @@ class GoalOrchestrator:
         goal: str,
         *,
         metadata: dict | None = None,
+        session_id: str | None = None,
+        workspace_id: str | None = None,
     ) -> GoalSubmission:
-        task = self.store.create_task(TaskRecord.create(goal, metadata=metadata))
+        task = self.store.create_task(
+            TaskRecord.create(
+                goal,
+                session_id=session_id,
+                workspace_id=workspace_id,
+                metadata=metadata,
+            )
+        )
         try:
             task = self.store.transition_task(task.id, TaskState.INTERPRETING)
             task = self.store.transition_task(task.id, TaskState.PLANNING)
