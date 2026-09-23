@@ -1066,6 +1066,7 @@ def _run_approval_gate(
     advice: str = "Find an alternative approach that avoids this action.",
     cron_deny_message: str = "", single_query_deny_message: str = "", unattended_deny_message: str = "",
     autoapprove_log_prefix: str, fail_closed_when_no_human: bool = True, no_human_block_message: str = "",
+    bypass_capable: bool = True, session_capable: bool = True, permanent_capable: bool = True,
 ) -> dict:
     """Shared human-approval gate for a flagged action (tool call or write): decision core for
     :func:`request_tool_approval` and the file-tool write gates.
@@ -1082,10 +1083,10 @@ def _run_approval_gate(
     # ``approvals.mode: off`` is the third bypass source (the Desktop "Approvals: off" toggle writes it); the shell
     # guards honour it, so every action routed through this gate (computer_use, plugin rules, SSH-config writes,
     # dangerous-pattern prompts) must too, or "off" still prompts on those surfaces.
-    if _yolo_active() or approval_context._get_approval_mode() == "off":
+    if bypass_capable and (_yolo_active() or approval_context._get_approval_mode() == "off"):
         return _approved()
     session_key = get_current_session_key()
-    if is_approved(session_key, pattern_key):
+    if session_capable and is_approved(session_key, pattern_key):
         return _approved()
 
     approval_callback, is_cli, is_gateway, is_ask = _presence(approval_callback)
@@ -1130,6 +1131,7 @@ def _run_approval_gate(
         _ACTION_GATE, command=display_target, description=description, pattern_key=pattern_key,
         pattern_keys=[pattern_key], warnings=[(pattern_key, None, False)], session_key=session_key,
         approval_callback=approval_callback, is_cli=is_cli, is_gateway=is_gateway, is_ask=is_ask,
+        session_capable=session_capable, permanent_capable=permanent_capable,
     )
 
 
@@ -1209,31 +1211,42 @@ def check_dangerous_command(command: str, env_type: str,
     )
 
 
-def request_tool_approval(tool_name: str, reason: str, *, rule_key: str = "", approval_callback=None) -> dict:
+def request_tool_approval(
+    tool_name: str,
+    reason: str,
+    *,
+    rule_key: str = "",
+    approval_callback=None,
+    display_target: str | None = None,
+    exact_once: bool = False,
+    non_bypassable: bool = False,
+) -> dict:
     """Escalate an arbitrary tool call to the human-approval gate.
 
-    Entry point for a plugin ``pre_tool_call`` hook returning ``{"action": "approve", ...}``:
-    it asks the SAME human gate as Tier-2 dangerous shell patterns (session/permanent
-    allowlist, CLI prompt, gateway pending, once/session/always/deny, timeout fail-closed), so
-    the LLM cannot skip it. Cron honors ``approvals.cron_mode``; any OTHER non-interactive
-    context without an approval bridge fails CLOSED. ``rule_key`` controls the ``[a]lways``
-    allowlist grain; when empty it is ``tool_name`` + a hash of ``reason`` so DISTINCT reasons
-    on the same tool persist independently. Returns the ``check_dangerous_command`` result shape.
+    Plugin callers retain the historical session/permanent approval behavior.
+    Production host-mutation callers use exact_once=True and non_bypassable=True
+    so stale allowlists, /yolo, or approvals.mode=off cannot turn one consent
+    into authority for a later different mutation.
     """
     description = reason or f"Plugin requires approval for {tool_name}"
     if not rule_key:
         rule_key = f"{tool_name}:{hashlib.sha256(description.encode('utf-8')).hexdigest()[:12]}"
     subject = f"Tool '{tool_name}' requires approval ({description})"
     return _run_approval_gate(
-        # Namespaced so plugin-rule approvals share the allowlist machinery without ever colliding with a real
-        # command pattern key; the display target is a synthetic label for the display/allowlist layer.
-        pattern_key=f"plugin_rule:{rule_key}", description=description,
-        display_target=f"<{tool_name}> (plugin approval rule)", approval_callback=approval_callback,
-        subject=subject, advice="Find an alternative approach.",
-        autoapprove_log_prefix=f"plugin-escalated tool call '{tool_name}' in non-interactive non-gateway context",
+        pattern_key=f"plugin_rule:{rule_key}",
+        description=description,
+        display_target=display_target or f"<{tool_name}> (approval required)",
+        approval_callback=approval_callback,
+        subject=subject,
+        advice="Find an alternative approach.",
+        autoapprove_log_prefix=f"approval-gated tool call '{tool_name}' in non-interactive non-gateway context",
         fail_closed_when_no_human=True,
-        no_human_block_message=(f"BLOCKED: {subject} but no interactive user or gateway is present "
-                                "to approve it. A plugin flagged this action for human confirmation."),
+        no_human_block_message=(
+            f"BLOCKED: {subject} but no interactive user or gateway is present to approve it."
+        ),
+        bypass_capable=not non_bypassable,
+        session_capable=not exact_once,
+        permanent_capable=not exact_once,
     )
 
 
