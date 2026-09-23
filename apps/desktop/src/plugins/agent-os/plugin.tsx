@@ -25,7 +25,7 @@ const plugin: HermesPlugin = {
   defaultEnabled: true,
 
   register(ctx) {
-    ctx.onDispose(bindAgentOSApi(ctx.rest))
+    ctx.onDispose(bindAgentOSApi(ctx.rest, ctx.socket))
 
     ctx.registerMany([
       {
