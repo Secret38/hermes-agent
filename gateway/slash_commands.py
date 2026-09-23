@@ -25,6 +25,7 @@ from gateway.platforms.base import EphemeralReply
 from gateway.platforms.event import MessageEvent
 from gateway.session import AsyncSessionStore
 from gateway.session_transcript import TranscriptReadError
+from gateway.slash_access import policy_for_source
 from gateway.slash_commands_goals import GatewayGoalCommandsMixin
 from gateway.slash_commands_model import GatewayModelCommandsMixin
 from gateway.slash_commands_session import GatewaySessionCommandsMixin
@@ -1161,6 +1162,40 @@ class GatewaySlashCommandsMixin(
             return session_key, t(stale_key)
         return session_key, t(none_key)
 
+    def _approval_response_authorized(self, event: MessageEvent, session_key: str) -> bool:
+        """Consent is stricter than ordinary slash-command access.
+
+        DMs are already principal-scoped by the platform/chat authorization layer. Shared group
+        sessions are not: many participants resolve to the same session key. In a group, only the
+        user who initiated the turn that produced the pending approval, or an explicitly configured
+        group admin, may resolve it. A missing user id therefore never becomes group consent.
+        """
+        source = event.source
+        chat_type = str(getattr(source, "chat_type", "") or "").strip().lower()
+        if chat_type in {"", "dm", "direct", "private", "c2c"}:
+            return True
+
+        user_id = str(getattr(source, "user_id", "") or "").strip()
+        if not user_id:
+            return False
+
+        pending = self._pending_approvals.get(session_key) or {}
+        owner_id = str(pending.get("_approval_owner_user_id", "") or "").strip()
+        if owner_id and user_id == owner_id:
+            return True
+
+        # SlashAccessPolicy intentionally treats "no admin list configured" as unrestricted for
+        # backward compatibility. Security consent must not inherit that behavior: admin authority
+        # counts only when this scope has an explicit admin list.
+        policy = policy_for_source(getattr(self, "config", None), source)
+        return bool(policy.enabled and policy.is_admin(user_id))
+
+    def _approval_response_denied_text(self) -> str:
+        return (
+            "⛔ Only the user who initiated this run or an explicitly configured "
+            "group admin may approve or deny its security prompt."
+        )
+
     async def _handle_approve_command(self, event: MessageEvent) -> Optional[str]:
         """Handle /approve — unblock waiting agent thread(s). They block inside tools/approval.py;
         signalling the event resumes them so the command executes inline (same flow as the CLI)."""
@@ -1169,6 +1204,12 @@ class GatewaySlashCommandsMixin(
                                                               "gateway.approve.no_pending")
         if stale:
             return stale
+        if not self._approval_response_authorized(event, session_key):
+            logger.warning(
+                "Rejected unauthorized /approve for session %s (user=%s)",
+                session_key, getattr(event.source, "user_id", None),
+            )
+            return self._approval_response_denied_text()
         # Args: "all", "all session", "all always", "session", "always" ("always" beats "session").
         args = event.get_command_args().strip().lower().split()
         choices = {_APPROVE_CHOICE_BY_ARG[a] for a in args if a in _APPROVE_CHOICE_BY_ARG}
@@ -1192,6 +1233,12 @@ class GatewaySlashCommandsMixin(
                                                               "gateway.deny.no_pending")
         if stale:
             return stale
+        if not self._approval_response_authorized(event, session_key):
+            logger.warning(
+                "Rejected unauthorized /deny for session %s (user=%s)",
+                session_key, getattr(event.source, "user_id", None),
+            )
+            return self._approval_response_denied_text()
         # A leading "all" denies every pending command; the rest (or the whole arg string without
         # "all") is the optional deny reason relayed to the agent, capped to a sane one-liner.
         raw_args = event.get_command_args().strip()
