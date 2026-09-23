@@ -180,3 +180,78 @@ export interface AgentOSSnapshot {
   }
   memory: AgentOSMemory
 }
+
+
+export interface AgentOSLearningNode {
+  id: string
+  label: string
+  kind: 'memory' | 'skill' | string
+  timestamp?: null | number
+  category?: string
+  useCount?: number
+  state?: string
+  createdBy?: null | string
+  pinned?: boolean
+  memorySource?: string
+}
+
+export interface AgentOSLearningMemoryCard {
+  source: string
+  timestamp?: null | number
+  title: string
+  body: string
+}
+
+export interface AgentOSLearningGraph {
+  nodes: AgentOSLearningNode[]
+  edges: Array<{ source: string; target: string }>
+  clusters: Array<{ category: string; count: number }>
+  memory: AgentOSLearningMemoryCard[]
+  stats: {
+    nodes?: number
+    related_edges?: number
+    edges_per_node?: number
+    linked_nodes?: number
+    isolated_pct?: number
+    categories?: number
+    agent_created?: number
+    used?: number
+    top_categories?: Array<[string, number]>
+    memory_nodes: number
+    memory_skill_edges: number
+    learned_skills: number
+  }
+  error?: string
+}
+
+export interface AgentOSMcpConnection {
+  name: string
+  transport: string
+  auth?: null | string
+  enabled: boolean
+  target: string
+  tool_count?: null | number
+  error?: string
+}
+
+export interface AgentOSMemoryProviderConnection {
+  name: string
+  description: string
+  available: boolean
+  configured: boolean
+  status: string
+  active: boolean
+}
+
+export interface AgentOSContextSnapshot {
+  generated_at: string
+  learning: AgentOSLearningGraph
+  integrations: {
+    mcp_servers: AgentOSMcpConnection[]
+    memory_providers: {
+      active: string
+      providers: AgentOSMemoryProviderConnection[]
+      error?: string
+    }
+  }
+}
