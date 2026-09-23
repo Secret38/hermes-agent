@@ -1392,7 +1392,8 @@ def check_execute_code_guard(code: str, env_type: str, has_host_access: bool = F
     approval_callback, is_cli, is_gateway, is_ask = _presence()
     # No user is present to approve arbitrary code in -q / cron / unattended
     # sessions: the first active context resolves instantly from its mode.
-    for ctx in _unattended_contexts():
+    contexts = _unattended_contexts()
+    for ctx in contexts:
         if ctx.mode() == "deny":
             return _denied(
                 "BLOCKED: execute_code runs arbitrary local Python (including "
@@ -1400,6 +1401,13 @@ def check_execute_code_guard(code: str, env_type: str, has_host_access: bool = F
                 pattern_key=pattern_key, description=description, outcome="blocked", noun="code",
             )
         return _approved()
+
+    if not is_cli and not is_gateway and not is_ask:
+        return _denied(
+            "BLOCKED: execute_code runs arbitrary local Python, but no interactive user, gateway, "
+            "ask bridge, or explicitly configured unattended approval context is present.",
+            pattern_key=pattern_key, description=description, outcome="blocked", noun="code",
+        )
 
     # Only gateway/ask contexts get the one-shot whole-script approval. In an interactive CLI the script's terminal()
     # calls are guarded per-call (context propagates into the RPC thread, #33057), so a whole-script prompt would fire
