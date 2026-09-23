@@ -255,6 +255,8 @@ function planLayers(plan: AgentOSPlan): AgentOSPlanStep[][] {
 }
 
 function PlanGraph({ plan }: { plan: AgentOSPlan | null | undefined }) {
+  const [selectedStepId, setSelectedStepId] = useState<string>()
+
   if (!plan) {
     return (
       <div className="grid min-h-56 place-items-center px-8 text-center">
@@ -272,6 +274,7 @@ function PlanGraph({ plan }: { plan: AgentOSPlan | null | undefined }) {
   const layers = planLayers(plan)
   const titleById = new Map(plan.steps.map(step => [step.id, step.title]))
   const depsByStep = new Map<string, string[]>()
+  const selectedStep = selectedStepId ? plan.steps.find(step => step.id === selectedStepId) : undefined
 
   for (const edge of plan.dependencies) {
     depsByStep.set(edge.step_id, [...(depsByStep.get(edge.step_id) ?? []), edge.dependency_step_id])
@@ -313,11 +316,15 @@ function PlanGraph({ plan }: { plan: AgentOSPlan | null | undefined }) {
                           {step.title}
                         </div>
                       </div>
-                      <Codicon
-                        className="mt-0.5 shrink-0 text-(--ui-text-tertiary)"
-                        name={stateGlyph(step.state)}
-                        size="0.78rem"
-                      />
+                      <button
+                        aria-label={`Inspect ${step.title}`}
+                        className="grid size-6 shrink-0 place-items-center rounded text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground"
+                        onClick={() => setSelectedStepId(step.id)}
+                        title="Inspect step"
+                        type="button"
+                      >
+                        <Codicon name={stateGlyph(step.state)} size="0.78rem" />
+                      </button>
                     </div>
 
                     <div className="mt-2.5">
@@ -340,6 +347,100 @@ function PlanGraph({ plan }: { plan: AgentOSPlan | null | undefined }) {
           ))}
         </div>
       </div>
+
+      {selectedStep && (
+        <div className="mt-3 rounded-lg border border-(--ui-stroke-tertiary) bg-(--ui-bg-secondary) p-3">
+          <div className="flex min-w-0 items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="aos-kicker">Step inspector</div>
+              <div className="mt-1 truncate text-xs font-semibold text-foreground" title={selectedStep.title}>
+                {selectedStep.title}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <StateBadge compact state={selectedStep.state} />
+              <button
+                aria-label="Close step inspector"
+                className="grid size-6 place-items-center rounded text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground"
+                onClick={() => setSelectedStepId(undefined)}
+                type="button"
+              >
+                <Codicon name="close" size="0.72rem" />
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-3 grid gap-x-6 gap-y-2 text-[0.62rem] md:grid-cols-2 xl:grid-cols-4">
+            <div>
+              <div className="aos-kicker">Kind</div>
+              <div className="mt-1 text-(--ui-text-secondary)">{humanize(selectedStep.kind)}</div>
+            </div>
+            <div>
+              <div className="aos-kicker">Execution</div>
+              <div className="mt-1 truncate font-mono text-(--ui-text-secondary)" title={selectedStep.execution_id ?? undefined}>
+                {compactId(selectedStep.execution_id)}
+              </div>
+            </div>
+            <div>
+              <div className="aos-kicker">Claim owner</div>
+              <div className="mt-1 truncate text-(--ui-text-secondary)" title={selectedStep.claim_owner ?? undefined}>
+                {selectedStep.claim_owner || '—'}
+              </div>
+            </div>
+            <div>
+              <div className="aos-kicker">Priority</div>
+              <div className="mt-1 tabular-nums text-(--ui-text-secondary)">{selectedStep.priority}</div>
+            </div>
+          </div>
+
+          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+            <div className="rounded-md border border-(--ui-stroke-tertiary) bg-(--ui-bg-primary) p-2.5">
+              <div className="aos-kicker">Dependencies</div>
+              <div className="mt-2 flex flex-wrap gap-1">
+                {(depsByStep.get(selectedStep.id) ?? []).length ? (
+                  (depsByStep.get(selectedStep.id) ?? []).map(id => (
+                    <button
+                      className="max-w-full truncate rounded border border-(--ui-stroke-tertiary) px-1.5 py-1 text-[0.58rem] text-(--ui-text-secondary) hover:bg-(--ui-control-hover-background)"
+                      key={id}
+                      onClick={() => setSelectedStepId(id)}
+                      title={titleById.get(id) ?? id}
+                      type="button"
+                    >
+                      {titleById.get(id) ?? compactId(id)}
+                    </button>
+                  ))
+                ) : (
+                  <span className="text-[0.6rem] text-(--ui-text-tertiary)">No dependencies</span>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-md border border-(--ui-stroke-tertiary) bg-(--ui-bg-primary) p-2.5">
+              <div className="aos-kicker">Step spec</div>
+              <div className="mt-2 grid gap-1">
+                {Object.entries(selectedStep.spec ?? {}).length ? (
+                  Object.entries(selectedStep.spec ?? {})
+                    .slice(0, 8)
+                    .map(([key, value]) => (
+                      <div className="flex min-w-0 justify-between gap-3 text-[0.58rem]" key={key}>
+                        <span className="truncate text-(--ui-text-tertiary)">{key}</span>
+                        <span className="max-w-[65%] truncate font-mono text-(--ui-text-secondary)" title={String(value)}>
+                          {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                        </span>
+                      </div>
+                    ))
+                ) : (
+                  <span className="text-[0.6rem] text-(--ui-text-tertiary)">No additional step metadata</span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-2 text-right text-[0.56rem] tabular-nums text-(--ui-text-quaternary)">
+            updated {formatDateTime(selectedStep.updated_at)}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
