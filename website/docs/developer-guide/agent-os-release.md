@@ -12,6 +12,21 @@ A release is publishable only when the tag points to the current `agent-os-v1` h
 
 Never reuse or move a published release tag. If a candidate is invalid, fix the branch and publish a new version.
 
+## Automated operator path
+
+The repository includes two fail-closed Windows PowerShell entry points for the production path:
+
+```powershell
+.\scripts\agent_os_release_setup.ps1 -PfxPath C:\secure\agent-os-code-signing.pfx
+.\scripts\agent_os_release_publish.ps1 -Version 1.0.0
+```
+
+Run the setup script from a logged-in Windows desktop using the repository owner's GitHub account. It configures the release-branch protection, immutable `agent-os-v*` tag rules, encrypted signing secrets, and an interactive `agent-os-gui` self-hosted runner. It deliberately does not install the runner as a Windows service because service runners execute in Session 0.
+
+The publish script refuses to create a tag unless the protected-source policy, required CI, signing secrets, interactive runner, and **Agent OS Release Preflight** have all passed. After tagging, it watches the production workflow and verifies the required release assets before reporting success.
+
+The detailed sections below describe the same gates individually for audit and recovery.
+
 ## 1. Require a green candidate
 
 Before tagging, require the current `agent-os-v1` head to pass the repository CI and the **Agent OS Windows Installer Candidate** workflow. In particular, do not tag while required checks are pending, cancelled, or failing.
