@@ -479,7 +479,9 @@ function eventDetail(event: AgentOSEvent): string {
 }
 
 function Timeline({ events }: { events: AgentOSEvent[] }) {
+  const [selectedEventId, setSelectedEventId] = useState<string>()
   const rows = [...events].slice(-32).reverse()
+  const selectedEvent = selectedEventId ? events.find(event => event.id === selectedEventId) : undefined
 
   if (rows.length === 0) {
     return (
@@ -494,9 +496,15 @@ function Timeline({ events }: { events: AgentOSEvent[] }) {
       <div className="aos-timeline space-y-3">
         {rows.map(event => (
           <div className="aos-timeline-row" key={event.id}>
-            <span className="aos-timeline-glyph">
+            <button
+              aria-label={`Inspect ${humanize(event.type)} event`}
+              className="aos-timeline-glyph hover:border-[color-mix(in_srgb,var(--dt-primary)_40%,var(--ui-stroke-tertiary))] hover:text-foreground"
+              onClick={() => setSelectedEventId(event.id)}
+              title="Inspect event"
+              type="button"
+            >
               <Codicon name={eventIcon(event.type)} size="0.7rem" />
-            </span>
+            </button>
             <div className="min-w-0 pb-1">
               <div className="flex min-w-0 items-baseline justify-between gap-2">
                 <span className="truncate text-[0.7rem] font-medium text-foreground">{humanize(event.type)}</span>
@@ -513,6 +521,66 @@ function Timeline({ events }: { events: AgentOSEvent[] }) {
           </div>
         ))}
       </div>
+
+      {selectedEvent && (
+        <div className="mt-3 rounded-md border border-(--ui-stroke-tertiary) bg-(--ui-bg-secondary) p-2.5">
+          <div className="flex min-w-0 items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="aos-kicker">Event inspector</div>
+              <div className="mt-1 truncate text-[0.7rem] font-medium text-foreground">{humanize(selectedEvent.type)}</div>
+            </div>
+            <button
+              aria-label="Close event inspector"
+              className="grid size-6 shrink-0 place-items-center rounded text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground"
+              onClick={() => setSelectedEventId(undefined)}
+              type="button"
+            >
+              <Codicon name="close" size="0.7rem" />
+            </button>
+          </div>
+
+          <div className="mt-2 grid gap-x-5 gap-y-2 text-[0.58rem] sm:grid-cols-2">
+            <div>
+              <div className="aos-kicker">Sequence</div>
+              <div className="mt-1 font-mono tabular-nums text-(--ui-text-secondary)">#{selectedEvent.sequence}</div>
+            </div>
+            <div>
+              <div className="aos-kicker">Action</div>
+              <div className="mt-1 truncate font-mono text-(--ui-text-secondary)" title={selectedEvent.action_id ?? undefined}>
+                {compactId(selectedEvent.action_id)}
+              </div>
+            </div>
+            <div>
+              <div className="aos-kicker">Task</div>
+              <div className="mt-1 truncate font-mono text-(--ui-text-secondary)" title={selectedEvent.task_id}>
+                {compactId(selectedEvent.task_id)}
+              </div>
+            </div>
+            <div>
+              <div className="aos-kicker">Recorded</div>
+              <div className="mt-1 tabular-nums text-(--ui-text-secondary)">{formatDateTime(selectedEvent.created_at)}</div>
+            </div>
+          </div>
+
+          <div className="mt-3 rounded border border-(--ui-stroke-tertiary) bg-(--ui-bg-primary) p-2">
+            <div className="aos-kicker">Redacted event payload</div>
+            {Object.entries(selectedEvent.payload ?? {}).length ? (
+              <div className="mt-2 grid gap-1">
+                {Object.entries(selectedEvent.payload ?? {}).map(([key, value]) => (
+                  <div className="flex min-w-0 items-start justify-between gap-3 text-[0.58rem]" key={key}>
+                    <span className="shrink-0 text-(--ui-text-tertiary)">{key}</span>
+                    <span className="min-w-0 truncate text-right font-mono text-(--ui-text-secondary)" title={String(value)}>
+                      {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-2 text-[0.6rem] text-(--ui-text-tertiary)">No additional payload.</div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
