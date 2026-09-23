@@ -305,12 +305,11 @@ const ROW_GAP = 22
 const PADDING_X = 28
 const PADDING_Y = 34
 
-function nodePosition(node: ExecutionCanvasNode, countInColumn: number) {
+function nodePosition(node: ExecutionCanvasNode, countInColumn: number, canvasHeight: number) {
   const x = PADDING_X + node.column * (NODE_WIDTH + COLUMN_GAP)
   const totalHeight = countInColumn * NODE_HEIGHT + Math.max(0, countInColumn - 1) * ROW_GAP
-  const canvasHeight = Math.max(260, totalHeight + PADDING_Y * 2)
   const y = (canvasHeight - totalHeight) / 2 + node.row * (NODE_HEIGHT + ROW_GAP)
-  return { x, y, canvasHeight }
+  return { x, y }
 }
 
 export function ExecutionCanvas({ task }: { task: AgentOSTask }) {
@@ -323,13 +322,17 @@ export function ExecutionCanvas({ task }: { task: AgentOSTask }) {
     counts.set(node.column, (counts.get(node.column) ?? 0) + 1)
   }
 
+  const maxRows = Math.max(1, ...counts.values())
+  const height = Math.max(
+    300,
+    PADDING_Y * 2 + maxRows * NODE_HEIGHT + Math.max(0, maxRows - 1) * ROW_GAP
+  )
   const positioned = new Map(
     model.nodes.map(node => {
-      const position = nodePosition(node, counts.get(node.column) ?? 1)
+      const position = nodePosition(node, counts.get(node.column) ?? 1, height)
       return [node.id, { node, ...position }] as const
     })
   )
-  const height = Math.max(300, ...[...positioned.values()].map(item => item.canvasHeight))
   const width = PADDING_X * 2 + model.columns * NODE_WIDTH + Math.max(0, model.columns - 1) * COLUMN_GAP
   const selected = selectedId ? positioned.get(selectedId)?.node : undefined
   const nodeById = new Map(model.nodes.map(node => [node.id, node]))
