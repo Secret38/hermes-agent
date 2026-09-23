@@ -1,0 +1,326 @@
+.agent-os-page {
+  --aos-line: color-mix(in srgb, var(--ui-text-tertiary) 26%, transparent);
+  --aos-soft: color-mix(in srgb, var(--dt-primary) 7%, transparent);
+  --aos-active: color-mix(in srgb, var(--dt-primary) 18%, transparent);
+  height: 100%;
+  min-height: 0;
+  color: var(--ui-text-primary, currentColor);
+  background:
+    radial-gradient(circle at 72% -10%, color-mix(in srgb, var(--dt-primary) 10%, transparent), transparent 34rem),
+    var(--ui-bg-primary);
+}
+
+.aos-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--ui-text-tertiary) 28%, transparent) transparent;
+}
+
+.aos-panel {
+  border: 1px solid var(--ui-stroke-tertiary);
+  background: color-mix(in srgb, var(--ui-bg-secondary) 82%, transparent);
+  border-radius: 0.7rem;
+}
+
+.aos-kicker {
+  font-size: 0.625rem;
+  line-height: 1;
+  font-weight: 650;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ui-text-tertiary);
+}
+
+.aos-state-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  flex: 0 0 auto;
+  background: var(--ui-text-tertiary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 10%, transparent);
+}
+
+.aos-state[data-state='RUNNING'] .aos-state-dot,
+.aos-state[data-state='EXECUTING'] .aos-state-dot,
+.aos-state[data-state='VERIFYING'] .aos-state-dot,
+.aos-state[data-state='STARTING'] .aos-state-dot,
+.aos-state[data-state='ACTIVE'] .aos-state-dot,
+.aos-state[data-state='READY'] .aos-state-dot {
+  background: var(--dt-primary);
+}
+
+.aos-state[data-state='RUNNING'] .aos-state-dot,
+.aos-state[data-state='EXECUTING'] .aos-state-dot,
+.aos-state[data-state='VERIFYING'] .aos-state-dot,
+.aos-state[data-state='RECOVERING'] .aos-state-dot {
+  animation: aos-pulse 1.8s ease-in-out infinite;
+}
+
+.aos-state[data-state='SUCCEEDED'] .aos-state-dot,
+.aos-state[data-state='COMPLETED'] .aos-state-dot,
+.aos-state[data-state='PASS'] .aos-state-dot {
+  background: #3fa779;
+}
+
+.aos-state[data-state='FAILED'] .aos-state-dot,
+.aos-state[data-state='FAIL'] .aos-state-dot,
+.aos-state[data-state='CANCELLED'] .aos-state-dot {
+  background: var(--dt-destructive);
+}
+
+.aos-state[data-state='BLOCKED'] .aos-state-dot,
+.aos-state[data-state='WAITING_PERMISSION'] .aos-state-dot,
+.aos-state[data-state='WAITING_FOR_APPROVAL'] .aos-state-dot,
+.aos-state[data-state='WARN'] .aos-state-dot,
+.aos-state[data-state='ORPHANED'] .aos-state-dot {
+  background: #d49b45;
+}
+
+@keyframes aos-pulse {
+  0%, 100% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--dt-primary) 10%, transparent); }
+  50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--dt-primary) 4%, transparent); }
+}
+
+.aos-plan-canvas {
+  position: relative;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.25rem 0.1rem 0.65rem;
+}
+
+.aos-plan-layers {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 1.2rem;
+  width: max-content;
+  min-width: 100%;
+}
+
+.aos-plan-layer {
+  position: relative;
+  display: flex;
+  width: 13.5rem;
+  flex: 0 0 13.5rem;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.aos-plan-layer:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 2.15rem;
+  right: -1.2rem;
+  width: 1.2rem;
+  height: 1px;
+  background: var(--aos-line);
+}
+
+.aos-step {
+  position: relative;
+  min-height: 5rem;
+  border: 1px solid var(--ui-stroke-tertiary);
+  border-radius: 0.6rem;
+  background: var(--ui-bg-secondary);
+  padding: 0.65rem 0.7rem;
+  transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
+}
+
+.aos-step:hover {
+  border-color: color-mix(in srgb, var(--dt-primary) 35%, var(--ui-stroke-tertiary));
+  background: color-mix(in srgb, var(--ui-bg-secondary) 90%, var(--dt-primary));
+}
+
+.aos-step[data-state='RUNNING'],
+.aos-step[data-state='VERIFYING'] {
+  border-color: color-mix(in srgb, var(--dt-primary) 48%, var(--ui-stroke-tertiary));
+  background: var(--aos-soft);
+}
+
+.aos-step[data-state='FAILED'] {
+  border-color: color-mix(in srgb, var(--dt-destructive) 48%, var(--ui-stroke-tertiary));
+}
+
+.aos-step[data-state='BLOCKED'] {
+  border-style: dashed;
+}
+
+.aos-timeline {
+  position: relative;
+}
+
+.aos-timeline::before {
+  content: '';
+  position: absolute;
+  left: 0.77rem;
+  top: 0.65rem;
+  bottom: 0.65rem;
+  width: 1px;
+  background: var(--aos-line);
+}
+
+.aos-timeline-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1.55rem minmax(0, 1fr);
+  gap: 0.5rem;
+}
+
+.aos-timeline-glyph {
+  z-index: 1;
+  display: grid;
+  width: 1.55rem;
+  height: 1.55rem;
+  place-items: center;
+  border: 1px solid var(--ui-stroke-tertiary);
+  border-radius: 999px;
+  background: var(--ui-bg-primary);
+  color: var(--ui-text-tertiary);
+}
+
+.aos-topology {
+  position: relative;
+  isolation: isolate;
+}
+
+.aos-topology-core {
+  position: relative;
+  z-index: 2;
+  margin: 0 auto;
+  width: min(20rem, 90%);
+}
+
+.aos-topology-core::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -1.1rem;
+  width: 1px;
+  height: 1.1rem;
+  background: var(--aos-line);
+}
+
+.aos-topology-grid {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 0.65rem;
+  margin-top: 1.1rem;
+}
+
+.aos-topology-grid::before {
+  content: '';
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  top: -0.02rem;
+  height: 1px;
+  background: var(--aos-line);
+  z-index: -1;
+}
+
+.aos-topology-node {
+  position: relative;
+  border: 1px solid var(--ui-stroke-tertiary);
+  border-radius: 0.6rem;
+  background: var(--ui-bg-secondary);
+  padding: 0.65rem;
+}
+
+.aos-topology-node::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -0.67rem;
+  width: 1px;
+  height: 0.67rem;
+  background: var(--aos-line);
+}
+
+.aos-memory-column {
+  position: relative;
+}
+
+.aos-memory-column::before {
+  content: '';
+  position: absolute;
+  left: 0.6rem;
+  top: 0.2rem;
+  bottom: 0.2rem;
+  width: 1px;
+  background: var(--aos-line);
+}
+
+.aos-memory-node {
+  position: relative;
+  padding-left: 1.55rem;
+}
+
+.aos-memory-node::before {
+  content: '';
+  position: absolute;
+  left: 0.42rem;
+  top: 0.75rem;
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 999px;
+  background: var(--ui-text-tertiary);
+  box-shadow: 0 0 0 3px var(--ui-bg-primary);
+}
+
+.aos-task-row {
+  border: 1px solid transparent;
+  transition: background 100ms ease, border-color 100ms ease;
+}
+
+.aos-task-row:hover {
+  background: var(--ui-control-hover-background);
+}
+
+.aos-task-row[data-selected='true'] {
+  border-color: var(--ui-stroke-tertiary);
+  background: var(--ui-control-active-background);
+}
+
+.aos-progress-track {
+  overflow: hidden;
+  height: 0.28rem;
+  border-radius: 999px;
+  background: var(--ui-bg-tertiary);
+}
+
+.aos-progress-value {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--dt-primary);
+  transition: width 250ms ease;
+}
+
+@media (max-width: 1050px) {
+  .aos-overview-grid {
+    grid-template-columns: minmax(14rem, 0.75fr) minmax(0, 1.25fr) !important;
+  }
+
+  .aos-overview-grid > :last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 720px) {
+  .aos-overview-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .aos-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aos-state-dot,
+  .aos-step,
+  .aos-progress-value {
+    animation: none !important;
+    transition: none !important;
+  }
+}

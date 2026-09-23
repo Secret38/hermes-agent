@@ -17,11 +17,14 @@ param(
     [switch]$SkipSetup,
     [switch]$SkipComputerUse,
     [string]$Branch = "main",
+    [string]$Repository = "NousResearch/hermes-agent",
     # -Commit and -Tag are higher-precedence variants of -Branch for users
     # who need reproducible installs (desktop installer pinning, CI, release
     # bundles).  When set, the repository stage clones $Branch (faster than
     # cloning the full default-branch history) and then `git checkout`s the
     # exact ref.  Precedence: Commit > Tag > Branch.
+    # -Repository selects the GitHub owner/repository source used by release
+    # installers; ordinary installs keep the upstream default.
     [string]$Commit = "",
     # Apply -Commit even when it would roll an existing install BACKWARDS.
     # Without this the repository stage skips a pin that is already an ancestor
@@ -383,8 +386,11 @@ $script:ResolvedPathReport = @{
 # Configuration
 # ============================================================================
 
-$RepoUrlSsh = "git@github.com:NousResearch/hermes-agent.git"
-$RepoUrlHttps = "https://github.com/NousResearch/hermes-agent.git"
+if (($Repository -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') -or ($Repository -match '(^|/)\.{1,2}($|/)')) {
+    throw "-Repository must be a safe GitHub owner/repository slug, got: $Repository"
+}
+$RepoUrlSsh = "git@github.com:$Repository.git"
+$RepoUrlHttps = "https://github.com/$Repository.git"
 $PythonVersion = "3.11"
 # Minor versions the installer accepts when the requested $PythonVersion isn't
 # available, in preference order. Only checkout-private uv-managed interpreters
@@ -2290,6 +2296,14 @@ function Install-Repository {
             $ErrorActionPreference = "Continue"
             $autostashRef = ""
             try {
+                # Bind the managed checkout to the repository selected by the
+                # bootstrap BEFORE any fetch. Otherwise a fork/release installer
+                # laid over an older upstream checkout would fetch the wrong repo.
+                git -c windows.appendAtomically=false remote set-url origin $RepoUrlHttps
+                if ($LASTEXITCODE -ne 0) {
+                    throw "failed to bind origin to $RepoUrlHttps (exit $LASTEXITCODE)"
+                }
+
                 # This is a MANAGED checkout, not a repo the user edits. Git for
                 # Windows defaults to core.autocrlf=true, which renormalizes the
                 # repo's LF-only text files to CRLF in the working tree -- so
@@ -2520,13 +2534,13 @@ function Install-Repository {
                 # for.  GitHub supports archive URLs for commits, tags, and
                 # branches; we honour Commit > Tag > Branch.
                 if ($Commit) {
-                    $zipUrl = "https://github.com/NousResearch/hermes-agent/archive/$Commit.zip"
+                    $zipUrl = "https://github.com/$Repository/archive/$Commit.zip"
                     $zipLabel = $Commit
                 } elseif ($Tag) {
-                    $zipUrl = "https://github.com/NousResearch/hermes-agent/archive/refs/tags/$Tag.zip"
+                    $zipUrl = "https://github.com/$Repository/archive/refs/tags/$Tag.zip"
                     $zipLabel = $Tag
                 } else {
-                    $zipUrl = "https://github.com/NousResearch/hermes-agent/archive/refs/heads/$Branch.zip"
+                    $zipUrl = "https://github.com/$Repository/archive/refs/heads/$Branch.zip"
                     $zipLabel = $Branch
                 }
                 $zipPath = "$env:TEMP\hermes-agent-$zipLabel.zip"
@@ -4864,6 +4878,14 @@ $InstallStages += @(
     @{ Name = "path";             Title = "Adding Hermes to PATH";                Category = "finalize";     NeedsUserInput = $false; Worker = "Stage-Path" }
     @{ Name = "config-templates"; Title = "Writing configuration templates";      Category = "finalize";     NeedsUserInput = $false; Worker = "Stage-ConfigTemplates" }
     @{ Name = "platform-sdks";    Title = "Installing messaging platform SDKs";   Category = "finalize";     NeedsUserInput = $false; Worker = "Stage-PlatformSdks" }
+)
+if ($IncludeDesktop) {
+    # A Hermes-Setup.exe install is the Agent OS desktop product path. Provision
+    # its browser + native computer-use substrate before publishing the bootstrap
+    # marker, so "installed" never means "desktop exists but cannot act".
+    $InstallStages += @{ Name = "agent-os-runtime"; Title = "Provisioning Agent OS runtime"; Category = "finalize"; NeedsUserInput = $false; Worker = "Stage-AgentOSRuntime" }
+}
+$InstallStages += @(
     @{ Name = "bootstrap-marker"; Title = "Marking install complete";              Category = "finalize";     NeedsUserInput = $false; Worker = "Stage-BootstrapMarker" }
     # Interactive stages.  In non-interactive mode these become no-ops; the
     # caller (GUI / CI) handles the equivalent UX themselves.
@@ -4910,6 +4932,50 @@ function Stage-Desktop          { Install-DesktopVoiceDeps; Install-Desktop }
 function Stage-Path             { Set-PathVariable }
 function Stage-ConfigTemplates  { Copy-ConfigTemplates }
 function Stage-PlatformSdks     { Resolve-UvCmd; Install-PlatformSdks }
+function Stage-AgentOSRuntime   {
+    $hermesExe = Join-Path $InstallDir "venv\Scripts\hermes.exe"
+    if (-not (Test-Path -LiteralPath $hermesExe -PathType Leaf)) {
+        throw "Agent OS runtime provisioning requires the Hermes venv launcher: $hermesExe"
+    }
+
+    $previousHermesHome = $env:HERMES_HOME
+    try {
+        $env:HERMES_HOME = $HermesHome
+
+        # Capture child output so stage-driver stdout remains exactly one JSON
+        # frame. The GUI receives the stage lifecycle from Invoke-Stage instead
+        # of trying to parse nested installer chatter.
+        $provisionOutput = @(& $hermesExe agent-os provision 2>&1)
+        $provisionExit = $LASTEXITCODE
+        if ($provisionExit -ne 0) {
+            $tail = ($provisionOutput | Select-Object -Last 12) -join [Environment]::NewLine
+            throw "Agent OS runtime provisioning failed (exit $provisionExit). $tail"
+        }
+
+        # Trust actual post-install health, never the installer return code.
+        $healthOutput = @(& $hermesExe agent-os status --require-full --json 2>&1)
+        $healthExit = $LASTEXITCODE
+        if ($healthExit -ne 0) {
+            $tail = ($healthOutput | Select-Object -Last 12) -join [Environment]::NewLine
+            throw "Agent OS full-readiness gate failed (exit $healthExit). $tail"
+        }
+
+        try {
+            $health = ($healthOutput -join [Environment]::NewLine) | ConvertFrom-Json
+        } catch {
+            throw "Agent OS health command returned invalid JSON: $_"
+        }
+        if (-not $health.full_ready) {
+            throw "Agent OS health report did not confirm full_ready=true"
+        }
+    } finally {
+        if ($null -eq $previousHermesHome) {
+            Remove-Item Env:HERMES_HOME -ErrorAction SilentlyContinue
+        } else {
+            $env:HERMES_HOME = $previousHermesHome
+        }
+    }
+}
 function Stage-BootstrapMarker  { Write-BootstrapMarker }
 function Stage-Configure        { Invoke-SetupWizard }
 function Stage-Gateway          { Start-GatewayIfConfigured }

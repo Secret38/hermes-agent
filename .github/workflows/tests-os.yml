@@ -40,6 +40,15 @@ on:
         type: boolean
         required: false
         default: true
+      agent_os_e2e:
+        description: >-
+          Agent OS changed. Hosted Windows still runs OS unit coverage, but live
+          computer-use E2E is release-qualified only on an interactive
+          self-hosted Windows runner because GitHub-hosted runners run without
+          a user desktop.
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -61,7 +70,7 @@ jobs:
             runner: macos-latest
             marker: macos_only
           - name: Windows-only tests
-            runner: windows-latest-32-core
+            runner: windows-latest
             marker: windows_only
     steps:
       - name: Checkout code
@@ -96,7 +105,6 @@ jobs:
 
       - name: Minimize uv cache
         run: uv cache prune --ci
-
       - name: Run ${{ matrix.marker }} tests
         # Two-step selection:
         #
@@ -179,3 +187,9 @@ jobs:
           OPENROUTER_API_KEY: ""
           OPENAI_API_KEY: ""
           NOUS_API_KEY: ""
+
+      # Live GT-12/13 and the canonical 20/20 proof intentionally do not run
+      # on GitHub-hosted Windows. Those runners execute in a non-interactive
+      # service session, where Win32/UIA window-driving APIs cannot see a user
+      # desktop. The production release workflow gates them on the trusted
+      # self-hosted label: [self-hosted, windows, x64, agent-os-gui].

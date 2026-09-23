@@ -293,12 +293,13 @@ def handle_computer_use(args: Dict[str, Any], **kwargs) -> Any:
     if not action:
         return json.dumps({"error": "missing `action`"})
     session_id = str(kwargs.get("session_id") or "")  # approval-state / daemon-mode isolation key
+    approval_callback = kwargs.get("approval_callback", _approval_callback)
     if (err := _reject_unsafe(action, args)) is not None:
         return err
     scopes = ([action] if action in _ACTIONS and _ACTIONS[action].destructive else []) + (
         ["bring_to_front"] if args.get("bring_to_front") or (action == "focus_app" and args.get("raise_window")) else [])
     for scope in scopes:
-        if (err := _request_approval(scope, args)) is not None:
+        if (err := _request_approval(scope, args, approval_callback=approval_callback)) is not None:
             return err
     try:
         backend = _get_backend(session_id=session_id)
@@ -315,7 +316,12 @@ def handle_computer_use(args: Dict[str, Any], **kwargs) -> Any:
         logger.exception("computer_use %s failed", action)
         return json.dumps({"error": f"{action} failed: {e}"})
 
-def _request_approval(action: str, args: Dict[str, Any]) -> Optional[str]:
+def _request_approval(
+    action: str,
+    args: Dict[str, Any],
+    *,
+    approval_callback=None,
+) -> Optional[str]:
     """None if approved, else a JSON error string. The decision (yolo bypass, session/permanent grants, CLI prompt,
     gateway pending, cron/unattended policy, fail-closed with nobody to ask) is ``tools.approval``'s shared gate,
     so a computer_use grant is one store entry like any terminal pattern. Scope key ``cua:<action>:<mode>``:
@@ -323,11 +329,13 @@ def _request_approval(action: str, args: Dict[str, Any]) -> Optional[str]:
     """
     from tools.approval import _run_approval_gate
 
+    if approval_callback is None:
+        approval_callback = _approval_callback
     mode = "foreground" if args.get("delivery_mode") == "foreground" else "background"
     description = f"Allow computer_use to perform `{action}`?"
     result = _run_approval_gate(
         pattern_key=f"cua:{action}:{mode}", description=description,
-        display_target=f"computer_use: {_summarize_action(action, args)}", approval_callback=_approval_callback,
+        display_target=f"computer_use: {_summarize_action(action, args)}", approval_callback=approval_callback,
         subject=f"computer_use `{action}` requires approval", noun="desktop actions",
         advice="Find an alternative approach that avoids driving the desktop.",
         autoapprove_log_prefix="computer_use action in non-interactive non-gateway context",
