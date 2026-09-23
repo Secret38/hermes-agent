@@ -1,0 +1,200 @@
+import { describe, expect, it } from 'vitest'
+
+import type { AgentOSTask } from './types'
+import { buildExecutionCanvasModel } from './visual-intelligence'
+
+function taskFixture(): AgentOSTask {
+  return {
+    id: 'task-1',
+    goal: 'Ship the feature',
+    state: 'RUNNING',
+    workspace_id: 'workspace-1',
+    created_at: '2026-09-23T12:00:00Z',
+    updated_at: '2026-09-23T12:01:00Z',
+    plan: {
+      id: 'plan-1',
+      task_id: 'task-1',
+      objective: 'Ship the feature',
+      revision: 1,
+      state: 'ACTIVE',
+      created_at: '2026-09-23T12:00:00Z',
+      updated_at: '2026-09-23T12:01:00Z',
+      progress: {
+        total: 2,
+        succeeded: 0,
+        running: 1,
+        ready: 1,
+        blocked: 0,
+        failed: 0,
+        cancelled: 0
+      },
+      dependencies: [{ step_id: 'step-2', dependency_step_id: 'step-1' }],
+      steps: [
+        {
+          id: 'step-1',
+          plan_id: 'plan-1',
+          task_id: 'task-1',
+          title: 'Delegate implementation',
+          kind: 'AGENT',
+          state: 'RUNNING',
+          execution_id: 'agent-root',
+          priority: 100,
+          created_at: '2026-09-23T12:00:00Z',
+          updated_at: '2026-09-23T12:01:00Z'
+        },
+        {
+          id: 'step-2',
+          plan_id: 'plan-1',
+          task_id: 'task-1',
+          title: 'Verify implementation',
+          kind: 'VERIFICATION',
+          state: 'READY',
+          priority: 90,
+          created_at: '2026-09-23T12:00:00Z',
+          updated_at: '2026-09-23T12:01:00Z'
+        }
+      ]
+    },
+    agents: [
+      {
+        id: 'agent-root',
+        task_id: 'task-1',
+        runtime: 'hermes',
+        goal: 'Implement',
+        state: 'RUNNING',
+        role: 'builder',
+        restart_count: 0,
+        max_restarts: 2,
+        created_at: '2026-09-23T12:00:00Z',
+        updated_at: '2026-09-23T12:01:00Z'
+      },
+      {
+        id: 'agent-child',
+        task_id: 'task-1',
+        runtime: 'hermes',
+        goal: 'Inspect tests',
+        state: 'RUNNING',
+        parent_agent_id: 'agent-root',
+        role: 'tester',
+        restart_count: 0,
+        max_restarts: 2,
+        created_at: '2026-09-23T12:00:00Z',
+        updated_at: '2026-09-23T12:01:00Z'
+      }
+    ],
+    actions: [
+      {
+        id: 'action-1',
+        task_id: 'task-1',
+        agent_id: 'agent-root',
+        tool: 'terminal',
+        operation: 'run',
+        state: 'RUNNING',
+        risk_level: 'L1',
+        retry_budget: 1,
+        verification_required: true,
+        verification_method: 'exit-code',
+        recovery_attempts: 0,
+        execution_attempts: 1,
+        created_at: '2026-09-23T12:00:00Z',
+        updated_at: '2026-09-23T12:01:00Z'
+      }
+    ],
+    events: [],
+    metrics: {
+      actions: 1,
+      agents: 2,
+      recoveries: 0,
+      approvals: 0,
+      verifications: 1,
+      checkpoints: 1
+    }
+  }
+}
+
+describe('Agent OS visual intelligence graph', () => {
+  it('builds a truthful goal-to-plan dependency graph', () => {
+    const model = buildExecutionCanvasModel(taskFixture())
+
+    expect(model.edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: 'goal:task-1',
+          target: 'step:step-1',
+          kind: 'membership'
+        }),
+        expect.objectContaining({
+          source: 'step:step-1',
+          target: 'step:step-2',
+          kind: 'dependency'
+        })
+      ])
+    )
+  })
+
+  it('preserves exact plan-to-agent, delegation and agent-to-action bindings', () => {
+    const model = buildExecutionCanvasModel(taskFixture())
+
+    expect(model.edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: 'step:step-1',
+          target: 'agent:agent-root',
+          kind: 'execution'
+        }),
+        expect.objectContaining({
+          source: 'agent:agent-root',
+          target: 'agent:agent-child',
+          kind: 'execution'
+        }),
+        expect.objectContaining({
+          source: 'agent:agent-root',
+          target: 'action:action-1',
+          kind: 'execution'
+        })
+      ])
+    )
+
+    expect(
+      model.edges.some(
+        edge =>
+          edge.source === 'goal:task-1' &&
+          edge.target === 'agent:agent-root' &&
+          edge.kind === 'membership'
+      )
+    ).toBe(false)
+  })
+
+  it('routes verification-required actions into durable evidence', () => {
+    const model = buildExecutionCanvasModel(taskFixture())
+
+    expect(model.nodes.map(node => node.id)).toEqual(
+      expect.arrayContaining(['verify:task-1', 'persist:task-1'])
+    )
+    expect(model.edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: 'action:action-1',
+          target: 'verify:task-1',
+          kind: 'verification'
+        }),
+        expect.objectContaining({
+          source: 'verify:task-1',
+          target: 'persist:task-1',
+          kind: 'verification'
+        })
+      ])
+    )
+  })
+
+  it('does not invent an execution edge when a plan execution id has no durable target', () => {
+    const task = taskFixture()
+    task.plan!.steps[0].execution_id = 'missing-runtime-record'
+
+    const model = buildExecutionCanvasModel(task)
+
+    expect(
+      model.edges.some(edge => edge.source === 'step:step-1' && edge.label === 'executes as')
+    ).toBe(false)
+  })
+})
