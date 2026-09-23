@@ -1,7 +1,7 @@
 import { cn, Codicon } from '@hermes/plugin-sdk'
 import { useMemo, useState } from 'react'
 
-import type { AgentOSAction, AgentOSAgent, AgentOSPlanStep, AgentOSTask } from './types'
+import type { AgentOSAction, AgentOSAgent, AgentOSPlan, AgentOSPlanStep, AgentOSTask } from './types'
 
 type ExecutionNodeKind = 'action' | 'agent' | 'goal' | 'persist' | 'plan' | 'verify'
 type ExecutionEdgeKind = 'dependency' | 'execution' | 'membership' | 'verification'
@@ -39,11 +39,7 @@ function compactId(value: null | string | undefined): string {
   return value.length <= 18 ? value : `${value.slice(0, 9)}…${value.slice(-6)}`
 }
 
-function stepLevels(steps: AgentOSPlanStep[], dependencies: AgentOSTask['plan'] extends infer P
-  ? P extends { dependencies: infer D }
-    ? D
-    : never
-  : never): Map<string, number> {
+function stepLevels(steps: AgentOSPlanStep[], dependencies: AgentOSPlan['dependencies']): Map<string, number> {
   const known = new Set(steps.map(step => step.id))
   const parents = new Map<string, string[]>()
 
@@ -169,7 +165,14 @@ export function buildExecutionCanvasModel(task: AgentOSTask): ExecutionCanvasMod
       kind: 'verify',
       title: 'Verification',
       detail: `${verified}/${verificationActions.length} verified`,
-      state: task.state === 'VERIFYING' ? 'VERIFYING' : failed ? 'FAILED' : verified === verificationActions.length ? 'SUCCEEDED' : 'READY',
+      state:
+        task.state === 'VERIFYING'
+          ? 'VERIFYING'
+          : failed
+            ? 'FAILED'
+            : verified === verificationActions.length
+              ? 'SUCCEEDED'
+              : 'READY',
       column: verifyColumn,
       row: 0,
       meta: [`${task.metrics.verifications} evidence event(s)`]
