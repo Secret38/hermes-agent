@@ -504,7 +504,7 @@ function Timeline({ events }: { events: AgentOSEvent[] }) {
   const rows = [...visibleEvents].slice(-32).reverse()
   const selectedEvent = selectedEventId ? events.find(event => event.id === selectedEventId) : undefined
 
-  if (rows.length === 0) {
+  if (events.length === 0) {
     return (
       <div className="grid min-h-48 place-items-center p-6 text-center text-xs text-(--ui-text-tertiary)">
         No execution events recorded yet.
@@ -866,7 +866,7 @@ function ActionControls({ actions }: { actions: AgentOSAction[] }) {
                   title="Inspect action"
                   type="button"
                 >
-                  <Codicon name="inspect" size="0.68rem" />
+                  <Codicon name="search" size="0.68rem" />
                 </button>
               </div>
             </div>
@@ -1025,7 +1025,7 @@ function AttentionQueue({ task }: { task: AgentOSTask }) {
 
   return (
     <section className="aos-panel overflow-hidden">
-      <SectionHeader icon="bell-dot" meta={items.length ? `${items.length} item(s)` : humanize(task.state)} title="Needs attention" />
+      <SectionHeader icon="bell" meta={items.length ? `${items.length} item(s)` : humanize(task.state)} title="Needs attention" />
       <div className="grid gap-1.5 p-2.5 md:grid-cols-2 xl:grid-cols-4">
         {items.length ? (
           items.map(item => (
