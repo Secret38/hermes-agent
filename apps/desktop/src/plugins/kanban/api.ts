@@ -13,6 +13,10 @@ import {
   atom,
   type PluginOs,
   type PluginRestOptions,
+  type OperationsRunInspection,
+  type OperationsTaskExecution,
+  type OperationsTaskLog,
+  type OperationsTaskSnapshot,
   type PluginStorage,
   type PluginTranslate,
   queryClient
@@ -143,10 +147,9 @@ function call<T>(path: string, opts?: PluginRestOptions): Promise<T> {
   return rest ? rest<T>(path, opts) : Promise.reject(new Error('kanban api not ready'))
 }
 
-/** Append the selected board (and other params) to a path. */
-function withBoard(path: string, params: Record<string, string> = {}): string {
+/** Append an explicit board scope (and other params) to a path. */
+function withBoardScope(path: string, slug: null | string | undefined, params: Record<string, string> = {}): string {
   const search = new URLSearchParams(params)
-  const slug = $boardSlug.get()
 
   if (slug) {
     search.set('board', slug)
@@ -155,6 +158,10 @@ function withBoard(path: string, params: Record<string, string> = {}): string {
   const qs = search.toString()
 
   return qs ? `${path}?${qs}` : path
+}
+
+function withBoard(path: string, params: Record<string, string> = {}): string {
+  return withBoardScope(path, $boardSlug.get(), params)
 }
 
 // ── query keys (all board-scoped so switching boards is a clean cache miss) ──
@@ -173,9 +180,127 @@ export const fetchBoard = (archived: boolean) =>
   call<KanbanBoard>(withBoard('/board', archived ? { include_archived: 'true' } : {}))
 
 export const fetchTask = (id: string) => call<KanbanTaskDetail>(withBoard(`/tasks/${id}`))
+const fetchTaskInScope = (id: string, scopeKey?: null | string) =>
+  call<KanbanTaskDetail>(withBoardScope(`/tasks/${id}`, scopeKey))
+
+export const fetchRunInspection = (id: number | string) =>
+  call<{
+    run_id: number | string
+    alive: boolean
+    reason?: null | string
+    pid?: null | number
+    status?: null | string
+    cpu_percent?: null | number
+    memory_rss_bytes?: null | number
+    num_threads?: null | number
+  }>(withBoard(`/runs/${id}/inspect`))
+
+const fetchRunInspectionInScope = (id: number | string, scopeKey?: null | string) =>
+  call<{
+    run_id: number | string
+    alive: boolean
+    reason?: null | string
+    pid?: null | number
+    status?: null | string
+    cpu_percent?: null | number
+    memory_rss_bytes?: null | number
+    num_threads?: null | number
+  }>(withBoardScope(`/runs/${id}/inspect`, scopeKey))
+
+export function toOperationsTaskExecution(detail: KanbanTaskDetail): OperationsTaskExecution {
+  return {
+    taskId: detail.task.id,
+    result: detail.task.result,
+    lastFailureError: detail.task.last_failure_error,
+    workspacePath: detail.task.workspace_path,
+    branchName: detail.task.branch_name,
+    artifacts: (detail.attachments ?? []).map(attachment => ({
+      id: attachment.id,
+      name: attachment.filename,
+      sizeBytes: attachment.size
+    })),
+    events: detail.events.map(event => ({
+      id: event.id,
+      kind: event.kind,
+      createdAt: event.created_at,
+      detail:
+        typeof event.payload === 'string'
+          ? event.payload
+          : event.payload == null
+            ? null
+            : JSON.stringify(event.payload)
+    })),
+    runs: detail.runs.map(run => ({
+      id: run.id,
+      status: run.status,
+      outcome: run.outcome,
+      profile: run.profile,
+      workerSessionId: run.worker_session_id,
+      workerPid: run.worker_pid,
+      startedAt: run.started_at,
+      endedAt: run.ended_at,
+      summary: run.summary,
+      error: run.error
+    }))
+  }
+}
+
+export async function fetchOperationsTaskExecution(
+  id: string,
+  snapshot: OperationsTaskSnapshot
+): Promise<OperationsTaskExecution> {
+  return toOperationsTaskExecution(await fetchTaskInScope(id, snapshot.scopeKey))
+}
+
+export function toOperationsRunInspection(inspection: {
+  run_id: number | string
+  alive: boolean
+  reason?: null | string
+  pid?: null | number
+  status?: null | string
+  cpu_percent?: null | number
+  memory_rss_bytes?: null | number
+  num_threads?: null | number
+}): OperationsRunInspection {
+  return {
+    runId: inspection.run_id,
+    alive: inspection.alive,
+    reason: inspection.reason,
+    pid: inspection.pid,
+    status: inspection.status,
+    cpuPercent: inspection.cpu_percent,
+    memoryRssBytes: inspection.memory_rss_bytes,
+    numThreads: inspection.num_threads
+  }
+}
+
+export async function fetchOperationsRunInspection(
+  id: number | string,
+  snapshot: OperationsTaskSnapshot
+): Promise<OperationsRunInspection> {
+  return toOperationsRunInspection(await fetchRunInspectionInScope(id, snapshot.scopeKey))
+}
+
+export function toOperationsTaskLog(log: WorkerLog): OperationsTaskLog {
+  return {
+    exists: log.exists,
+    sizeBytes: log.size_bytes,
+    content: log.content,
+    truncated: log.truncated
+  }
+}
+
+export async function fetchOperationsTaskLog(
+  id: string,
+  snapshot: OperationsTaskSnapshot
+): Promise<OperationsTaskLog> {
+  return toOperationsTaskLog(await fetchLogInScope(id, snapshot.scopeKey))
+}
 
 /** Worker stdout/stderr tail (last 16 KiB — plenty for the drawer). */
 export const fetchLog = (id: string) => call<WorkerLog>(withBoard(`/tasks/${id}/log`, { tail: '16384' }))
+const fetchLogInScope = (id: string, scopeKey?: null | string) =>
+  call<WorkerLog>(withBoardScope(`/tasks/${id}/log`, scopeKey, { tail: '16384' }))
 
 export const fetchBoards = () => call<BoardsResponse>('/boards')
 
@@ -185,6 +310,68 @@ export const fetchProfiles = () => call<{ profiles: KanbanProfile[] }>('/profile
 export const fetchProjects = () => call<{ projects: KanbanProject[] }>('/projects')
 
 export const fetchOrchestration = () => call<OrchestrationSettings>('/orchestration')
+
+/** Read-only normalized projection for Agent OS and other operational surfaces.
+ * Kanban remains authoritative for persistence and workflow rules. */
+export function toOperationsSnapshot(
+  board: KanbanBoard,
+  boards: BoardsResponse,
+  projects: readonly KanbanProject[],
+  scopeKey?: null | string
+): OperationsTaskSnapshot {
+  const current = boards.boards.find(item => item.slug === boards.current)
+  const projectById = new Map(projects.map(project => [project.id, project]))
+  const boardProject = current?.project_id ? projectById.get(current.project_id) : undefined
+
+  return {
+    sourceId: 'kanban',
+    sourceLabel: 'Kanban',
+    scopeKey: scopeKey || boards.current || null,
+    scopeLabel: current?.name || current?.slug || boards.current || 'Current board',
+    observedAt: board.now * 1000,
+    projects: projects.map(project => ({
+      id: project.id,
+      name: project.name,
+      slug: project.slug,
+      path: project.primary_path
+    })),
+    tasks: board.columns.flatMap(column =>
+      column.tasks.map(task => {
+        const project = task.project_id ? projectById.get(task.project_id) : boardProject
+
+        return {
+          id: task.id,
+          title: task.title,
+          status: task.status || column.name,
+          assignee: task.assignee,
+          priority: task.priority,
+          projectId: task.project_id || current?.project_id,
+          projectName: project?.name || current?.project_name,
+          originSessionId: task.session_id,
+          runId: task.current_run_id,
+          workerSessionId: task.worker_session_id,
+          startedAt: task.started_at,
+          lastHeartbeatAt: task.last_heartbeat_at,
+          warning: task.warnings
+            ? {
+                count: task.warnings.count,
+                severity: task.warnings.highest_severity,
+                kinds: task.warnings.kinds,
+                latestAt: task.warnings.latest_at
+              }
+            : null
+        }
+      })
+    )
+  }
+}
+
+export async function fetchOperationsSnapshot(): Promise<OperationsTaskSnapshot> {
+  const scopeKey = $boardSlug.get()
+  const [board, boards, projects] = await Promise.all([fetchBoard(false), fetchBoards(), fetchProjects()])
+
+  return toOperationsSnapshot(board, boards, projects.projects, scopeKey || boards.current)
+}
 
 // ── writes ────────────────────────────────────────────────────────────────────
 
