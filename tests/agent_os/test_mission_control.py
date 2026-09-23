@@ -5,7 +5,7 @@ from pathlib import Path
 
 from agent_os.agents.records import AgentInstanceRecord, AgentInstanceState
 from agent_os.contracts import ActionRecord, TaskRecord
-from agent_os.dashboard import build_dashboard_snapshot
+from agent_os.dashboard import build_dashboard_snapshot, dashboard_event_sequence
 from agent_os.events import EventRecord, EventType
 from agent_os.orchestration.plan import PlanRecord, PlanState, PlanStepKind, PlanStepRecord, PlanStepState
 from agent_os.states import ActionState, TaskState
@@ -140,6 +140,7 @@ def test_mission_control_snapshot_projects_durable_execution_without_secrets(tmp
 
     snapshot = build_dashboard_snapshot(db_path=path, health_report=_health())
 
+    assert dashboard_event_sequence(db_path=path) > 0
     assert snapshot["store_error"] is None
     assert snapshot["summary"]["tasks"] == 1
     assert snapshot["summary"]["active_tasks"] == 1
@@ -178,6 +179,7 @@ def test_mission_control_read_does_not_create_missing_store(tmp_path: Path):
     snapshot = build_dashboard_snapshot(db_path=path, health_report=_health())
 
     assert not path.exists()
+    assert dashboard_event_sequence(db_path=path) == 0
     assert snapshot["tasks"] == []
     assert snapshot["summary"]["tasks"] == 0
 
