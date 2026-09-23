@@ -236,6 +236,7 @@ def _production_security_check() -> HealthCheck:
         cron_mode = approval_context._get_cron_approval_mode()
         single_query_mode = approval_context._get_single_query_approval_mode()
         unattended_mode = approval_context._get_unattended_approval_mode()
+        confirm_host_mutations = approval_context._confirm_host_mutations()
         tirith_fail_open = approval_context._tirith_fail_open()
         from tools import tirith_security
         tirith_scanner_healthy = tirith_security.scanner_healthy()
@@ -259,6 +260,8 @@ def _production_security_check() -> HealthCheck:
         unsafe.append(f"approvals.single_query_mode={single_query_mode}")
     if unattended_mode != "deny":
         unsafe.append(f"approvals.unattended_mode={unattended_mode}")
+    if not confirm_host_mutations:
+        unsafe.append("approvals.confirm_host_mutations=false")
     if tirith_fail_open:
         unsafe.append("Tirith disabled or security.tirith_fail_open=true")
     elif not tirith_scanner_healthy:
@@ -273,7 +276,8 @@ def _production_security_check() -> HealthCheck:
             "unsafe production policy: " + ", ".join(unsafe),
             required_for_production_security=True,
             remediation=(
-                "Use manual approvals; deny cron/single-query/unattended approvals; "
+                "Use manual approvals with approvals.confirm_host_mutations=true; "
+                "deny cron/single-query/unattended approvals; "
                 "enable Tirith with security.tirith_fail_open=false; remove SUDO_PASSWORD "
                 "from the Agent environment. See docs/agent-os-production-security.md."
             ),
@@ -282,7 +286,8 @@ def _production_security_check() -> HealthCheck:
     return HealthCheck(
         "production_security",
         HealthStatus.PASS,
-        "manual approvals; unattended contexts deny; Tirith scanner healthy and fail-closed; no stored sudo password",
+        "manual approvals; host mutations require exact consent; unattended contexts deny; "
+        "Tirith scanner healthy and fail-closed; no stored sudo password",
         required_for_production_security=True,
     )
 
