@@ -80,3 +80,32 @@ def test_mission_control_keeps_new_mission_and_approval_contract():
     assert "resolveAgentOSApproval" in api
     assert "AGENT_OS_APPROVALS_KEY" in api
     assert "AGENT_OS_MISSIONS_KEY" in api
+
+
+def test_mission_control_keeps_execution_replay_and_forensics_contract():
+    plugin = _source("plugin.tsx")
+    replay = _source("forensics.tsx")
+
+    assert "/agent-os/forensics" in plugin
+    assert "Execution Replay" in plugin
+    assert "AgentOSForensicsPage" in plugin
+
+    for marker in (
+        "Replay position",
+        "Ledger timeline",
+        "Ledger evidence",
+        "Redacted payload",
+        "Verification",
+        "Recovery",
+        "Risk & approvals",
+        "Checkpoints",
+        "Artifacts",
+    ):
+        assert marker in replay
+
+    assert "type=\"range\"" in replay
+    assert "replayState" in replay
+    assert "verification.recorded" in replay
+    assert "recovery.attempted" in replay
+    assert "artifact.recorded" in replay
+    assert "approval.requested" in replay
