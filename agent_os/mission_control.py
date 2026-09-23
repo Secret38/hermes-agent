@@ -8,6 +8,7 @@ approval resolved by Mission Control.
 
 from __future__ import annotations
 
+import json
 import threading
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -17,7 +18,8 @@ from agent_os.contracts import ActionRecord, new_id, utc_now_iso
 from agent_os.events import EventRecord, EventType
 from agent_os.permissions import PermissionDecision, PermissionOutcome
 from agent_os.risk import RiskAssessment, RiskLevel
-from agent_os.states import ActionState, TaskState
+from agent_os.orchestration.plan import PlanState
+from agent_os.states import ActionState, TaskState, task_is_terminal
 from agent_os.store import AgentOSStore
 
 
@@ -30,9 +32,11 @@ class MissionJobState(StrEnum):
     PLANNING = "PLANNING"
     RUNNING = "RUNNING"
     WAITING_APPROVAL = "WAITING_APPROVAL"
+    INTERRUPTED = "INTERRUPTED"
     COMPLETED = "COMPLETED"
     BLOCKED = "BLOCKED"
     FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
 
 
 @dataclass(slots=True)
@@ -257,6 +261,84 @@ class MissionRuntimeService:
         self._lock = threading.RLock()
         self._jobs: dict[str, MissionJob] = {}
         self._worker: threading.Thread | None = None
+        self._hydrate_jobs()
+
+    def _hydrate_jobs(self) -> None:
+        """Reconstruct Mission Control jobs from the durable Agent OS ledger.
+
+        Hydration is deliberately observation-only: non-terminal missions are
+        exposed as INTERRUPTED and require an explicit resume request before
+        any executor, browser, terminal or computer-use side effect can run.
+        """
+
+        conn = self.store._connect()
+        try:
+            rows = conn.execute(
+                """
+                SELECT
+                    t.id,
+                    t.goal,
+                    t.state,
+                    t.session_id,
+                    t.workspace_id,
+                    t.metadata_json,
+                    t.created_at,
+                    t.updated_at,
+                    (
+                        SELECT p.id
+                          FROM plans p
+                         WHERE p.task_id = t.id
+                         ORDER BY p.revision DESC, p.created_at DESC, p.id DESC
+                         LIMIT 1
+                    ) AS plan_id
+                  FROM tasks t
+                 ORDER BY t.created_at, t.id
+                """
+            ).fetchall()
+        finally:
+            conn.close()
+
+        hydrated: dict[str, MissionJob] = {}
+        for row in rows:
+            try:
+                metadata = json.loads(row["metadata_json"] or "{}")
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+            if not isinstance(metadata, dict):
+                continue
+            if metadata.get("source") != "mission-control":
+                continue
+
+            job_id = str(metadata.get("mission_job_id") or "").strip()
+            if not job_id:
+                continue
+
+            task_state = TaskState(row["state"])
+            if task_state is TaskState.COMPLETED:
+                state = MissionJobState.COMPLETED
+            elif task_state is TaskState.FAILED:
+                state = MissionJobState.FAILED
+            elif task_state is TaskState.CANCELLED:
+                state = MissionJobState.CANCELLED
+            elif task_state is TaskState.BLOCKED:
+                state = MissionJobState.BLOCKED
+            else:
+                state = MissionJobState.INTERRUPTED
+
+            hydrated[job_id] = MissionJob(
+                id=job_id,
+                goal=str(row["goal"]),
+                workspace_id=row["workspace_id"],
+                session_id=row["session_id"],
+                state=state,
+                task_id=str(row["id"]),
+                plan_id=row["plan_id"],
+                created_at=str(row["created_at"]),
+                updated_at=str(row["updated_at"]),
+            )
+
+        with self._lock:
+            self._jobs.update(hydrated)
 
     def submit(
         self,
@@ -300,6 +382,53 @@ class MissionRuntimeService:
             worker.start()
             return job.to_dict()
 
+    def resume(self, job_id: str) -> dict[str, Any]:
+        """Resume one interrupted durable mission after explicit user intent."""
+
+        with self._lock:
+            if self._worker is not None and self._worker.is_alive():
+                raise MissionBusyError(
+                    "Another interactive Agent OS mission is already running."
+                )
+
+            job = self._jobs.get(str(job_id))
+            if job is None:
+                raise KeyError(f"unknown mission: {job_id}")
+            if job.state is not MissionJobState.INTERRUPTED:
+                raise RuntimeError(
+                    f"mission is not resumable from state {job.state.value}"
+                )
+            if not job.task_id or not job.plan_id:
+                raise RuntimeError(
+                    "interrupted mission has no durable executable plan to resume"
+                )
+
+            task = self.store.get_task(job.task_id)
+            plan = self.store.get_plan(job.plan_id)
+            if task is None or plan is None:
+                raise RuntimeError("interrupted mission durable state is incomplete")
+            if task_is_terminal(task.state):
+                raise RuntimeError(
+                    f"mission task is already terminal: {task.state.value}"
+                )
+            if plan.state is not PlanState.ACTIVE:
+                raise RuntimeError(
+                    f"mission plan is not active: {plan.state.value}"
+                )
+
+            job.state = MissionJobState.RUNNING
+            job.error = None
+            job.updated_at = utc_now_iso()
+            worker = threading.Thread(
+                target=self._resume_job,
+                args=(job.id,),
+                daemon=True,
+                name=f"agent-os-resume-{job.id[-8:]}",
+            )
+            self._worker = worker
+            worker.start()
+            return job.to_dict()
+
     def jobs(self, *, limit: int = 20) -> list[dict[str, Any]]:
         limit = max(1, min(int(limit), 100))
         with self._lock:
@@ -317,14 +446,22 @@ class MissionRuntimeService:
         task = self.store.get_task(job.task_id)
         if task is None:
             return data
+        if task.state is TaskState.COMPLETED:
+            data["state"] = MissionJobState.COMPLETED.value
+            return data
+        if task.state is TaskState.FAILED:
+            data["state"] = MissionJobState.FAILED.value
+            return data
+        if task.state is TaskState.CANCELLED:
+            data["state"] = MissionJobState.CANCELLED.value
+            return data
+        if task.state is TaskState.BLOCKED:
+            data["state"] = MissionJobState.BLOCKED.value
+            return data
+        if job.state is MissionJobState.INTERRUPTED:
+            return data
         if task.state is TaskState.WAITING_FOR_APPROVAL:
             data["state"] = MissionJobState.WAITING_APPROVAL.value
-        elif task.state is TaskState.COMPLETED:
-            data["state"] = MissionJobState.COMPLETED.value
-        elif task.state is TaskState.FAILED:
-            data["state"] = MissionJobState.FAILED.value
-        elif task.state is TaskState.BLOCKED:
-            data["state"] = MissionJobState.BLOCKED.value
         return data
 
     def _set_job(
@@ -376,17 +513,7 @@ class MissionRuntimeService:
             )
             runtime.run_until_idle(submission.plan.id, max_ticks=256)
 
-            task = self.store.get_task(submission.task.id)
-            state = {
-                TaskState.COMPLETED: MissionJobState.COMPLETED,
-                TaskState.FAILED: MissionJobState.FAILED,
-                TaskState.BLOCKED: MissionJobState.BLOCKED,
-                TaskState.WAITING_FOR_APPROVAL: MissionJobState.WAITING_APPROVAL,
-            }.get(
-                task.state if task is not None else None,
-                MissionJobState.BLOCKED,
-            )
-            self._set_job(job_id, state=state)
+            self._sync_job_from_task(job_id, submission.task.id)
         except Exception as exc:
             self._set_job(
                 job_id,
@@ -397,3 +524,53 @@ class MissionRuntimeService:
             with self._lock:
                 if self._worker is threading.current_thread():
                     self._worker = None
+
+    def _resume_job(self, job_id: str) -> None:
+        with self._lock:
+            job = self._jobs[job_id]
+            task_id = job.task_id
+            plan_id = job.plan_id
+
+        if not task_id or not plan_id:
+            self._set_job(
+                job_id,
+                state=MissionJobState.FAILED,
+                error="Interrupted mission has no durable executable plan.",
+            )
+            return
+
+        try:
+            from agent_os.hermes_runtime import build_hermes_agent_os_runtime
+
+            runtime = build_hermes_agent_os_runtime(
+                self.store,
+                permission_gate=self.approvals,
+                host_local_terminal=True,
+                scheduler_owner_id=f"mission-control:{job_id}:resume",
+            )
+            runtime.run_until_idle(plan_id, max_ticks=256)
+            self._sync_job_from_task(job_id, task_id)
+        except Exception as exc:
+            self._set_job(
+                job_id,
+                state=MissionJobState.FAILED,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+        finally:
+            with self._lock:
+                if self._worker is threading.current_thread():
+                    self._worker = None
+
+    def _sync_job_from_task(self, job_id: str, task_id: str) -> MissionJob:
+        task = self.store.get_task(task_id)
+        state = {
+            TaskState.COMPLETED: MissionJobState.COMPLETED,
+            TaskState.FAILED: MissionJobState.FAILED,
+            TaskState.CANCELLED: MissionJobState.CANCELLED,
+            TaskState.BLOCKED: MissionJobState.BLOCKED,
+            TaskState.WAITING_FOR_APPROVAL: MissionJobState.WAITING_APPROVAL,
+        }.get(
+            task.state if task is not None else None,
+            MissionJobState.BLOCKED,
+        )
+        return self._set_job(job_id, state=state)
