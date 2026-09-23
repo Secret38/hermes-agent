@@ -510,15 +510,62 @@ function AgentCard({ agent }: { agent: AgentOSAgent }) {
   )
 }
 
+function AgentTreeBranch({
+  agent,
+  childrenByParent,
+  depth
+}: {
+  agent: AgentOSAgent
+  childrenByParent: Map<string, AgentOSAgent[]>
+  depth: number
+}) {
+  const children = childrenByParent.get(agent.id) ?? []
+
+  return (
+    <div className={cn('relative', depth > 0 && 'ml-4 border-l border-(--ui-stroke-tertiary) pl-3')}>
+      {depth > 0 && (
+        <span className="absolute -left-px top-5 h-px w-3 -translate-x-0 bg-(--ui-stroke-tertiary)" />
+      )}
+      <AgentCard agent={agent} />
+      {children.length > 0 && depth < 8 && (
+        <div className="mt-1.5 space-y-1.5">
+          {children.map(child => (
+            <AgentTreeBranch
+              agent={child}
+              childrenByParent={childrenByParent}
+              depth={depth + 1}
+              key={child.id}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function AgentsPanel({ agents }: { agents: AgentOSAgent[] }) {
   if (agents.length === 0) {
     return <div className="p-4 text-xs text-(--ui-text-tertiary)">No delegated agent instances for this task.</div>
   }
 
+  const ids = new Set(agents.map(agent => agent.id))
+  const childrenByParent = new Map<string, AgentOSAgent[]>()
+
+  for (const agent of agents) {
+    if (!agent.parent_agent_id || !ids.has(agent.parent_agent_id)) {
+      continue
+    }
+
+    childrenByParent.set(agent.parent_agent_id, [...(childrenByParent.get(agent.parent_agent_id) ?? []), agent])
+  }
+
+  const roots = agents.filter(agent => !agent.parent_agent_id || !ids.has(agent.parent_agent_id))
+  const visibleRoots = roots.length > 0 ? roots : agents
+
   return (
-    <div className="grid gap-2 p-3 sm:grid-cols-2">
-      {agents.map(agent => (
-        <AgentCard agent={agent} key={agent.id} />
+    <div className="aos-scrollbar max-h-[30rem] space-y-2 overflow-y-auto p-3">
+      {visibleRoots.map(agent => (
+        <AgentTreeBranch agent={agent} childrenByParent={childrenByParent} depth={0} key={agent.id} />
       ))}
     </div>
   )
@@ -735,6 +782,76 @@ function Overview({
   )
 }
 
+function MemoryTopology({ snapshot }: { snapshot: AgentOSSnapshot }) {
+  const memory = snapshot.memory
+  const nodes = [
+    {
+      id: 'workspaces',
+      icon: 'folder',
+      label: 'Workspaces',
+      value: memory.workspaces.length,
+      detail: 'Where durable work is scoped'
+    },
+    {
+      id: 'sessions',
+      icon: 'comment-discussion',
+      label: 'Sessions',
+      value: memory.sessions.length,
+      detail: 'Conversation lineage into tasks'
+    },
+    {
+      id: 'checkpoints',
+      icon: 'save',
+      label: 'Checkpoints',
+      value: memory.checkpoints.length,
+      detail: 'Recovery and rollback anchors'
+    },
+    {
+      id: 'events',
+      icon: 'pulse',
+      label: 'Event memory',
+      value: snapshot.summary.events,
+      detail: `${memory.event_types.length} event kinds`
+    }
+  ]
+
+  return (
+    <section className="aos-panel overflow-hidden">
+      <SectionHeader icon="type-hierarchy" meta={`${memory.relations.length} relations`} title="Memory topology" />
+      <div className="aos-topology p-5">
+        <div className="aos-topology-core rounded-lg border border-[color-mix(in_srgb,var(--dt-primary)_35%,var(--ui-stroke-tertiary))] bg-[color-mix(in_srgb,var(--dt-primary)_7%,var(--ui-bg-secondary))] p-3 text-center">
+          <div className="mx-auto mb-2 grid size-8 place-items-center rounded-full border border-(--ui-stroke-tertiary) bg-(--ui-bg-primary)">
+            <Codicon name="database" size="0.95rem" />
+          </div>
+          <div className="text-sm font-semibold text-foreground">Durable Store</div>
+          <div className="mt-1 text-[0.62rem] text-(--ui-text-tertiary)">Agent OS operational memory</div>
+        </div>
+
+        <div className="aos-topology-grid">
+          {nodes.map(node => (
+            <div className="aos-topology-node" key={node.id}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <Codicon className="text-(--ui-text-tertiary)" name={node.icon} size="0.72rem" />
+                    <span className="text-xs font-medium text-foreground">{node.label}</span>
+                  </div>
+                  <div className="mt-1.5 text-lg font-semibold tabular-nums tracking-tight text-foreground">
+                    {node.value}
+                  </div>
+                  <div className="mt-0.5 text-[0.6rem] leading-relaxed text-(--ui-text-tertiary)">
+                    {node.detail}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
 function MemoryView({ snapshot }: { snapshot: AgentOSSnapshot }) {
   const memory = snapshot.memory
 
@@ -751,6 +868,8 @@ function MemoryView({ snapshot }: { snapshot: AgentOSSnapshot }) {
           can resume, be audited and be explained after a restart.
         </p>
       </div>
+
+      <MemoryTopology snapshot={snapshot} />
 
       <div className="aos-summary-grid grid grid-cols-2 gap-2 md:grid-cols-4">
         <MetricCard icon="folder" label="Workspaces" value={memory.workspaces.length} />
