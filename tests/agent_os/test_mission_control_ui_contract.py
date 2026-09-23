@@ -133,3 +133,35 @@ def test_mission_control_keeps_security_posture_contract():
     assert "telemetry.security" in security
     assert "network.security" in security
     assert "raw endpoint" not in security.lower()
+
+
+def test_mission_control_keeps_authoritative_projects_workspace_contract():
+    page = _source("page.tsx")
+    projects = _source("projects.tsx")
+    project_data = _source("project-data.ts")
+    workspace = _source("project-workspace.ts")
+
+    assert "ProjectsView" in page
+    for marker in (
+        "Authoritative projects",
+        "Hermes Projects",
+        "Workspace roots",
+        "Project workspace",
+        "No path/name inference",
+        "No operational tasks linked by exact project id",
+    ):
+        assert marker in projects
+
+    assert "$projectTree" in project_data
+    assert "fetchProjectSessions" in project_data
+    assert "task.projectId === projectId" in project_data
+
+    for marker in (
+        "openHermesWorkspaceSession",
+        "$workspaceCwdOwner",
+        "revealDesktopPane('files')",
+        "revealReview",
+        "openBrowserTab",
+        "revealDesktopPane('terminal')",
+    ):
+        assert marker in workspace
