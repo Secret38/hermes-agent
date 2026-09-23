@@ -249,7 +249,7 @@ export function MissionControlActions({
   const submit = async () => {
     const trimmed = goal.trim()
 
-    if (!trimmed || submitting || active) return
+    if (!trimmed || submitting || active || estop.data?.engaged) return
 
     setSubmitting(true)
     setError(undefined)
@@ -272,7 +272,7 @@ export function MissionControlActions({
   }
 
   const resume = async (job: AgentOSMissionJob) => {
-    if (resumeId || submitting || active) return
+    if (resumeId || submitting || active || estop.data?.engaged) return
 
     setResumeId(job.id)
     setError(undefined)
@@ -383,13 +383,13 @@ export function MissionControlActions({
           <button
           className={cn(
             'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[0.65rem] font-semibold transition-colors',
-            coreReady && !active
+            coreReady && !active && !estop.data?.engaged
               ? 'border-[color-mix(in_srgb,var(--dt-primary)_45%,var(--ui-stroke-tertiary))] bg-[color-mix(in_srgb,var(--dt-primary)_10%,var(--ui-bg-secondary))] text-foreground hover:bg-[color-mix(in_srgb,var(--dt-primary)_16%,var(--ui-bg-secondary))]'
               : 'cursor-not-allowed border-(--ui-stroke-tertiary) text-(--ui-text-tertiary) opacity-60'
           )}
-          disabled={!coreReady || Boolean(active)}
+          disabled={!coreReady || Boolean(active) || Boolean(estop.data?.engaged)}
           onClick={() => setComposerOpen(value => !value)}
-          title={!coreReady ? 'Agent OS core is not ready' : active ? 'An interactive mission is already running' : 'Start a new Agent OS mission'}
+          title={!coreReady ? 'Agent OS core is not ready' : estop.data?.engaged ? 'New work is paused by the global emergency stop' : active ? 'An interactive mission is already running' : 'Start a new Agent OS mission'}
           type="button"
         >
           <Codicon name="add" size="0.7rem" />
