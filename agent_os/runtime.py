@@ -103,8 +103,15 @@ class AgentOSRuntime:
         goal: str,
         *,
         metadata: dict | None = None,
+        session_id: str | None = None,
+        workspace_id: str | None = None,
     ) -> GoalSubmission:
-        return self.goal_orchestrator.submit(goal, metadata=metadata)
+        return self.goal_orchestrator.submit(
+            goal,
+            metadata=metadata,
+            session_id=session_id,
+            workspace_id=workspace_id,
+        )
 
     def run_once(self, plan_id: str) -> EngineTickResult:
         return self.engine.run_once(plan_id)
