@@ -690,3 +690,118 @@ export function SemanticKnowledgeCanvas({
     </div>
   )
 }
+
+function safeVerificationLabel(action: AgentOSAction): string {
+  const result = action.verification_result ?? {}
+  for (const key of ['verdict', 'status', 'result']) {
+    const value = result[key]
+    if (typeof value === 'string' && value.trim()) return value
+    if (typeof value === 'boolean') return value ? 'PASS' : 'FAIL'
+  }
+  return action.verification_required ? 'PENDING' : 'NOT REQUIRED'
+}
+
+function latestActionForTool(task: AgentOSTask, names: string[]): AgentOSAction | undefined {
+  const normalized = new Set(names.map(name => name.replaceAll('-', '_').toLowerCase()))
+  return [...task.actions]
+    .filter(action => normalized.has(action.tool.replaceAll('-', '_').toLowerCase()))
+    .sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0]
+}
+
+function ObservatoryLane({
+  action,
+  icon,
+  label,
+  pixelNote
+}: {
+  action?: AgentOSAction
+  icon: string
+  label: string
+  pixelNote: string
+}) {
+  return (
+    <div className="aos-observatory-lane">
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-2">
+          <span className="grid size-7 shrink-0 place-items-center rounded-md border border-(--ui-stroke-tertiary) bg-(--ui-bg-primary)">
+            <Codicon name={icon} size="0.75rem" />
+          </span>
+          <div className="min-w-0">
+            <div className="aos-kicker">{label}</div>
+            <div className="mt-1 truncate text-[0.68rem] font-medium text-foreground">
+              {action ? action.operation : 'No observed action'}
+            </div>
+          </div>
+        </div>
+        {action ? (
+          <span className="shrink-0 text-[0.54rem] uppercase tracking-[0.06em] text-(--ui-text-tertiary)">
+            {action.state}
+          </span>
+        ) : null}
+      </div>
+
+      {action ? (
+        <div className="mt-3 grid grid-cols-2 gap-1.5 text-[0.56rem]">
+          <div className="rounded border border-(--ui-stroke-tertiary) bg-(--ui-bg-primary) px-2 py-1.5">
+            <div className="aos-kicker">Risk</div>
+            <div className="mt-1 truncate text-(--ui-text-secondary)">{action.risk_level || 'unclassified'}</div>
+          </div>
+          <div className="rounded border border-(--ui-stroke-tertiary) bg-(--ui-bg-primary) px-2 py-1.5">
+            <div className="aos-kicker">Verify</div>
+            <div className="mt-1 truncate text-(--ui-text-secondary)">{safeVerificationLabel(action)}</div>
+          </div>
+          <div className="rounded border border-(--ui-stroke-tertiary) bg-(--ui-bg-primary) px-2 py-1.5">
+            <div className="aos-kicker">Attempts</div>
+            <div className="mt-1 tabular-nums text-(--ui-text-secondary)">{action.execution_attempts}</div>
+          </div>
+          <div className="rounded border border-(--ui-stroke-tertiary) bg-(--ui-bg-primary) px-2 py-1.5">
+            <div className="aos-kicker">Recovery</div>
+            <div className="mt-1 tabular-nums text-(--ui-text-secondary)">{action.recovery_attempts}</div>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-3 rounded border border-dashed border-(--ui-stroke-tertiary) px-2.5 py-3 text-[0.58rem] text-(--ui-text-tertiary)">
+          This task has not used this runtime.
+        </div>
+      )}
+
+      <div className="mt-2 text-[0.54rem] leading-relaxed text-(--ui-text-quaternary)">{pixelNote}</div>
+    </div>
+  )
+}
+
+export function RuntimeObservatory({ task }: { task: AgentOSTask }) {
+  const browser = latestActionForTool(task, ['browser'])
+  const computer = latestActionForTool(task, ['computer_use', 'computer-use'])
+
+  return (
+    <section className="aos-panel overflow-hidden">
+      <div className="flex min-w-0 items-center justify-between gap-3 border-b border-(--ui-stroke-tertiary) px-3.5 py-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <Codicon className="text-(--ui-text-tertiary)" name="eye" size="0.8rem" />
+          <div>
+            <div className="text-xs font-semibold text-foreground">Runtime observatory</div>
+            <div className="mt-0.5 text-[0.58rem] text-(--ui-text-tertiary)">
+              Browser and Computer Use execution truth without persisting raw screen contents
+            </div>
+          </div>
+        </div>
+        <span className="text-[0.54rem] uppercase tracking-[0.08em] text-(--ui-text-quaternary)">safe metadata</span>
+      </div>
+      <div className="grid gap-0 lg:grid-cols-2">
+        <ObservatoryLane
+          action={browser}
+          icon="browser"
+          label="Browser"
+          pixelNote="Accessibility snapshots and browser state are used for verification; raw visual frames are not exposed through this durable control-plane view."
+        />
+        <ObservatoryLane
+          action={computer}
+          icon="device-desktop"
+          label="Computer use"
+          pixelNote="CUA captures are runtime-ephemeral. A future opt-in live viewport should stream them directly rather than storing desktop pixels in the Agent OS ledger."
+        />
+      </div>
+    </section>
+  )
+}
