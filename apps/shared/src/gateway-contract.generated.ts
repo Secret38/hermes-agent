@@ -244,6 +244,40 @@ export interface BillingChargeStatusResult {
   settled_at?: string | null
   reason?: string | null
 }
+export interface AuditListParams {
+  profile?: string | null
+  limit?: number | null
+  before_id?: number | null
+  session_id?: string | null
+  task_id?: string | null
+  run_id?: number | null
+  project_id?: string | null
+}
+
+export interface AuditEventRow {
+  id: number
+  event: string
+  category: string
+  session_id?: string | null
+  request_id?: string | null
+  subject?: string | null
+  outcome?: string | null
+  task_id?: string | null
+  run_id?: number | null
+  project_id?: string | null
+  created_at: number
+}
+
+export interface AuditListResult {
+  events: AuditEventRow[]
+}
+
+export interface AuditChangedPayload {
+  id: number
+  event: string
+  subject: string
+}
+
 export interface BillingAutoReloadParams {
   profile?: string | null
   enabled?: boolean
@@ -4201,6 +4235,8 @@ export interface RpcMethods {
   /** Deliver the user's decision on a dangerous command (falls back to durable identity on a stale sid). */
   'approval.respond': { params: ApprovalRespondParams; result: ApprovalRespondResult }
   /** Enable/disable auto top-up with its threshold and reload amount (billing:manage). */
+  /** Metadata-only durable operator/security events for the selected profile. */
+  'audit.list': { params: AuditListParams; result: AuditListResult }
   'billing.auto_reload': { params: BillingAutoReloadParams; result: BillingMutationResult }
   /** Start a one-off top-up charge (billing:manage, idempotent). */
   'billing.charge': { params: BillingChargeParams; result: BillingChargeResult }
@@ -4899,6 +4935,8 @@ export interface BackendGatewayEventMap {
   /** Output chunk from an agent-owned background process. */
   'agent.terminal.output': TerminalOutputPayload
   /** A /background side agent finished. */
+  /** Durable operator/security audit changed; refetch audit.list for authoritative history. */
+  'audit.changed': AuditChangedPayload
   'background.complete': SideAgentCompletePayload
   /** Device-flow URL + code for the billing scope step-up; the client opens the browser. */
   'billing.step_up.verification': BillingStepUpVerificationPayload
