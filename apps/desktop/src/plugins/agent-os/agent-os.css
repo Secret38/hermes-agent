@@ -296,6 +296,320 @@
   transition: width 250ms ease;
 }
 
+
+.aos-graph-viewport {
+  position: relative;
+  min-height: 20rem;
+  max-height: 34rem;
+  overflow: auto;
+  background:
+    radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--dt-primary) 5%, transparent), transparent 28rem),
+    radial-gradient(circle at center, color-mix(in srgb, var(--ui-text-tertiary) 16%, transparent) 1px, transparent 1px);
+  background-size: auto, 20px 20px;
+}
+
+.aos-graph-stage,
+.aos-graph-transform {
+  position: relative;
+}
+
+.aos-graph-edges {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.aos-graph-edge {
+  fill: none;
+  stroke: color-mix(in srgb, var(--ui-text-tertiary) 42%, transparent);
+  stroke-width: 1.35;
+  vector-effect: non-scaling-stroke;
+}
+
+.aos-graph-edge-membership {
+  stroke-dasharray: 4 5;
+  stroke: color-mix(in srgb, var(--ui-text-tertiary) 26%, transparent);
+}
+
+.aos-graph-edge[data-kind='verification'] {
+  stroke: color-mix(in srgb, #3fa779 58%, var(--ui-text-tertiary));
+}
+
+.aos-graph-edge-active {
+  stroke: color-mix(in srgb, var(--dt-primary) 78%, var(--ui-text-secondary));
+  stroke-dasharray: 7 6;
+  animation: aos-edge-flow 1.25s linear infinite;
+}
+
+@keyframes aos-edge-flow {
+  to { stroke-dashoffset: -26; }
+}
+
+.aos-graph-node {
+  position: absolute;
+  z-index: 2;
+  overflow: hidden;
+  border: 1px solid var(--ui-stroke-tertiary);
+  border-radius: 0.65rem;
+  background: color-mix(in srgb, var(--ui-bg-secondary) 94%, transparent);
+  padding: 0.55rem 0.6rem;
+  color: inherit;
+  box-shadow: 0 8px 24px color-mix(in srgb, black 8%, transparent);
+  transition:
+    border-color 120ms ease,
+    background 120ms ease,
+    box-shadow 120ms ease,
+    transform 120ms ease;
+}
+
+.aos-graph-node:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--dt-primary) 38%, var(--ui-stroke-tertiary));
+  background: color-mix(in srgb, var(--ui-bg-secondary) 91%, var(--dt-primary));
+  box-shadow: 0 10px 30px color-mix(in srgb, black 12%, transparent);
+}
+
+.aos-graph-node-selected {
+  border-color: color-mix(in srgb, var(--dt-primary) 66%, var(--ui-stroke-tertiary));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--dt-primary) 18%, transparent),
+    0 12px 32px color-mix(in srgb, black 12%, transparent);
+}
+
+.aos-graph-node[data-kind='goal'] {
+  background: color-mix(in srgb, var(--dt-primary) 8%, var(--ui-bg-secondary));
+}
+
+.aos-graph-node[data-kind='verify'] {
+  background: color-mix(in srgb, #3fa779 7%, var(--ui-bg-secondary));
+}
+
+.aos-graph-node[data-kind='persist'] {
+  background: color-mix(in srgb, var(--ui-bg-tertiary) 52%, var(--ui-bg-secondary));
+}
+
+.aos-graph-node[data-state='FAILED'],
+.aos-graph-node[data-state='FAIL'] {
+  border-color: color-mix(in srgb, var(--dt-destructive) 48%, var(--ui-stroke-tertiary));
+}
+
+.aos-graph-node[data-state='BLOCKED'],
+.aos-graph-node[data-state='WAITING_FOR_APPROVAL'],
+.aos-graph-node[data-state='WAITING_PERMISSION'] {
+  border-color: color-mix(in srgb, #d49b45 52%, var(--ui-stroke-tertiary));
+}
+
+.aos-graph-status-dot {
+  width: 0.48rem;
+  height: 0.48rem;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--ui-text-tertiary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 7%, transparent);
+}
+
+.aos-graph-node[data-state='RUNNING'] .aos-graph-status-dot,
+.aos-graph-node[data-state='EXECUTING'] .aos-graph-status-dot,
+.aos-graph-node[data-state='VERIFYING'] .aos-graph-status-dot,
+.aos-graph-node[data-state='RECOVERING'] .aos-graph-status-dot,
+.aos-graph-node[data-state='ACTIVE'] .aos-graph-status-dot {
+  background: var(--dt-primary);
+  animation: aos-pulse 1.8s ease-in-out infinite;
+}
+
+.aos-graph-node[data-state='SUCCEEDED'] .aos-graph-status-dot,
+.aos-graph-node[data-state='COMPLETED'] .aos-graph-status-dot,
+.aos-graph-node[data-state='PASS'] .aos-graph-status-dot {
+  background: #3fa779;
+}
+
+.aos-graph-node[data-state='FAILED'] .aos-graph-status-dot,
+.aos-graph-node[data-state='FAIL'] .aos-graph-status-dot,
+.aos-graph-node[data-state='CANCELLED'] .aos-graph-status-dot {
+  background: var(--dt-destructive);
+}
+
+.aos-graph-node[data-state='BLOCKED'] .aos-graph-status-dot,
+.aos-graph-node[data-state='WAITING_FOR_APPROVAL'] .aos-graph-status-dot,
+.aos-graph-node[data-state='WAITING_PERMISSION'] .aos-graph-status-dot {
+  background: #d49b45;
+}
+
+
+.aos-knowledge-viewport {
+  position: relative;
+  min-height: 22rem;
+  max-height: 34rem;
+  overflow: auto;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--dt-primary) 3%, transparent), transparent 36%, transparent 64%, color-mix(in srgb, #3fa779 3%, transparent)),
+    radial-gradient(circle at center, color-mix(in srgb, var(--ui-text-tertiary) 15%, transparent) 1px, transparent 1px);
+  background-size: auto, 20px 20px;
+}
+
+.aos-knowledge-stage {
+  position: relative;
+}
+
+.aos-knowledge-axis {
+  position: absolute;
+  top: 0.65rem;
+  z-index: 3;
+  font-size: 0.54rem;
+  font-weight: 650;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--ui-text-quaternary);
+}
+
+.aos-knowledge-axis-memory {
+  left: 1.75rem;
+}
+
+.aos-knowledge-axis-skills {
+  right: 1.75rem;
+}
+
+.aos-knowledge-edge {
+  fill: none;
+  stroke: color-mix(in srgb, var(--dt-primary) 34%, var(--ui-text-tertiary));
+  stroke-width: 1.05;
+  opacity: 0.62;
+  vector-effect: non-scaling-stroke;
+}
+
+.aos-knowledge-node {
+  position: absolute;
+  z-index: 2;
+  overflow: hidden;
+  border: 1px solid var(--ui-stroke-tertiary);
+  border-radius: 0.58rem;
+  background: color-mix(in srgb, var(--ui-bg-secondary) 94%, transparent);
+  padding: 0.46rem 0.52rem;
+  color: inherit;
+  text-align: left;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease,
+    box-shadow 120ms ease,
+    transform 120ms ease;
+}
+
+.aos-knowledge-node:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--dt-primary) 38%, var(--ui-stroke-tertiary));
+  box-shadow: 0 8px 22px color-mix(in srgb, black 10%, transparent);
+}
+
+.aos-knowledge-node-memory {
+  background: color-mix(in srgb, var(--dt-primary) 5%, var(--ui-bg-secondary));
+}
+
+.aos-knowledge-node-skill {
+  background: color-mix(in srgb, #3fa779 5%, var(--ui-bg-secondary));
+}
+
+.aos-knowledge-node-selected {
+  border-color: color-mix(in srgb, var(--dt-primary) 62%, var(--ui-stroke-tertiary));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--dt-primary) 16%, transparent);
+}
+
+
+.aos-observatory-lane {
+  min-width: 0;
+  padding: 0.85rem;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--dt-primary) 3%, transparent), transparent 60%),
+    color-mix(in srgb, var(--ui-bg-secondary) 82%, transparent);
+}
+
+.aos-observatory-lane + .aos-observatory-lane {
+  border-top: 1px solid var(--ui-stroke-tertiary);
+}
+
+@media (min-width: 1024px) {
+  .aos-observatory-lane + .aos-observatory-lane {
+    border-top: 0;
+    border-left: 1px solid var(--ui-stroke-tertiary);
+  }
+}
+
+
+.aos-runtime-topology-viewport {
+  position: relative;
+  min-height: 20rem;
+  max-height: 34rem;
+  overflow: auto;
+  background:
+    radial-gradient(circle at 22% 50%, color-mix(in srgb, var(--dt-primary) 5%, transparent), transparent 24rem),
+    radial-gradient(circle at center, color-mix(in srgb, var(--ui-text-tertiary) 14%, transparent) 1px, transparent 1px);
+  background-size: auto, 20px 20px;
+}
+
+.aos-runtime-topology-stage {
+  position: relative;
+}
+
+.aos-runtime-topology-edge {
+  fill: none;
+  stroke: color-mix(in srgb, var(--ui-text-tertiary) 40%, transparent);
+  stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
+}
+
+.aos-runtime-topology-node {
+  position: absolute;
+  z-index: 2;
+  overflow: hidden;
+  border: 1px solid var(--ui-stroke-tertiary);
+  border-radius: 0.62rem;
+  background: color-mix(in srgb, var(--ui-bg-secondary) 94%, transparent);
+  padding: 0.55rem 0.6rem;
+  color: inherit;
+  text-align: left;
+  transition:
+    transform 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.aos-runtime-topology-node:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--dt-primary) 38%, var(--ui-stroke-tertiary));
+  box-shadow: 0 8px 24px color-mix(in srgb, black 10%, transparent);
+}
+
+.aos-runtime-topology-node-selected {
+  border-color: color-mix(in srgb, var(--dt-primary) 62%, var(--ui-stroke-tertiary));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--dt-primary) 16%, transparent);
+}
+
+.aos-runtime-topology-node[data-status='FAIL'],
+.aos-runtime-topology-node[data-status='FAILED'] {
+  border-color: color-mix(in srgb, var(--dt-destructive) 48%, var(--ui-stroke-tertiary));
+}
+
+.aos-runtime-topology-node[data-status='WARN'],
+.aos-runtime-topology-node[data-status='BLOCKED'] {
+  border-color: color-mix(in srgb, #d49b45 50%, var(--ui-stroke-tertiary));
+}
+
+.aos-runtime-topology-node[data-status='PASS'] .aos-graph-status-dot,
+.aos-runtime-topology-node[data-status='READY'] .aos-graph-status-dot {
+  background: #3fa779;
+}
+
+.aos-runtime-topology-node[data-status='WARN'] .aos-graph-status-dot,
+.aos-runtime-topology-node[data-status='BLOCKED'] .aos-graph-status-dot {
+  background: #d49b45;
+}
+
+.aos-runtime-topology-node[data-status='FAIL'] .aos-graph-status-dot,
+.aos-runtime-topology-node[data-status='FAILED'] .aos-graph-status-dot {
+  background: var(--dt-destructive);
+}
+
 @media (max-width: 1050px) {
   .aos-overview-grid {
     grid-template-columns: minmax(14rem, 0.75fr) minmax(0, 1.25fr) !important;
@@ -319,7 +633,12 @@
 @media (prefers-reduced-motion: reduce) {
   .aos-state-dot,
   .aos-step,
-  .aos-progress-value {
+  .aos-progress-value,
+  .aos-graph-edge-active,
+  .aos-graph-node,
+  .aos-graph-status-dot,
+  .aos-knowledge-node,
+  .aos-runtime-topology-node {
     animation: none !important;
     transition: none !important;
   }
