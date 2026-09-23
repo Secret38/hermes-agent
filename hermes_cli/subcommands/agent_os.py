@@ -64,6 +64,9 @@ def _provision(args) -> int:
     report = provision_agent_os_runtime(
         include_browser=not bool(getattr(args, "skip_browser", False)),
         include_computer_use=not bool(getattr(args, "skip_computer_use", False)),
+        include_production_security=bool(
+            getattr(args, "production_security", False)
+        ),
     )
     for component in report.components:
         state = "OK" if component.ready else "FAIL"
@@ -145,6 +148,14 @@ def build_agent_os_parser(subparsers) -> None:
         "--skip-computer-use",
         action="store_true",
         help="Do not provision or require the computer-use runtime.",
+    )
+    provision.add_argument(
+        "--production-security",
+        action="store_true",
+        help=(
+            "Apply the Agent OS fail-closed production profile and provision "
+            "the Tirith scanner. Ordinary Hermes installs are unchanged."
+        ),
     )
     provision.set_defaults(func=_provision)
 
