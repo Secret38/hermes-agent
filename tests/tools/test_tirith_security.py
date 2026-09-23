@@ -561,20 +561,13 @@ class TestWindowsReleaseInstall:
         with zipfile.ZipFile(archive_path, "w") as archive:
             archive.writestr("release/tirith.exe", payload)
 
+        extract_dir = tmp_path / "extract"
+        extract_dir.mkdir()
         with zipfile.ZipFile(archive_path, "r") as archive:
             path, reason = _tirith_mod._extract_tirith_zip_binary(
-                archive, str(tmp_path / "extract"), lambda *_a: None
+                archive, str(extract_dir), lambda *_a: None
             )
 
-        # The helper writes into the provided directory, matching the install tempdir contract.
-        # Create it before retrying because ZipFile.open itself must never choose extraction paths.
-        if reason == "binary_extract_failed":
-            extract_dir = tmp_path / "extract"
-            extract_dir.mkdir(exist_ok=True)
-            with zipfile.ZipFile(archive_path, "r") as archive:
-                path, reason = _tirith_mod._extract_tirith_zip_binary(
-                    archive, str(extract_dir), lambda *_a: None
-                )
         assert reason == ""
         assert path is not None
         with open(path, "rb") as installed:
@@ -624,6 +617,63 @@ class TestWindowsReleaseInstall:
         assert path == str(hermes_home / "bin" / "tirith.exe")
         with open(path, "rb") as installed:
             assert installed.read() == payload
+
+
+
+class TestScannerReadiness:
+    @patch("tools.tirith_security._load_security_config")
+    def test_scanner_available_is_read_only_and_accepts_hermes_bin(self, mock_cfg, tmp_path, monkeypatch):
+        mock_cfg.return_value = {
+            "tirith_enabled": True,
+            "tirith_path": "tirith",
+            "tirith_timeout": 5,
+            "tirith_fail_open": False,
+        }
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        binary = bin_dir / ("tirith.exe" if os.name == "nt" else "tirith")
+        binary.write_bytes(b"test")
+        binary.chmod(0o755)
+
+        with patch("tools.tirith_security.shutil.which", return_value=None):
+            assert _tirith_mod.scanner_available() is True
+
+    @patch("tools.tirith_security._load_security_config")
+    def test_scanner_available_does_not_create_bin_directory(self, mock_cfg, tmp_path, monkeypatch):
+        mock_cfg.return_value = {
+            "tirith_enabled": True,
+            "tirith_path": "tirith",
+            "tirith_timeout": 5,
+            "tirith_fail_open": False,
+        }
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        with patch("tools.tirith_security.shutil.which", return_value=None):
+            assert _tirith_mod.scanner_available() is False
+        assert not (tmp_path / "bin").exists()
+
+    @patch("tools.tirith_security._record_install_result")
+    @patch("tools.tirith_security._install_tirith", return_value=("C:/Hermes/bin/tirith.exe", ""))
+    @patch("tools.tirith_security._disk_marker_blocks_install", return_value=False)
+    @patch("tools.tirith_security._resolve_locally", return_value=(None, True))
+    @patch("tools.tirith_security.is_platform_supported", return_value=True)
+    @patch("tools.tirith_security._load_security_config")
+    def test_sync_install_is_explicit_and_waits_for_verified_installer(
+        self, mock_cfg, mock_supported, mock_resolve, mock_marker, mock_install, mock_record
+    ):
+        del mock_supported, mock_resolve, mock_marker
+        mock_cfg.return_value = {
+            "tirith_enabled": True,
+            "tirith_path": "tirith",
+            "tirith_timeout": 5,
+            "tirith_fail_open": False,
+        }
+        mock_record.return_value = "C:/Hermes/bin/tirith.exe"
+        _tirith_mod._resolved_path = None
+
+        assert _tirith_mod.ensure_installed_sync() == "C:/Hermes/bin/tirith.exe"
+        mock_install.assert_called_once_with(log_failures=True)
+        mock_record.assert_called_once_with("C:/Hermes/bin/tirith.exe", "")
 
 
 # ---------------------------------------------------------------------------
