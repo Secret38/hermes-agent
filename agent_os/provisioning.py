@@ -92,7 +92,7 @@ def _configure_production_security() -> tuple[bool, str]:
         )
 
     scanner = tirith_security.ensure_installed_sync(log_failures=True)
-    if not scanner or not tirith_security.scanner_available():
+    if not scanner or not tirith_security.scanner_healthy():
         raise RuntimeError(
             "Tirith could not be provisioned as an executable local scanner"
         )
