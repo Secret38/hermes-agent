@@ -476,3 +476,38 @@ def test_production_mutation_gate_is_opt_in_and_terminal_owns_its_gate(monkeypat
     assert _production_mutation_approval_block(
         SimpleNamespace(name="execute_code", args={"code": "print(1)"})
     ) is None
+
+
+
+def test_production_mutation_gate_covers_persistent_external_tool_names(monkeypatch):
+    from types import SimpleNamespace
+    from agent.tool_executor import _production_mutation_approval_block
+    from tools import approval_context
+    import tools.approval as approval_module
+
+    monkeypatch.setattr(approval_context, "_confirm_host_mutations", lambda: True)
+    seen = []
+
+    def approve(tool_name, reason, **kwargs):
+        seen.append((tool_name, kwargs))
+        return {"approved": True, "message": None}
+
+    monkeypatch.setattr(approval_module, "request_tool_approval", approve)
+
+    mutation_tools = (
+        "process", "cronjob",
+        "ha_call_service", "manage_connections", "browser_exec",
+        "browser_vault_unlock", "browser_vault_fill",
+        "browser_vault_save_login", "browser_vault_enter_code",
+        "kanban_complete", "kanban_block", "kanban_request_review",
+        "kanban_request_changes", "kanban_comment", "kanban_create",
+        "kanban_link", "kanban_unblock", "kanban_attach", "kanban_attach_url",
+    )
+    for name in mutation_tools:
+        assert _production_mutation_approval_block(
+            SimpleNamespace(name=name, args={"action": "test"})
+        ) is None
+
+    assert [name for name, _ in seen] == list(mutation_tools)
+    assert all(kwargs["exact_once"] is True for _, kwargs in seen)
+    assert all(kwargs["non_bypassable"] is True for _, kwargs in seen)
