@@ -13,6 +13,7 @@ import {
   atom,
   type PluginOs,
   type PluginRestOptions,
+  type OperationsCaptureInput,
   type OperationsRunInspection,
   type OperationsTaskExecution,
   type OperationsTaskLog,
@@ -371,6 +372,23 @@ export async function fetchOperationsSnapshot(): Promise<OperationsTaskSnapshot>
   const [board, boards, projects] = await Promise.all([fetchBoard(false), fetchBoards(), fetchProjects()])
 
   return toOperationsSnapshot(board, boards, projects.projects, scopeKey || boards.current)
+}
+
+/** Normalize a future Mission Control capture into Kanban's non-executing
+ * triage intake shape. Keeping this mapper pure lets the control plane test the
+ * producer contract without registering a write capability yet. */
+export function toMissionCaptureTaskBody(input: OperationsCaptureInput): Record<string, unknown> {
+  const title = input.title.trim()
+  if (!title) {
+    throw new Error('A title is required.')
+  }
+
+  return {
+    title,
+    body: input.body?.trim() || undefined,
+    triage: true,
+    ...(input.projectId ? { project_id: input.projectId } : {})
+  }
 }
 
 // ── writes ────────────────────────────────────────────────────────────────────
