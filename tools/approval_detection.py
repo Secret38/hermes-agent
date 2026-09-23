@@ -181,6 +181,9 @@ def detect_hardline_command(command: str) -> tuple:
     """Check hardline patterns (NEVER bypassable, even in YOLO) -> (is_hardline, description)."""
     if _command_parser_limit_exceeded(command):
         return (True, _PARSER_LIMIT_DESCRIPTION)
+    structural = _structural_hardline_finding(command)
+    if structural is not None:
+        return (True, structural)
     structural = _structural_hardline_description(command)
     if structural:
         return (True, structural)
@@ -1581,6 +1584,159 @@ def _is_shell_token_spliced_gateway_lifecycle(command: str) -> bool:
     return contains_gateway_lifecycle_command(command)
 
 
+_OPAQUE_EXECUTABLE_DESCRIPTION = (
+    "unresolved shell expansion in executable position (command identity cannot be verified)"
+)
+_PRIVILEGED_EXECUTION_DESCRIPTION = "sudo privilege escalation"
+_ENV_EGRESS_DESCRIPTION = "environment dump piped to a network-capable command"
+_NETWORK_EGRESS_EXECUTABLES = frozenset({"curl", "wget", "nc", "ncat", "socat"})
+_ENV_DUMP_EXECUTABLES = frozenset({"env", "printenv"})
+
+
+def _executable_has_unresolved_expansion(word: str) -> bool:
+    """Fail closed when the executable itself is computed at shell runtime.
+
+    The approval layer is a pre-exec policy boundary. If a command word still contains
+    parameter/command/glob expansion after the safe deobfuscation pass, its executable identity
+    cannot be proven from source text. The agent can always rewrite a legitimate invocation with
+    a literal executable name instead.
+    """
+    executable = _deobfuscate_shell_word_for_detection(word)
+    return any(marker in executable for marker in ("$", "`", "*", "?", "[", "{"))
+
+
+def _command_uses_wrapper(command: str, wrapper_name: str) -> bool:
+    """Return whether *wrapper_name* occurs in a real command-wrapper chain.
+
+    This mirrors the command-position parser instead of searching arbitrary prose/arguments, so
+    `echo sudo` and `grep sudo README` remain inert while `env X=1 sudo ...` is recognized.
+    """
+    target = wrapper_name.lower()
+    for pos in _iter_shell_command_starts(command):
+        wrapper, positionals = None, 0
+        options, skip_arg = True, False
+        while pos < len(command):
+            redirect = _SHELL_REDIRECTION_RE.match(command, _skip_shell_whitespace(command, pos))
+            if redirect:
+                _, pos, _ = _read_shell_word(command, redirect.end())
+                continue
+            word_start, word_end, word = _read_shell_word(command, pos)
+            if word_start == word_end:
+                break
+            pos = word_end
+            deobfuscated = _deobfuscate_shell_word_for_detection(word)
+            name = os.path.basename(deobfuscated).lower()
+            if skip_arg:
+                skip_arg = False
+                continue
+            if wrapper and options and deobfuscated == "--":
+                options = False
+                continue
+            if wrapper and options and deobfuscated.startswith("-"):
+                option = deobfuscated.split("=", 1)[0]
+                if wrapper == "env" and (option == "--split-string" or deobfuscated.startswith("-S")):
+                    break
+                queries = _COMMAND_WRAPPER_NON_EXECUTING_OPTIONS.get(wrapper, set())
+                if option in queries or (
+                    wrapper == "command"
+                    and not option.startswith("--")
+                    and set(option[1:]) & {"v", "V"}
+                ):
+                    break
+                skip_arg = (
+                    "=" not in deobfuscated
+                    and option in _COMMAND_WRAPPER_OPTIONS_WITH_ARG.get(wrapper, set())
+                )
+                continue
+            if positionals:
+                positionals -= 1
+                continue
+            if _ENV_ASSIGNMENT_RE.fullmatch(word):
+                continue
+            if name == target:
+                return True
+            if name not in _COMMAND_WRAPPER_WORDS:
+                break
+            wrapper, options = name, True
+            positionals = _COMMAND_WRAPPER_POSITIONAL_ARGS.get(name, 0)
+    return False
+
+
+def _iter_top_level_pipeline_segments(command: str):
+    """Yield quote-aware top-level pipeline segments.
+
+    Logical OR (`||`) is not a data pipeline. Substitution bodies are handled by the existing
+    detection-variant machinery; this helper only classifies the current shell level.
+    """
+    start = 0
+    skip = -1
+    for kind, i, _, quote in _scan_shell(command, subst="q", comments=True):
+        if kind != "char" or quote is not None or i == skip:
+            continue
+        if command[i] == "|" and i + 1 < len(command) and command[i + 1] == "|":
+            skip = i + 1
+            start = i + 2
+            continue
+        if command[i] in ";&\n":
+            start = i + 1
+            continue
+        if command[i] != "|":
+            continue
+        yield command[start:i].strip(), command[i + 1:].lstrip()
+        start = i + 1
+
+
+def _segment_executable(segment: str) -> str | None:
+    for _, _, word in _iter_shell_command_word_spans(segment):
+        executable = _deobfuscate_shell_word_for_detection(word)
+        return os.path.basename(executable).lower()
+    return None
+
+
+def _is_environment_dump_segment(segment: str) -> bool:
+    try:
+        argv = shlex.split(segment, posix=True)
+    except ValueError:
+        return False
+    if not argv:
+        return False
+    executable = os.path.basename(argv[0]).lower()
+    if executable not in _ENV_DUMP_EXECUTABLES:
+        return False
+    if executable == "printenv":
+        return True
+    # `env` with only flags/assignments prints the environment. If a concrete command follows,
+    # this is an execution wrapper rather than an environment dump.
+    for token in argv[1:]:
+        if token == "--":
+            continue
+        if token.startswith("-") or _ENV_ASSIGNMENT_RE.fullmatch(token):
+            continue
+        return False
+    return True
+
+
+def _structural_hardline_finding(command: str) -> str | None:
+    """Non-regex execution invariants that are unsafe to bypass even under YOLO."""
+    for _, _, word in _iter_shell_command_word_spans(command):
+        if _executable_has_unresolved_expansion(word):
+            return _OPAQUE_EXECUTABLE_DESCRIPTION
+
+    for left, right in _iter_top_level_pipeline_segments(command):
+        if not _is_environment_dump_segment(left):
+            continue
+        if _segment_executable(right) in _NETWORK_EGRESS_EXECUTABLES:
+            return _ENV_EGRESS_DESCRIPTION
+    return None
+
+
+def _structural_dangerous_finding(command: str) -> str | None:
+    """Approval-required structural policies whose meaning is independent of regex wording."""
+    if _command_uses_wrapper(command, "sudo"):
+        return _PRIVILEGED_EXECUTION_DESCRIPTION
+    return None
+
+
 def detect_dangerous_command(command: str) -> tuple:
     """Check dangerous patterns -> (is_dangerous, pattern_key, description)."""
     if _command_parser_limit_exceeded(command):
@@ -1590,6 +1746,9 @@ def detect_dangerous_command(command: str) -> tuple:
         return (True, structural, structural)
     if _is_verification_artifact_cleanup(command):
         return (False, None, None)
+    structural = _structural_dangerous_finding(command)
+    if structural is not None:
+        return (True, structural, structural)
     for command_variant in _command_detection_variants(command):
         command_lower = command_variant.lower()
         masked_lower: str | None = None
