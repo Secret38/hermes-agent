@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 
 import './agent-os.css'
 import { AGENT_OS_SNAPSHOT_KEY, fetchAgentOSSnapshot } from './api'
+import { ExternalConnectionsSection, SemanticMemorySection } from './context'
 import type {
   AgentOSAction,
   AgentOSAgent,
@@ -869,6 +870,8 @@ function MemoryView({ snapshot }: { snapshot: AgentOSSnapshot }) {
         </p>
       </div>
 
+      <SemanticMemorySection />
+
       <MemoryTopology snapshot={snapshot} />
 
       <div className="aos-summary-grid grid grid-cols-2 gap-2 md:grid-cols-4">
@@ -1031,6 +1034,8 @@ function ConnectionsView({ snapshot }: { snapshot: AgentOSSnapshot }) {
           </div>
         </div>
       </section>
+
+      <ExternalConnectionsSection />
 
       <section className="aos-panel overflow-hidden">
         <SectionHeader icon="heart" meta={snapshot.health.full_ready ? 'FULL READY' : snapshot.health.core_ready ? 'CORE READY' : 'DEGRADED'} title="Health contract" />
