@@ -56,6 +56,7 @@ _PRODUCTION_SECURITY_POLICY = {
     ("approvals", "cron_mode"): "deny",
     ("approvals", "single_query_mode"): "deny",
     ("approvals", "unattended_mode"): "deny",
+    ("approvals", "confirm_host_mutations"): True,
     ("security", "tirith_enabled"): True,
     ("security", "tirith_fail_open"): False,
 }
