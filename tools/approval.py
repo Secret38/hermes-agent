@@ -188,6 +188,32 @@ def _approval_actor_authorized(entry, actor_user_id: str | None, actor_is_explic
     return bool(owner and actor and owner == actor)
 
 
+def gateway_approval_actor_authorized(
+    session_key: str,
+    actor_user_id: str | None,
+    *,
+    actor_is_explicit_admin: bool = False,
+    request_id: str | None = None,
+) -> bool:
+    """Read-only authorization check for an inbound approval interaction.
+
+    Adapters call this before consuming their local button/reaction state so an unauthorized click
+    cannot retire the prompt for the real owner. The resolver repeats the same check when committing.
+    """
+    with _lock:
+        queue = _gateway_queues.get(session_key, [])
+        if request_id:
+            candidates = [entry for entry in queue if entry.data.get("request_id") == request_id]
+        else:
+            candidates = list(queue[:1])
+        return bool(
+            candidates
+            and _approval_actor_authorized(
+                candidates[0], actor_user_id, actor_is_explicit_admin
+            )
+        )
+
+
 def resolve_gateway_approval(session_key: str, choice: str,
                              resolve_all: bool = False,
                              reason: Optional[str] = None,
