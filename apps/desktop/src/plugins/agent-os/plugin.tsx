@@ -17,7 +17,7 @@ import { AgentOSForensicsPage } from './forensics'
 import { AgentOSMissionControl, AgentOSStatusChip } from './page'
 
 const openMissionControl = () => host.navigate('/agent-os')
-const openForensics = () => host.navigate('/agent-os/forensics')
+const openForensics = () => host.navigate('/agent-os-replay')
 
 const plugin: HermesPlugin = {
   id: 'agent-os',
@@ -39,7 +39,7 @@ const plugin: HermesPlugin = {
       {
         id: 'forensics-page',
         area: ROUTES_AREA,
-        data: { path: '/agent-os/forensics' } satisfies RouteContribution,
+        data: { path: '/agent-os-replay' } satisfies RouteContribution,
         render: () => <AgentOSForensicsPage />
       },
       {
@@ -59,7 +59,7 @@ const plugin: HermesPlugin = {
         data: {
           codicon: 'history',
           label: 'Execution Replay',
-          path: '/agent-os/forensics'
+          path: '/agent-os-replay'
         } satisfies SidebarNavContribution
       },
       {
