@@ -1306,16 +1306,44 @@ def check_all_command_guards(command: str, env_type: str,
         return prepared
 
     approval_mode = approval_context._get_approval_mode()
-    if _yolo_active() or approval_mode == "off":
-        return _approved()
-    if _command_matches_permanent_allowlist(command):
-        return _approved()
+    confirm_host_mutation = approval_context._confirm_host_mutations()
+    # Agent OS production confirmation is an authority floor, not a convenience
+    # approval. /yolo, mode=off and historical allowlists may bypass ordinary
+    # warning prompts, but never this exact host-command consent boundary.
+    if not confirm_host_mutation:
+        if _yolo_active() or approval_mode == "off":
+            return _approved()
+        if _command_matches_permanent_allowlist(command):
+            return _approved()
 
     approval_callback, is_cli, is_gateway, is_ask = _presence(approval_callback)
     # Outside CLI/gateway/ask flows we never block on approvals: each
     # unattended context applies its configured deny/approve mode, else allow.
     if not is_cli and not is_gateway and not is_ask:
         contexts = _unattended_contexts()
+        if confirm_host_mutation:
+            description = "host command execution requires exact production consent"
+            if contexts:
+                # An explicit unattended approve-mode remains an operator trust decision;
+                # the Agent OS production profile pins every unattended mode to deny.
+                for ctx in contexts:
+                    if ctx.mode() == "deny":
+                        return _blocked(
+                            ctx.block_message(
+                                "host command requires production approval",
+                                noun="host commands",
+                                advice="Run it in an attended session and approve the exact command.",
+                            ),
+                            pattern_key="production_host_command",
+                            description=description,
+                        )
+                return _approved()
+            return _blocked(
+                "BLOCKED: host command requires exact production approval but no interactive "
+                "user, gateway, ask bridge, or explicitly trusted unattended context is present.",
+                pattern_key="production_host_command",
+                description=description,
+            )
         if contexts:
             # Explicit unattended policy remains authoritative. "approve" here is a deliberate
             # operator configuration, not the absence of an approval transport.
@@ -1364,6 +1392,12 @@ def check_all_command_guards(command: str, env_type: str,
             warnings.append((tirith_key, _format_tirith_description(tirith_result), True))
     if is_dangerous and not is_approved(session_key, pattern_key):
         warnings.append((pattern_key, description, False))
+    if confirm_host_mutation:
+        warnings.append((
+            "production_host_command",
+            "host command execution requires exact production consent",
+            False,
+        ))
     if not warnings:
         return _approved()
 
@@ -1378,8 +1412,12 @@ def check_all_command_guards(command: str, env_type: str,
         _COMMAND_GATE, command=command, description=combined_desc,
         pattern_key=primary_key, pattern_keys=all_keys, warnings=warnings,
         session_key=session_key, approval_callback=approval_callback,
-        is_cli=is_cli, is_gateway=is_gateway, is_ask=is_ask, smart=approval_mode == "smart",
-        permanent_capable=any(not is_t for _, _, is_t in warnings),
+        is_cli=is_cli, is_gateway=is_gateway, is_ask=is_ask,
+        smart=(approval_mode == "smart" and not confirm_host_mutation),
+        permanent_capable=(
+            False if confirm_host_mutation else any(not is_t for _, _, is_t in warnings)
+        ),
+        session_capable=not confirm_host_mutation,
     )
 
 
