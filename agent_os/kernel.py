@@ -69,6 +69,10 @@ class AgentOSKernel:
         decision = self.permission_gate.authorize(action, risk)
         needs_gate = risk.level not in {RiskLevel.L0_OBSERVE, RiskLevel.L1_REVERSIBLE}
 
+        # A non-blocking/web permission gate may persist WAITING_PERMISSION before
+        # its human decision returns. Refresh the durable record so the kernel
+        # does not emit a duplicate PLANNED -> WAITING transition afterward.
+        action = self._require_action(action.id)
         if needs_gate and action.state is ActionState.PLANNED:
             action = self.store.transition_action(action.id, ActionState.WAITING_PERMISSION)
 
