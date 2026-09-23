@@ -17,7 +17,7 @@ import { ProjectsView } from './projects'
 import { useComputerUseSecurity, useNetworkSecurity, useTelemetrySecurity } from './security-data'
 import { openHermesSession } from './session-navigation'
 import { exactOperationsRoute, exactWorkerRoute } from './selectors'
-import { ExecutionCanvas } from './visual-intelligence'
+import { ExecutionCanvas, RuntimeObservatory } from './visual-intelligence'
 import type {
   AgentOSAction,
   AgentOSAgent,
@@ -1111,6 +1111,7 @@ function TaskDetail({ task }: { task: AgentOSTask }) {
       <AttentionQueue task={task} />
       <SafetyStrip task={task} />
       <ExecutionCanvas task={task} />
+      <RuntimeObservatory task={task} />
 
       <div className="grid min-h-0 gap-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)]">
         <section className="aos-panel min-w-0 overflow-hidden">
@@ -1285,6 +1286,7 @@ function Overview({
       {selected && (
         <>
           <ExecutionCanvas task={selected} />
+          <RuntimeObservatory task={selected} />
           <ProcessMap task={selected} />
           <AttentionQueue task={selected} />
           <SafetyStrip task={selected} />
