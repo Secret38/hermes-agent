@@ -144,7 +144,7 @@ class PlanExecutionEngine:
                         execution_id=step.execution_id,
                         detail="bound action record is missing",
                     )
-                if action.state is ActionState.PLANNED:
+                if action.state in {ActionState.PLANNED, ActionState.WAITING_PERMISSION}:
                     kernel = self._kernel(action.tool)
                     result = kernel.execute_action(action.id)
                     return EngineTickResult(
