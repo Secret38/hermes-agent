@@ -148,7 +148,7 @@ export function ModalAccessibilityGuard() {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ["aria-modal", "role", "hidden", "style", "class"],
+      attributeFilter: ["aria-modal", "role", "hidden"],
     });
 
     document.addEventListener("keydown", onKeyDown, true);
