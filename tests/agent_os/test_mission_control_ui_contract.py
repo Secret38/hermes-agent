@@ -112,3 +112,24 @@ def test_mission_control_keeps_execution_replay_and_forensics_contract():
     assert "recovery.attempted" in replay
     assert "artifact.recorded" in replay
     assert "approval.requested" in replay
+
+
+def test_mission_control_keeps_security_posture_contract():
+    page = _source("page.tsx")
+    security = _source("security-data.ts")
+
+    for marker in (
+        "Security & privacy",
+        "Execution boundary",
+        "Computer Use",
+        "Shared metrics",
+        "Outbound network inventory",
+        "PARTIAL COVERAGE",
+        "Classification only",
+    ):
+        assert marker in page
+
+    assert "computer_use.security" in security
+    assert "telemetry.security" in security
+    assert "network.security" in security
+    assert "raw endpoint" not in security.lower()
