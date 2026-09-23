@@ -141,6 +141,81 @@ class TestNoApprovalAuthorityFailsClosed:
 
 
 class TestExecuteCodeConsentAuthority:
+    def _interactive_manual(self, monkeypatch, callback):
+        monkeypatch.delenv("HERMES_CRON_SESSION", raising=False)
+        monkeypatch.delenv("HERMES_SINGLE_QUERY_SESSION", raising=False)
+        monkeypatch.delenv("HERMES_GATEWAY_SESSION", raising=False)
+        monkeypatch.delenv("HERMES_EXEC_ASK", raising=False)
+        monkeypatch.setenv("HERMES_SESSION_KEY", "test-execute-code-once")
+        monkeypatch.setattr(approval_context, "_is_interactive_cli", lambda: True)
+        monkeypatch.setattr(approval_context, "_is_gateway_approval_context", lambda: False)
+        monkeypatch.setattr(approval_context, "_is_cron_approval_context", lambda: False)
+        monkeypatch.setattr(approval_context, "_is_single_query_approval_context", lambda: False)
+        monkeypatch.setattr(approval_context, "_is_unattended_platform_approval_context", lambda: False)
+        monkeypatch.setattr(approval_module, "_YOLO_MODE_FROZEN", False)
+        monkeypatch.setattr(approval_context, "_get_approval_mode", lambda: "manual")
+        monkeypatch.setattr(approval_module, "_resolve_cli_approval_callback", lambda _cb=None: callback)
+        # Keep the selected transport inert so this test reaches the built-in CLI callback.
+        monkeypatch.setattr(approval_module, "_present_with_selected_transport", lambda **_kw: None)
+        monkeypatch.setattr(approval_module, "_transport_choice", lambda *_a, **_kw: (None, None))
+
+    def test_interactive_execute_code_requires_exact_once_only_consent(self, monkeypatch):
+        seen = []
+
+        def callback(command, description, **kwargs):
+            seen.append((command, kwargs))
+            # Simulate a stale client returning a scope the host no longer offers.
+            return "session"
+
+        self._interactive_manual(monkeypatch, callback)
+        approval_module._session_approved.pop("test-execute-code-once", None)
+        approval_module._permanent_approved.discard("execute_code")
+
+        first = approval_module.check_execute_code_guard("print('first')", "local")
+        second = approval_module.check_execute_code_guard("print('second')", "local")
+
+        assert first["approved"] is True
+        assert second["approved"] is True
+        assert len(seen) == 2
+        assert "print('first')" in seen[0][0]
+        assert "print('second')" in seen[1][0]
+        assert seen[0][1]["allow_session"] is False
+        assert seen[0][1]["allow_permanent"] is False
+        assert is_approved("test-execute-code-once", "execute_code") is False
+
+    def test_prior_execute_code_session_approval_cannot_authorize_new_script(self, monkeypatch):
+        calls = []
+
+        def callback(command, description, **kwargs):
+            calls.append(command)
+            return "once"
+
+        self._interactive_manual(monkeypatch, callback)
+        approval_module._session_approved.pop("test-execute-code-once", None)
+        approve_session("test-execute-code-once", "execute_code")
+        assert is_approved("test-execute-code-once", "execute_code") is True
+
+        result = approval_module.check_execute_code_guard(
+            "from pathlib import Path; print(Path.home())", "local"
+        )
+
+        assert result["approved"] is True
+        assert len(calls) == 1
+        assert "Path.home()" in calls[0]
+
+    def test_interactive_cli_no_longer_auto_approves_host_capable_execute_code(self, monkeypatch):
+        def callback(command, description, **kwargs):
+            return "deny"
+
+        self._interactive_manual(monkeypatch, callback)
+        result = approval_module.check_execute_code_guard(
+            "import urllib.request; urllib.request.urlopen('https://example.com')", "local"
+        )
+
+        assert result["approved"] is False
+        assert result["outcome"] == "denied"
+        assert result["pattern_key"] == "execute_code"
+
     def test_headless_unknown_embedding_blocks_execute_code(self, monkeypatch):
         monkeypatch.delenv("HERMES_INTERACTIVE", raising=False)
         monkeypatch.delenv("HERMES_GATEWAY_SESSION", raising=False)
@@ -2354,6 +2429,8 @@ class TestApprovalPromptRedaction:
                     result = check_execute_code_guard(code, "local")
 
         assert result.get("status") == "pending_approval"
+        assert result["allow_session"] is False
+        assert result["allow_permanent"] is False
         # The script's credential must not appear in the user-facing message.
         assert "sk-proj-abc123xyz4567890abcdef" not in result["message"]
         assert "sk-proj-abc123xyz4567890abcdef" not in result["command"]
