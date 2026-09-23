@@ -7,6 +7,7 @@ import pytest
 
 from agent_os.contracts import ActionRecord, TaskRecord
 from agent_os.mission_control import MissionApprovalBroker, MissionBusyError, MissionRuntimeService
+from agent_os.orchestration.plan import PlanRecord, PlanState, PlanStepKind, PlanStepRecord
 from agent_os.permissions import PermissionOutcome
 from agent_os.risk import RiskAssessment, RiskLevel
 from agent_os.states import ActionState, TaskState
@@ -129,6 +130,67 @@ def test_mission_approval_deny_is_fail_closed(tmp_path):
 
     assert not thread.is_alive()
     assert result["decision"].outcome is PermissionOutcome.DENY
+
+
+
+
+def _durable_interrupted_mission(store: AgentOSStore, *, job_id: str = "mission-restart-test"):
+    task = store.create_task(
+        TaskRecord.create(
+            "resume durable mission",
+            metadata={"source": "mission-control", "mission_job_id": job_id},
+        )
+    )
+    store.transition_task(task.id, TaskState.PLANNING)
+    store.transition_task(task.id, TaskState.READY)
+
+    plan = PlanRecord.create(task_id=task.id, objective=task.goal)
+    step = PlanStepRecord.create(
+        plan_id=plan.id,
+        task_id=task.id,
+        title="Durable manual checkpoint",
+        kind=PlanStepKind.MANUAL,
+    )
+    store.create_plan(plan, [step])
+    store.transition_plan(plan.id, PlanState.ACTIVE)
+    return task, plan
+
+
+def test_mission_service_rehydrates_interrupted_job_without_auto_execution(tmp_path):
+    store = AgentOSStore(tmp_path / "agent_os.db")
+    task, plan = _durable_interrupted_mission(store)
+
+    service = MissionRuntimeService(store)
+    jobs = service.jobs()
+
+    assert service._worker is None
+    assert len(jobs) == 1
+    assert jobs[0]["id"] == "mission-restart-test"
+    assert jobs[0]["task_id"] == task.id
+    assert jobs[0]["plan_id"] == plan.id
+    assert jobs[0]["state"] == "INTERRUPTED"
+
+
+def test_mission_service_requires_explicit_resume_for_interrupted_job(tmp_path, monkeypatch):
+    store = AgentOSStore(tmp_path / "agent_os.db")
+    _durable_interrupted_mission(store)
+    service = MissionRuntimeService(store)
+    release = threading.Event()
+
+    monkeypatch.setattr(service, "_resume_job", lambda _job_id: release.wait(2))
+
+    resumed = service.resume("mission-restart-test")
+
+    assert resumed["state"] == "RUNNING"
+    worker = service._worker
+    assert worker is not None and worker.is_alive()
+
+    with pytest.raises(MissionBusyError, match="already running"):
+        service.submit("competing mission")
+
+    release.set()
+    worker.join(timeout=1)
+    assert not worker.is_alive()
 
 
 def test_mission_service_serializes_interactive_top_level_missions(tmp_path, monkeypatch):
