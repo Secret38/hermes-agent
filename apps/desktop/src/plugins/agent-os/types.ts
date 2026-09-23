@@ -255,3 +255,29 @@ export interface AgentOSContextSnapshot {
     }
   }
 }
+
+
+export interface AgentOSMissionJob {
+  id: string
+  goal: string
+  workspace_id?: null | string
+  session_id?: null | string
+  state: 'QUEUED' | 'PLANNING' | 'RUNNING' | 'WAITING_APPROVAL' | 'COMPLETED' | 'BLOCKED' | 'FAILED' | string
+  task_id?: null | string
+  plan_id?: null | string
+  error?: null | string
+  created_at: string
+  updated_at: string
+}
+
+export interface AgentOSPendingApproval {
+  id: string
+  task_id: string
+  action_id: string
+  tool: string
+  operation: string
+  risk_level: string
+  reason: string
+  target: string
+  requested_at: string
+}
