@@ -1282,6 +1282,162 @@ _WGET_STDIN_UPLOAD_RE = re.compile(
 )
 
 
+
+_NETWORK_ARGUMENT_EGRESS_CLIENTS = frozenset({"curl", "wget"})
+_CURL_DATA_FILE_FLAGS = ("--data", "--data-ascii", "--data-binary", "--data-urlencode")
+_CURL_INLINE_EGRESS_FLAGS = (
+    "--data", "--data-ascii", "--data-binary", "--data-raw", "--data-urlencode",
+    "--form", "--form-string", "--json", "--url-query", "--header",
+)
+_CURL_UPLOAD_FILE_FLAGS = ("--upload-file",)
+_CURL_FORM_FILE_FLAGS = ("--form",)
+_WGET_LOCAL_FILE_FLAGS = ("--post-file", "--body-file")
+_WGET_INLINE_EGRESS_FLAGS = ("--post-data", "--body-data", "--header")
+
+
+def _iter_option_values(args: list[str], *, long_flags: tuple[str, ...] = (),
+                        short_flags: tuple[str, ...] = ()):
+    """Yield (flag, value) for options that own a value, including attached forms.
+
+    Stops at the end-of-options marker so data that merely looks like an option
+    never becomes a security finding. Short options support curl's attached-value
+    spellings such as -d@file and -Tfile.
+    """
+    index = 0
+    while index < len(args):
+        token = args[index]
+        if token == "--":
+            return
+
+        matched = False
+        for flag in long_flags:
+            if token == flag:
+                if index + 1 < len(args):
+                    yield flag, args[index + 1]
+                index += 2
+                matched = True
+                break
+            prefix = flag + "="
+            if token.startswith(prefix):
+                yield flag, token[len(prefix):]
+                index += 1
+                matched = True
+                break
+        if matched:
+            continue
+
+        for flag in short_flags:
+            if token == flag:
+                if index + 1 < len(args):
+                    yield flag, args[index + 1]
+                index += 2
+                matched = True
+                break
+            if token.startswith(flag) and len(token) > len(flag):
+                yield flag, token[len(flag):]
+                index += 1
+                matched = True
+                break
+        if not matched:
+            index += 1
+
+
+def _network_local_file_inputs(command: str) -> list[str]:
+    """Return local file operands that curl/wget will read for network upload.
+
+    This is syntax classification only: paths are never opened or resolved.
+    Dynamic paths are deliberately retained so the normal approval gate can
+    still require consent even when the exact file is not knowable statically.
+    """
+    inputs: list[str] = []
+    for start, _, _, name in _command_words(command):
+        if name not in _NETWORK_ARGUMENT_EGRESS_CLIENTS:
+            continue
+        segment = _shell_command_segment(command, start)
+        tokens = _shell_segment_tokens(segment, 0)
+        if not tokens:
+            continue
+        args = tokens[1:]
+
+        if name == "curl":
+            for _, value in _iter_option_values(
+                args, long_flags=_CURL_UPLOAD_FILE_FLAGS, short_flags=("-T",)
+            ):
+                if value and value != "-":
+                    inputs.append(value)
+
+            for flag, value in _iter_option_values(
+                args, long_flags=_CURL_DATA_FILE_FLAGS, short_flags=("-d",)
+            ):
+                if not value:
+                    continue
+                # curl --data*/-d reads @file, except --data-raw (not listed).
+                # --data-urlencode additionally accepts name@file.
+                if value.startswith("@") and value != "@-":
+                    inputs.append(value[1:])
+                elif flag == "--data-urlencode" and "@" in value:
+                    path = value.split("@", 1)[1]
+                    if path and path != "-":
+                        inputs.append(path)
+
+            for _, value in _iter_option_values(
+                args, long_flags=_CURL_FORM_FILE_FLAGS, short_flags=("-F",)
+            ):
+                if "=" not in value:
+                    continue
+                payload = value.split("=", 1)[1]
+                if payload.startswith(("@", "<")):
+                    path = payload[1:].split(";", 1)[0]
+                    if path and path != "-":
+                        inputs.append(path)
+
+        elif name == "wget":
+            for _, value in _iter_option_values(args, long_flags=_WGET_LOCAL_FILE_FLAGS):
+                if value and value != "-":
+                    inputs.append(value)
+    return inputs
+
+
+def _is_system_shadow_path(path: str) -> bool:
+    """True for a statically spelled /etc/shadow path, including dot-segment collapses."""
+    normalized = _normalize_command_for_detection(path).strip().strip("\"'")
+    if not normalized.startswith("/") or any(ch in normalized for ch in "$*?[{") or chr(96) in normalized:
+        return False
+    import posixpath
+    return posixpath.normpath(normalized) == "/etc/shadow"
+
+
+def _value_executes_secret_env_source(value: str) -> bool:
+    """Whether an option value executes env/printenv/set/export via shell substitution."""
+    return any(
+        start > 0 and name in _SECRET_ENV_SOURCES
+        for start, _, _, name in _command_words(value)
+    )
+
+
+def _network_argument_exfiltration_description(command: str) -> str | None:
+    """Block environment/secret command substitutions in network-bound argument values."""
+    for start, _, _, name in _command_words(command):
+        if name not in _NETWORK_ARGUMENT_EGRESS_CLIENTS:
+            continue
+        segment = _shell_command_segment(command, start)
+        tokens = _shell_segment_tokens(segment, 0)
+        if not tokens:
+            continue
+        args = tokens[1:]
+        if name == "curl":
+            values = _iter_option_values(
+                args,
+                long_flags=_CURL_INLINE_EGRESS_FLAGS,
+                short_flags=("-d", "-F", "-H"),
+            )
+        else:
+            values = _iter_option_values(args, long_flags=_WGET_INLINE_EGRESS_FLAGS)
+        if any(_value_executes_secret_env_source(value) for _, value in values):
+            return "environment/secret data embedded in network egress argument"
+    return None
+
+
 def _command_words(command: str) -> list[tuple[int, int, str, str]]:
     """Executable-position words as (start, end, raw, basename)."""
     rows: list[tuple[int, int, str, str]] = []
@@ -1337,6 +1493,13 @@ def _structural_hardline_description(command: str) -> str | None:
             re.IGNORECASE,
         ):
             return "read of system password hashes (/etc/shadow)"
+
+    if any(_is_system_shadow_path(path) for path in _network_local_file_inputs(command)):
+        return "network upload of system password hashes (/etc/shadow)"
+
+    argument_exfiltration = _network_argument_exfiltration_description(command)
+    if argument_exfiltration:
+        return argument_exfiltration
     return _pipeline_exfiltration_description(command)
 
 
@@ -1344,6 +1507,8 @@ def _structural_dangerous_description(command: str) -> str | None:
     """Recoverable structural risks that require the normal approval gate."""
     if any(name == "sudo" for _, _, _, name in _command_words(command)):
         return "privileged command via sudo"
+    if _network_local_file_inputs(command):
+        return "network upload reads local file"
     return None
 
 
