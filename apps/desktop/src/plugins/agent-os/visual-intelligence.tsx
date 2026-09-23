@@ -1,7 +1,15 @@
 import { cn, Codicon } from '@hermes/plugin-sdk'
 import { useMemo, useState } from 'react'
 
-import type { AgentOSAction, AgentOSAgent, AgentOSPlan, AgentOSPlanStep, AgentOSTask } from './types'
+import type {
+  AgentOSAction,
+  AgentOSAgent,
+  AgentOSLearningGraph,
+  AgentOSLearningNode,
+  AgentOSPlan,
+  AgentOSPlanStep,
+  AgentOSTask
+} from './types'
 
 type ExecutionNodeKind = 'action' | 'agent' | 'goal' | 'persist' | 'plan' | 'verify'
 type ExecutionEdgeKind = 'dependency' | 'execution' | 'membership' | 'verification'
@@ -488,5 +496,197 @@ export function ExecutionCanvas({ task }: { task: AgentOSTask }) {
         </div>
       </div>
     </section>
+  )
+}
+
+export interface KnowledgeCanvasNode {
+  id: string
+  kind: string
+  label: string
+  connections: number
+  category?: string
+  useCount?: number
+  row: number
+  column: number
+}
+
+export interface KnowledgeCanvasModel {
+  nodes: KnowledgeCanvasNode[]
+  edges: Array<{ source: string; target: string }>
+}
+
+function knowledgeNodeScore(node: AgentOSLearningNode, degree: number): number {
+  return degree * 1000 + (node.useCount ?? 0) * 10 + (node.pinned ? 5 : 0)
+}
+
+export function buildKnowledgeCanvasModel(graph: AgentOSLearningGraph, limit = 30): KnowledgeCanvasModel {
+  const degree = new Map<string, number>()
+  for (const edge of graph.edges) {
+    degree.set(edge.source, (degree.get(edge.source) ?? 0) + 1)
+    degree.set(edge.target, (degree.get(edge.target) ?? 0) + 1)
+  }
+
+  const memory = graph.nodes
+    .filter(node => node.kind === 'memory')
+    .sort((a, b) => knowledgeNodeScore(b, degree.get(b.id) ?? 0) - knowledgeNodeScore(a, degree.get(a.id) ?? 0))
+  const skills = graph.nodes
+    .filter(node => node.kind !== 'memory')
+    .sort((a, b) => knowledgeNodeScore(b, degree.get(b.id) ?? 0) - knowledgeNodeScore(a, degree.get(a.id) ?? 0))
+
+  const memoryLimit = Math.max(1, Math.ceil(limit / 2))
+  const skillLimit = Math.max(1, limit - memoryLimit)
+  const visible = [...memory.slice(0, memoryLimit), ...skills.slice(0, skillLimit)]
+  const visibleIds = new Set(visible.map(node => node.id))
+  const rows = new Map<number, number>()
+
+  const nodes = visible.map(node => {
+    const column = node.kind === 'memory' ? 0 : 1
+    const row = rows.get(column) ?? 0
+    rows.set(column, row + 1)
+
+    return {
+      id: node.id,
+      kind: node.kind,
+      label: node.label || node.id,
+      connections: degree.get(node.id) ?? 0,
+      category: node.kind === 'memory' ? node.memorySource : node.category,
+      useCount: node.useCount,
+      row,
+      column
+    }
+  })
+
+  return {
+    nodes,
+    edges: graph.edges.filter(edge => visibleIds.has(edge.source) && visibleIds.has(edge.target))
+  }
+}
+
+const KNOWLEDGE_NODE_WIDTH = 184
+const KNOWLEDGE_NODE_HEIGHT = 62
+const KNOWLEDGE_COLUMN_GAP = 240
+const KNOWLEDGE_ROW_GAP = 16
+const KNOWLEDGE_PADDING = 28
+
+export function SemanticKnowledgeCanvas({
+  graph,
+  onSelect,
+  selectedId
+}: {
+  graph: AgentOSLearningGraph
+  onSelect: (id: string) => void
+  selectedId?: string
+}) {
+  const model = useMemo(() => buildKnowledgeCanvasModel(graph), [graph])
+  const memoryCount = model.nodes.filter(node => node.column === 0).length
+  const skillCount = model.nodes.filter(node => node.column === 1).length
+  const rows = Math.max(memoryCount, skillCount, 1)
+  const height = Math.max(
+    300,
+    KNOWLEDGE_PADDING * 2 +
+      rows * KNOWLEDGE_NODE_HEIGHT +
+      Math.max(0, rows - 1) * KNOWLEDGE_ROW_GAP
+  )
+  const width = KNOWLEDGE_PADDING * 2 + KNOWLEDGE_NODE_WIDTH * 2 + KNOWLEDGE_COLUMN_GAP
+  const positions = new Map(
+    model.nodes.map(node => {
+      const count = node.column === 0 ? memoryCount : skillCount
+      const total =
+        count * KNOWLEDGE_NODE_HEIGHT + Math.max(0, count - 1) * KNOWLEDGE_ROW_GAP
+      const y =
+        (height - total) / 2 +
+        node.row * (KNOWLEDGE_NODE_HEIGHT + KNOWLEDGE_ROW_GAP)
+      const x =
+        KNOWLEDGE_PADDING +
+        node.column * (KNOWLEDGE_NODE_WIDTH + KNOWLEDGE_COLUMN_GAP)
+
+      return [node.id, { x, y }] as const
+    })
+  )
+
+  if (!model.nodes.length) {
+    return (
+      <div className="grid min-h-64 place-items-center text-xs text-(--ui-text-tertiary)">
+        No semantic memory relationships are available yet.
+      </div>
+    )
+  }
+
+  return (
+    <div className="aos-knowledge-viewport aos-scrollbar">
+      <div className="aos-knowledge-stage" style={{ height, width }}>
+        <div className="aos-knowledge-axis aos-knowledge-axis-memory">
+          <span>Memory</span>
+        </div>
+        <div className="aos-knowledge-axis aos-knowledge-axis-skills">
+          <span>Skills</span>
+        </div>
+
+        <svg aria-hidden="true" className="aos-graph-edges" height={height} width={width}>
+          {model.edges.map((edge, index) => {
+            const sourceNode = model.nodes.find(node => node.id === edge.source)
+            const targetNode = model.nodes.find(node => node.id === edge.target)
+            const source = positions.get(edge.source)
+            const target = positions.get(edge.target)
+            if (!sourceNode || !targetNode || !source || !target) return null
+
+            const from = sourceNode.column <= targetNode.column ? source : target
+            const to = sourceNode.column <= targetNode.column ? target : source
+            const x1 = from.x + KNOWLEDGE_NODE_WIDTH
+            const y1 = from.y + KNOWLEDGE_NODE_HEIGHT / 2
+            const x2 = to.x
+            const y2 = to.y + KNOWLEDGE_NODE_HEIGHT / 2
+            const dx = Math.max(90, (x2 - x1) * 0.44)
+
+            return (
+              <path
+                className="aos-knowledge-edge"
+                d={`M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`}
+                key={`${edge.source}->${edge.target}:${index}`}
+              />
+            )
+          })}
+        </svg>
+
+        {model.nodes.map(node => {
+          const position = positions.get(node.id)!
+          return (
+            <button
+              className={cn(
+                'aos-knowledge-node',
+                node.kind === 'memory' ? 'aos-knowledge-node-memory' : 'aos-knowledge-node-skill',
+                selectedId === node.id && 'aos-knowledge-node-selected'
+              )}
+              key={node.id}
+              onClick={() => onSelect(node.id)}
+              style={{
+                height: KNOWLEDGE_NODE_HEIGHT,
+                left: position.x,
+                top: position.y,
+                width: KNOWLEDGE_NODE_WIDTH
+              }}
+              title={node.label}
+              type="button"
+            >
+              <span className="flex items-center justify-between gap-2">
+                <span className="grid size-5 shrink-0 place-items-center rounded border border-(--ui-stroke-tertiary) bg-(--ui-bg-primary)">
+                  <Codicon name={node.kind === 'memory' ? 'note' : 'sparkle'} size="0.64rem" />
+                </span>
+                <span className="text-[0.52rem] tabular-nums text-(--ui-text-tertiary)">
+                  {node.connections} links
+                </span>
+              </span>
+              <span className="mt-1.5 block truncate text-left text-[0.64rem] font-medium text-foreground">
+                {node.label}
+              </span>
+              <span className="mt-0.5 block truncate text-left text-[0.52rem] uppercase tracking-[0.05em] text-(--ui-text-quaternary)">
+                {node.category || node.kind}
+                {node.useCount ? ` · used ${node.useCount}` : ''}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
   )
 }
