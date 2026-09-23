@@ -333,6 +333,8 @@ def _request_approval(
         approval_callback = _approval_callback
     mode = "foreground" if args.get("delivery_mode") == "foreground" else "background"
     description = f"Allow computer_use to perform `{action}`?"
+    from tools.approval_context import _confirm_host_mutations
+    production_exact = _confirm_host_mutations()
     result = _run_approval_gate(
         pattern_key=f"cua:{action}:{mode}", description=description,
         display_target=f"computer_use: {_summarize_action(action, args)}", approval_callback=approval_callback,
@@ -342,6 +344,9 @@ def _request_approval(
         fail_closed_when_no_human=True,
         no_human_block_message=(f"BLOCKED: computer_use `{action}` requires approval but no interactive user or "
                                 "gateway is present to approve it."),
+        bypass_capable=not production_exact,
+        session_capable=not production_exact,
+        permanent_capable=not production_exact,
     )
     if result.get("approved"):
         return None
