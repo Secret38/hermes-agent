@@ -1089,6 +1089,11 @@ def check_dangerous_command(command: str, env_type: str,
         subject=f"Command flagged as dangerous ({description})", noun="dangerous commands",
         advice="Find an alternative approach that avoids this command.",
         autoapprove_log_prefix="AUTO-APPROVED dangerous command in non-interactive non-gateway context",
+        fail_closed_when_no_human=True,
+        no_human_block_message=(
+            f"BLOCKED: command requires approval ({description}) but no interactive user, "
+            "gateway, ask bridge, or explicitly configured unattended approval context is present."
+        ),
     )
 
 
@@ -1185,10 +1190,39 @@ def check_all_command_guards(command: str, env_type: str,
     # Outside CLI/gateway/ask flows we never block on approvals: each
     # unattended context applies its configured deny/approve mode, else allow.
     if not is_cli and not is_gateway and not is_ask:
-        for ctx in _unattended_contexts():
-            result = _unattended_deny(command, ctx)
-            if result is not None:
-                return result
+        contexts = _unattended_contexts()
+        if contexts:
+            # Explicit unattended policy remains authoritative. "approve" here is a deliberate
+            # operator configuration, not the absence of an approval transport.
+            for ctx in contexts:
+                result = _unattended_deny(command, ctx)
+                if result is not None:
+                    return result
+            return _approved()
+
+        # Unknown embedding paths used to silently approve every non-hardline command. That turns
+        # "we cannot ask a human" into consent and makes ACP/MCP/custom embedding behavior depend on
+        # environment-marker accidents. Classify the command first and fail closed only when it
+        # actually needs approval; ordinary commands remain usable.
+        tirith_result = _tirith_scan(command)
+        is_dangerous, pattern_key, description = detect_dangerous_command(command)
+        findings = tirith_result.get("findings") or []
+        if tirith_result.get("action") in {"block", "warn"}:
+            rule_id = findings[0].get("rule_id", "unknown") if findings else "unknown"
+            description = _format_tirith_description(tirith_result)
+            return _blocked(
+                "BLOCKED: command requires security approval but no interactive user, gateway, "
+                "ask bridge, or explicitly configured unattended approval context is present.",
+                pattern_key=f"tirith:{rule_id}",
+                description=description,
+            )
+        if is_dangerous:
+            return _blocked(
+                "BLOCKED: command requires approval but no interactive user, gateway, ask bridge, "
+                "or explicitly configured unattended approval context is present.",
+                pattern_key=pattern_key,
+                description=description,
+            )
         return _approved()
 
     # Gather findings: warnings = [(pattern_key, description, is_tirith)]. Tirith block AND warn both go through the
