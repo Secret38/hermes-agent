@@ -1050,16 +1050,16 @@ def _run_approval_gate(
     subject: str = "", noun: str = "flagged actions",
     advice: str = "Find an alternative approach that avoids this action.",
     cron_deny_message: str = "", single_query_deny_message: str = "", unattended_deny_message: str = "",
-    autoapprove_log_prefix: str, fail_closed_when_no_human: bool = False, no_human_block_message: str = "",
+    autoapprove_log_prefix: str, fail_closed_when_no_human: bool = True, no_human_block_message: str = "",
 ) -> dict:
     """Shared human-approval gate for a flagged action (tool call or write): decision core for
     :func:`request_tool_approval` and the file-tool write gates.
 
     Order: yolo bypass → session-cache short-circuit → interactive/gateway/unattended branch →
     prompt → persistence. Input-shape checks (hardline, allowlist, pattern detection) are the
-    caller's job. ``fail_closed_when_no_human``: a non-interactive, non-gateway, non-cron
-    context without an ask bridge BLOCKS instead of auto-approving, so a plugin-flagged action
-    never runs ungated.
+    caller's job. ``fail_closed_when_no_human`` defaults to True: a non-interactive,
+    non-gateway, non-cron context without an ask bridge BLOCKS instead of treating absence of a
+    consent authority as approval. Explicit unattended approve-modes remain authoritative.
     Unattended deny text is ``ctx.block_message(subject, noun, advice)`` unless the caller passes
     an explicit ``*_deny_message`` (the file-tool write gates word their own).
     """
@@ -1398,88 +1398,3 @@ def check_execute_code_guard(code: str, env_type: str, has_host_access: bool = F
                 "BLOCKED: execute_code runs arbitrary local Python (including "
                 "subprocess calls that bypass shell-string approval checks). " + ctx.exec_tail,
                 pattern_key=pattern_key, description=description, outcome="blocked", noun="code",
-            )
-        return _approved()
-
-    # Only gateway/ask contexts get the one-shot whole-script approval. In an interactive CLI the script's terminal()
-    # calls are guarded per-call (context propagates into the RPC thread, #33057), so a whole-script prompt would fire
-    # on every execute_code call. Ask-mode still takes this path even with INTERACTIVE set (how gateway/smart tests
-    # and messaging ask-mode drive whole-script approval); when that leaks into a CLI with no notify callback, the
-    # engine falls through to the CLI Dangerous Command panel instead of a silent pending_approval.
-    if not is_gateway and not is_ask:
-        return _approved()
-
-    session_key = get_current_session_key()
-    # Built only past the early-return gates so common paths don't copy a potentially-large script into this string.
-    command = f"execute_code <<'PY'\n{code}\nPY"
-
-    # Without this, "Approve session" / "Always" choices are stored but never
-    # consulted, so every execute_code call re-prompts (#39275).
-    if is_approved(session_key, pattern_key):
-        return _approved()
-
-    # Smart mode: an APPROVE only suppresses the redundant whole-script prompt; the per-call terminal() guards still
-    # run independently. The gateway renders the pending payload to Discord/Slack, so the script body is redacted for
-    # display; the raw code is what gets assessed and run.
-    from agent.redact import redact_sensitive_text
-    return _human_decision(
-        _EXECUTE_CODE_GATE, command=command, description=description, pattern_key=pattern_key,
-        pattern_keys=[pattern_key], warnings=[(pattern_key, None, False)], session_key=session_key,
-        approval_callback=approval_callback, is_cli=is_cli, is_gateway=is_gateway, is_ask=is_ask,
-        smart=approval_mode == "smart",
-        pending_body=lambda: f"**Code:**\n```python\n{redact_sensitive_text(code)}\n```",
-    )
-
-
-# Load permanent allowlist from config on module import
-load_permanent_allowlist()
-
-
-# ---- BEGIN PLUGIN-COMPAT (revert-scheduled; see COMPAT_MANIFEST.md) ----
-# Names external plugins imported from this module before the Sep 2026 decomposition.
-# Internal code MUST NOT use these (scripts/check_compat_pointers.py fails CI if it does).
-# The whole block is removed by reverting the commit that added it.
-import contextlib  # noqa: F401,E402
-import contextvars  # noqa: F401,E402
-import fnmatch  # noqa: F401,E402
-import functools  # noqa: F401,E402
-import re  # noqa: F401,E402
-import shlex  # noqa: F401,E402
-import sys  # noqa: F401,E402
-import tempfile  # noqa: F401,E402
-import time  # noqa: F401,E402
-import unicodedata  # noqa: F401,E402
-import uuid  # noqa: F401,E402
-
-
-_PLUGIN_COMPAT_LAZY = {
-    'DANGEROUS_PATTERNS': ('tools.approval_detection', 'DANGEROUS_PATTERNS'),
-    'DANGEROUS_PATTERNS_COMPILED': ('tools.approval_detection', 'DANGEROUS_PATTERNS_COMPILED'),
-    'HARDLINE_PATTERNS': ('tools.approval_detection', 'HARDLINE_PATTERNS'),
-    'HARDLINE_PATTERNS_COMPILED': ('tools.approval_detection', 'HARDLINE_PATTERNS_COMPILED'),
-    'HUMAN_WAIT_MARGIN_S': ('tools.approval_human_wait', 'HUMAN_WAIT_MARGIN_S'),
-    'cfg_get': ('hermes_cli.config', 'cfg_get'),
-    'get_plugin_manager': ('tools.approval_prompt', 'get_plugin_manager'),
-    'human_wait_ceiling': ('tools.approval_human_wait', 'human_wait_ceiling'),
-    'human_wait_seconds': ('tools.approval_human_wait', 'human_wait_seconds'),
-    'human_wait_window': ('tools.approval_human_wait', 'human_wait_window'),
-    'is_interrupted': ('tools.interrupt', 'is_interrupted'),
-    'request_elicitation_consent': ('tools.approval_prompt', 'request_elicitation_consent'),
-    'reset_current_observability_context': ('tools.approval_context', 'reset_current_observability_context'),
-    'reset_current_session_key': ('tools.approval_context', 'reset_current_session_key'),
-    'reset_hermes_interactive_context': ('tools.approval_context', 'reset_hermes_interactive_context'),
-    'set_current_observability_context': ('tools.approval_context', 'set_current_observability_context'),
-    'set_current_session_key': ('tools.approval_context', 'set_current_session_key'),
-    'set_hermes_interactive_context': ('tools.approval_context', 'set_hermes_interactive_context'),
-}
-
-
-def __getattr__(name):  # PEP 562 — lazy so no import cycles
-    target = _PLUGIN_COMPAT_LAZY.get(name)
-    if target is None:
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    import importlib
-    from hermes_cli.plugin_compat import warn_once
-    warn_once(__name__, name, *target)
-    return getattr(importlib.import_module(target[0]), target[1])
-# ---- END PLUGIN-COMPAT ----
