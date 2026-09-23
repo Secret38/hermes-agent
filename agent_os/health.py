@@ -239,6 +239,7 @@ def _production_security_check() -> HealthCheck:
         tirith_fail_open = approval_context._tirith_fail_open()
         from tools import tirith_security
         tirith_platform_supported = tirith_security.is_platform_supported()
+        tirith_scanner_available = tirith_security.scanner_available()
     except Exception as exc:
         return HealthCheck(
             "production_security",
@@ -263,6 +264,8 @@ def _production_security_check() -> HealthCheck:
         unsafe.append("Tirith disabled or security.tirith_fail_open=true")
     elif not tirith_platform_supported:
         unsafe.append("Tirith scanner is not supported on this platform")
+    elif not tirith_scanner_available:
+        unsafe.append("Tirith scanner is not installed or executable")
     if "SUDO_PASSWORD" in os.environ:
         unsafe.append("SUDO_PASSWORD is configured")
 
@@ -282,7 +285,7 @@ def _production_security_check() -> HealthCheck:
     return HealthCheck(
         "production_security",
         HealthStatus.PASS,
-        "manual approvals; unattended contexts deny; Tirith supported and fails closed; no stored sudo password",
+        "manual approvals; unattended contexts deny; Tirith installed, supported and fail-closed; no stored sudo password",
         required_for_production_security=True,
     )
 
