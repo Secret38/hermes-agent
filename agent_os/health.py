@@ -259,6 +259,8 @@ def _production_security_check() -> HealthCheck:
         unsafe.append(f"approvals.unattended_mode={unattended_mode}")
     if tirith_fail_open:
         unsafe.append("Tirith disabled or security.tirith_fail_open=true")
+    if "SUDO_PASSWORD" in os.environ:
+        unsafe.append("SUDO_PASSWORD is configured")
 
     if unsafe:
         return HealthCheck(
@@ -268,15 +270,15 @@ def _production_security_check() -> HealthCheck:
             required_for_production_security=True,
             remediation=(
                 "Use manual approvals; deny cron/single-query/unattended approvals; "
-                "enable Tirith with security.tirith_fail_open=false. "
-                "See docs/agent-os-production-security.md."
+                "enable Tirith with security.tirith_fail_open=false; remove SUDO_PASSWORD "
+                "from the Agent environment. See docs/agent-os-production-security.md."
             ),
         )
 
     return HealthCheck(
         "production_security",
         HealthStatus.PASS,
-        "manual approvals; unattended contexts deny; Tirith fails closed",
+        "manual approvals; unattended contexts deny; Tirith fails closed; no stored sudo password",
         required_for_production_security=True,
     )
 
