@@ -642,7 +642,8 @@ def _gateway_notify_cb(session_key: str):
 
 def _pending_result(spec, session_key: str, *, command: str, description: str,
                     pattern_key: str, pattern_keys: list[str], body: str | None,
-                    smart_denied: bool) -> dict:
+                    smart_denied: bool, session_capable: bool = True,
+                    permanent_capable: bool = True) -> dict:
     """Queue an approval nobody can answer right now (no gateway notifier, no CLI panel) for
     ``/approve`` / ``/deny`` review. Command/code gates return the backward-compatible
     ``pending_approval`` shape (``pattern_keys`` + STOP text); the action gate ``approval_required``."""
@@ -650,8 +651,10 @@ def _pending_result(spec, session_key: str, *, command: str, description: str,
     if spec.pending_keys:
         pending["pattern_keys"] = pattern_keys
     pending["description"] = description
+    pending["allow_session"] = bool(session_capable and not smart_denied)
+    pending["allow_permanent"] = bool(permanent_capable and session_capable and not smart_denied)
     if smart_denied:
-        pending.update(smart_denied=True, allow_permanent=False)
+        pending["smart_denied"] = True
     submit_pending(session_key, pending)
     if not spec.pending_keys:
         return {
@@ -671,8 +674,10 @@ def _pending_result(spec, session_key: str, *, command: str, description: str,
             "user's decision; if this turn must end, report that approval is pending."
         ),
     }
+    result["allow_session"] = bool(session_capable and not smart_denied)
+    result["allow_permanent"] = bool(permanent_capable and session_capable and not smart_denied)
     if smart_denied:
-        result.update(smart_denied=True, allow_permanent=False)
+        result["smart_denied"] = True
     return result
 
 
@@ -891,13 +896,15 @@ def _human_decision(spec: _GateSpec, *, command: str, description: str,
                     pattern_key: str, pattern_keys: list[str], warnings: list[tuple],
                     session_key: str, approval_callback, is_cli: bool, is_gateway: bool,
                     is_ask: bool, smart: bool = False,
-                    permanent_capable: bool = True, pending_body=None) -> dict:
+                    permanent_capable: bool = True, session_capable: bool = True,
+                    pending_body=None) -> dict:
     """Ask a human (after the optional guardian-LLM step) and turn the answer into the gate result.
 
     ``warnings`` are the ``(key, _, is_tirith)`` tuples :func:`_persist_choice` stores on
     session/always. ``permanent_capable`` hides [a]lways when no key could be permanently
-    allowlisted (pure-tirith prompts); a smart-DENY owner override reduces every surface to
-    once/deny and persists nothing. ``pending_body`` is a thunk, built only once a human is
+    allowlisted (pure-tirith prompts); ``session_capable=False`` reduces the gate to
+    once/deny and also rejects stale-client session/always choices. A smart-DENY owner override
+    likewise reduces every surface to once/deny and persists nothing. ``pending_body`` is a thunk, built only once a human is
     actually asked, so a smart APPROVE never pays for redacting a large script.
     """
     from agent.redact import redact_sensitive_text
@@ -909,7 +916,8 @@ def _human_decision(spec: _GateSpec, *, command: str, description: str,
         if result is not None:
             return result
     pending_body = pending_body() if pending_body else None
-    allow_permanent = permanent_capable and not smart_denied
+    allow_session = session_capable and not smart_denied
+    allow_permanent = permanent_capable and allow_session
 
     def deny(template: str, outcome: str, **fmt) -> dict:
         breaker = ""
@@ -922,7 +930,10 @@ def _human_decision(spec: _GateSpec, *, command: str, description: str,
                        outcome=outcome, noun=spec.noun, **extra)
 
     def grant(choice: str) -> dict:
-        # A smart-DENY owner override is always one operation, even if an older client returns "session" or "always".
+        # Once-only gates and smart-DENY owner overrides stay one operation even if an
+        # older transport/client returns a broader scope that the current UI no longer offers.
+        if not allow_session and choice in ("session", "always"):
+            choice = "once"
         if not smart_denied:
             _persist_choice(session_key, choice, warnings)
         if spec.user_approved:
@@ -933,7 +944,7 @@ def _human_decision(spec: _GateSpec, *, command: str, description: str,
         attempt = _present_with_selected_transport(
             command=command, description=description, pattern_key=pattern_key, pattern_keys=pattern_keys,
             session_key=session_key, surface="gateway" if (is_gateway or is_ask) else "cli",
-            allow_session=not smart_denied, allow_permanent=allow_permanent,
+            allow_session=allow_session, allow_permanent=allow_permanent,
         )
         choice, denied = _transport_choice(attempt, pattern_key=pattern_key, description=description)
         if denied is not None:
@@ -959,8 +970,8 @@ def _human_decision(spec: _GateSpec, *, command: str, description: str,
             data = {
                 "command": display_command, "pattern_key": pattern_key,
                 "pattern_keys": pattern_keys, "description": display_description,
-                "allow_permanent": permanent_capable and not smart_denied,
-                "allow_session": not smart_denied,
+                "allow_permanent": allow_permanent,
+                "allow_session": allow_session,
             }
             if smart_denied:
                 data["smart_denied"] = True
@@ -999,6 +1010,7 @@ def _human_decision(spec: _GateSpec, *, command: str, description: str,
             return _pending_result(
                 spec, session_key, command=display_command, description=display_description, pattern_key=pattern_key,
                 pattern_keys=pattern_keys, body=pending_body, smart_denied=smart_denied,
+                session_capable=session_capable, permanent_capable=permanent_capable,
             )
 
     # CLI interactive: single combined prompt, wrapped in the pre/post plugin hooks.
@@ -1009,8 +1021,11 @@ def _human_decision(spec: _GateSpec, *, command: str, description: str,
     hook_kwargs = dict(command=prompt_command, description=prompt_description, pattern_key=pattern_key,
                        pattern_keys=list(pattern_keys), session_key=session_key, surface="cli")
     approval_context._fire_approval_hook("pre_approval_request", **hook_kwargs)
-    choice = prompt_dangerous_approval(prompt_command, prompt_description, allow_permanent=allow_permanent,
-                                       smart_denied=smart_denied, approval_callback=approval_callback)
+    choice = prompt_dangerous_approval(
+        prompt_command, prompt_description, allow_permanent=allow_permanent,
+        allow_session=allow_session, smart_denied=smart_denied,
+        approval_callback=approval_callback,
+    )
     approval_context._fire_approval_hook("post_approval_response", **hook_kwargs, choice=choice)
     if choice == "timeout":
         return deny(spec.cli_timeout, "timeout")
@@ -1365,16 +1380,10 @@ def check_execute_code_guard(code: str, env_type: str, has_host_access: bool = F
     """Approve an execute_code script before its child process is spawned.
 
     The script can call ``subprocess``/``os.system``/``ctypes`` directly, none of which pass
-    through ``terminal()`` / ``DANGEROUS_PATTERNS``; in gateway/ask contexts we fail closed by
-    approving the script as a whole. Same dict contract as ``check_all_command_guards``.
-    Documented limitation: a purely local non-interactive non-gateway session returns approved
-    (the terminal auto-approve contract); the hardline floor still blocks catastrophic
-    ``terminal()`` commands the script issues.
-
-    See #30882.
-    The hardline floor still blocks catastrophic ``terminal()`` commands the script issues; running
-    arbitrary code headlessly without any approval surface is trusted-by-config (set a gateway/ask surface
-    or ``approvals.cron_mode`` to require approval). See #30882.
+    through ``terminal()`` / ``DANGEROUS_PATTERNS``. Host-capable scripts therefore use
+    exact-script, once-only consent whenever a human approval surface exists; unattended contexts
+    resolve explicitly from their configured deny/approve policy, and unknown headless embeddings
+    fail closed. Same dict contract as ``check_all_command_guards``.
     """
     pattern_key = "execute_code"
     description = _EXECUTE_CODE_DESCRIPTION
@@ -1409,22 +1418,13 @@ def check_execute_code_guard(code: str, env_type: str, has_host_access: bool = F
             pattern_key=pattern_key, description=description, outcome="blocked", noun="code",
         )
 
-    # Only gateway/ask contexts get the one-shot whole-script approval. In an interactive CLI the script's terminal()
-    # calls are guarded per-call (context propagates into the RPC thread, #33057), so a whole-script prompt would fire
-    # on every execute_code call. Ask-mode still takes this path even with INTERACTIVE set (how gateway/smart tests
-    # and messaging ask-mode drive whole-script approval); when that leaks into a CLI with no notify callback, the
-    # engine falls through to the CLI Dangerous Command panel instead of a silent pending_approval.
-    if not is_gateway and not is_ask:
-        return _approved()
-
+    # Host-capable execute_code can use Python file/network/process APIs directly; those calls do
+    # not pass through terminal() string guards. Therefore every concrete script requires its own
+    # approval in manual mode, including interactive CLI sessions. A previous execute_code approval
+    # must never authorize later, different code.
     session_key = get_current_session_key()
     # Built only past the early-return gates so common paths don't copy a potentially-large script into this string.
     command = f"execute_code <<'PY'\n{code}\nPY"
-
-    # Without this, "Approve session" / "Always" choices are stored but never
-    # consulted, so every execute_code call re-prompts (#39275).
-    if is_approved(session_key, pattern_key):
-        return _approved()
 
     # Smart mode: an APPROVE only suppresses the redundant whole-script prompt; the per-call terminal() guards still
     # run independently. The gateway renders the pending payload to Discord/Slack, so the script body is redacted for
@@ -1434,7 +1434,7 @@ def check_execute_code_guard(code: str, env_type: str, has_host_access: bool = F
         _EXECUTE_CODE_GATE, command=command, description=description, pattern_key=pattern_key,
         pattern_keys=[pattern_key], warnings=[(pattern_key, None, False)], session_key=session_key,
         approval_callback=approval_callback, is_cli=is_cli, is_gateway=is_gateway, is_ask=is_ask,
-        smart=approval_mode == "smart",
+        smart=approval_mode == "smart", permanent_capable=False, session_capable=False,
         pending_body=lambda: f"**Code:**\n```python\n{redact_sensitive_text(code)}\n```",
     )
 
