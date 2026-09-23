@@ -4945,7 +4945,7 @@ function Stage-AgentOSRuntime   {
         # Capture child output so stage-driver stdout remains exactly one JSON
         # frame. The GUI receives the stage lifecycle from Invoke-Stage instead
         # of trying to parse nested installer chatter.
-        $provisionOutput = @(& $hermesExe agent-os provision 2>&1)
+        $provisionOutput = @(& $hermesExe agent-os provision --production-security 2>&1)
         $provisionExit = $LASTEXITCODE
         if ($provisionExit -ne 0) {
             $tail = ($provisionOutput | Select-Object -Last 12) -join [Environment]::NewLine
@@ -4953,7 +4953,7 @@ function Stage-AgentOSRuntime   {
         }
 
         # Trust actual post-install health, never the installer return code.
-        $healthOutput = @(& $hermesExe agent-os status --require-full --json 2>&1)
+        $healthOutput = @(& $hermesExe agent-os status --require-full --require-production-security --json 2>&1)
         $healthExit = $LASTEXITCODE
         if ($healthExit -ne 0) {
             $tail = ($healthOutput | Select-Object -Last 12) -join [Environment]::NewLine
@@ -4965,8 +4965,8 @@ function Stage-AgentOSRuntime   {
         } catch {
             throw "Agent OS health command returned invalid JSON: $_"
         }
-        if (-not $health.full_ready) {
-            throw "Agent OS health report did not confirm full_ready=true"
+        if (-not $health.full_ready -or -not $health.production_security_ready) {
+            throw "Agent OS health report did not confirm full_ready=true and production_security_ready=true"
         }
     } finally {
         if ($null -eq $previousHermesHome) {
