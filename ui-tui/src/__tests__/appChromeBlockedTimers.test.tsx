@@ -204,6 +204,16 @@ const mountLayout = (overlay: Partial<OverlayState> = {}, ui: Partial<UiState> =
 // re-arm that follows it) lands before we assert.
 const flush = () => new Promise(resolve => setTimeout(resolve, 20))
 
+const waitFor = async (predicate: () => boolean, attempts = 50) => {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (predicate()) {
+      return true
+    }
+    await new Promise(resolve => setTimeout(resolve, 10))
+  }
+  return predicate()
+}
+
 let intervalSpy: IntervalSpy
 let nowSpy: ReturnType<typeof vi.spyOn<typeof Date, 'now'>>
 
@@ -304,7 +314,12 @@ describe('status-chrome timers under an occluding overlay', () => {
     nowSpy.mockReturnValue(T0 + 300_000)
     rule.clear()
     resetOverlayState()
-    await flush()
+    expect(
+      await waitFor(() => {
+        const output = rule.output()
+        return output.includes('6m 0s') && output.includes('✓ 5m 5s')
+      })
+    ).toBe(true)
 
     const resumed = rule.output()
 
