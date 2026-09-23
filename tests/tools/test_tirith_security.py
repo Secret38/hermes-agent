@@ -652,6 +652,40 @@ class TestScannerReadiness:
             assert _tirith_mod.scanner_available() is False
         assert not (tmp_path / "bin").exists()
 
+    @patch("tools.tirith_security.subprocess.run")
+    @patch("tools.tirith_security._local_scanner_path", return_value="C:/Hermes/bin/tirith.exe")
+    @patch("tools.tirith_security._load_security_config")
+    def test_scanner_healthy_requires_successful_version_probe(self, mock_cfg, mock_path, mock_run):
+        del mock_path
+        mock_cfg.return_value = {
+            "tirith_enabled": True,
+            "tirith_path": "tirith",
+            "tirith_timeout": 5,
+            "tirith_fail_open": False,
+        }
+        mock_run.return_value = _mock_run(0)
+
+        assert _tirith_mod.scanner_healthy() is True
+        args = mock_run.call_args.args[0]
+        assert args == ["C:/Hermes/bin/tirith.exe", "--version"]
+        assert mock_run.call_args.kwargs["timeout"] == 5
+
+    @patch("tools.tirith_security.subprocess.run")
+    @patch("tools.tirith_security._local_scanner_path", return_value="C:/Hermes/bin/tirith.exe")
+    @patch("tools.tirith_security._load_security_config")
+    def test_scanner_healthy_rejects_timeout(self, mock_cfg, mock_path, mock_run):
+        del mock_path
+        mock_cfg.return_value = {
+            "tirith_enabled": True,
+            "tirith_path": "tirith",
+            "tirith_timeout": 30,
+            "tirith_fail_open": False,
+        }
+        mock_run.side_effect = subprocess.TimeoutExpired(cmd="tirith", timeout=5)
+
+        assert _tirith_mod.scanner_healthy() is False
+        assert mock_run.call_args.kwargs["timeout"] == 5
+
     @patch("tools.tirith_security._record_install_result")
     @patch("tools.tirith_security._install_tirith", return_value=("C:/Hermes/bin/tirith.exe", ""))
     @patch("tools.tirith_security._disk_marker_blocks_install", return_value=False)
