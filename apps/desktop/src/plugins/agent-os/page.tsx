@@ -898,6 +898,116 @@ function TaskDetail({ task }: { task: AgentOSTask }) {
   )
 }
 
+function ProcessMap({ task }: { task: AgentOSTask }) {
+  const plan = task.plan
+  const activeAgents = task.agents.filter(agent => RUNNING_STATES.has(agent.state)).length
+  const activeActions = task.actions.filter(action => RUNNING_STATES.has(action.state) || action.state === 'WAITING_PERMISSION').length
+  const verificationActions = task.actions.filter(action => action.verification_required)
+  const verified = verificationActions.filter(action => action.state === 'SUCCEEDED').length
+  const recovery = task.metrics.recoveries > 0
+
+  const stages = [
+    {
+      id: 'goal',
+      icon: 'target',
+      label: 'Goal',
+      state: task.state,
+      detail: task.goal
+    },
+    {
+      id: 'plan',
+      icon: 'list-tree',
+      label: 'Plan',
+      state: plan?.state ?? 'PENDING',
+      detail: plan ? `${plan.progress.succeeded}/${plan.progress.total} steps` : 'waiting for compiled plan'
+    },
+    {
+      id: 'agents',
+      icon: 'hubot',
+      label: 'Agents',
+      state: activeAgents > 0 ? 'RUNNING' : task.agents.some(agent => agent.state === 'SUCCEEDED') ? 'SUCCEEDED' : 'READY',
+      detail: `${task.agents.length} total · ${activeAgents} active`
+    },
+    {
+      id: 'actions',
+      icon: 'tools',
+      label: 'Execution',
+      state: activeActions > 0 ? 'EXECUTING' : task.actions.some(action => action.state === 'FAILED') ? 'FAILED' : 'READY',
+      detail: `${task.actions.length} actions · ${activeActions} active`
+    },
+    {
+      id: 'verify',
+      icon: 'verified',
+      label: 'Verify',
+      state:
+        task.state === 'COMPLETED'
+          ? 'SUCCEEDED'
+          : task.state === 'VERIFYING'
+            ? 'VERIFYING'
+            : verificationActions.some(action => action.state === 'FAILED')
+              ? 'FAILED'
+              : 'READY',
+      detail: `${verified}/${verificationActions.length} verified`
+    },
+    {
+      id: 'memory',
+      icon: 'database',
+      label: 'Persist',
+      state: task.state === 'COMPLETED' ? 'SUCCEEDED' : 'ACTIVE',
+      detail: task.workspace_id ? `workspace ${compactId(task.workspace_id)}` : 'durable ledger'
+    }
+  ]
+
+  return (
+    <section className="aos-panel overflow-hidden">
+      <SectionHeader
+        icon="type-hierarchy"
+        meta={recovery ? `${task.metrics.recoveries} recovery` : 'live execution path'}
+        title="Process map"
+      />
+      <div className="aos-process-map aos-scrollbar overflow-x-auto p-3">
+        <div className="flex min-w-max items-stretch">
+          {stages.map((stage, index) => (
+            <div className="flex items-center" key={stage.id}>
+              <div className="w-36 rounded-lg border border-(--ui-stroke-tertiary) bg-(--ui-bg-secondary) p-2.5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="grid size-6 shrink-0 place-items-center rounded border border-(--ui-stroke-tertiary) bg-(--ui-bg-primary)">
+                    <Codicon name={stage.icon} size="0.7rem" />
+                  </div>
+                  <StateBadge compact state={stage.state} />
+                </div>
+                <div className="mt-2 text-[0.68rem] font-semibold text-foreground">{stage.label}</div>
+                <div
+                  className="mt-1 line-clamp-2 min-h-7 text-[0.58rem] leading-relaxed text-(--ui-text-tertiary)"
+                  title={stage.detail}
+                >
+                  {stage.detail}
+                </div>
+              </div>
+              {index < stages.length - 1 && (
+                <div className="relative mx-1.5 h-px w-8 bg-(--ui-stroke-tertiary)">
+                  <Codicon
+                    className="absolute -right-1.5 top-1/2 -translate-y-1/2 text-(--ui-text-tertiary)"
+                    name="chevron-right"
+                    size="0.55rem"
+                  />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+      {recovery && (
+        <div className="flex items-center gap-2 border-t border-(--ui-stroke-tertiary) bg-[color-mix(in_srgb,#d49b45_7%,transparent)] px-3 py-2 text-[0.6rem] text-(--ui-text-tertiary)">
+          <Codicon name="debug-restart" size="0.68rem" />
+          Recovery is part of this execution path · {task.metrics.recoveries} recorded attempt
+          {task.metrics.recoveries === 1 ? '' : 's'}
+        </div>
+      )}
+    </section>
+  )
+}
+
 function Overview({
   onSelect,
   query,
@@ -935,6 +1045,7 @@ function Overview({
 
       {selected && (
         <>
+          <ProcessMap task={selected} />
           <SafetyStrip task={selected} />
           <div className="grid gap-3 lg:grid-cols-2">
             <section className="aos-panel min-w-0 overflow-hidden">
