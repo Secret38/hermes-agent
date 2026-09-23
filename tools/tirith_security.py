@@ -418,6 +418,25 @@ def _find_local_tirith() -> str | None:
     return shutil.which("tirith") or (hermes_bin if _is_executable(hermes_bin) else None)
 
 
+def scanner_available() -> bool:
+    """Read-only proof that the configured Tirith executable is locally runnable.
+
+    Never creates directories, downloads assets, or mutates resolver state. This
+    is the health/status predicate; provisioning uses ensure_installed_sync().
+    """
+    cfg = _load_security_config()
+    if not cfg["tirith_enabled"]:
+        return False
+    configured = str(cfg["tirith_path"] or "tirith")
+    if configured != "tirith":
+        expanded = os.path.expanduser(configured)
+        return bool(_is_executable(expanded) or shutil.which(expanded))
+    if shutil.which("tirith"):
+        return True
+    hermes_bin = os.path.join(str(get_hermes_home()), "bin", _installed_binary_name())
+    return _is_executable(hermes_bin)
+
+
 def _resolve_locally(configured_path: str, *, warn_missing: bool) -> tuple[str | None, bool]:
     """Network-free resolution -> ``(path, may_install)``: ``path`` set = resolved (module state
     updated); else ``may_install`` False = terminal miss (explicit path missing, cached non-retryable
@@ -506,8 +525,8 @@ def ensure_installed(*, log_failures: bool = True):
         return None
     if cached := _cached_path():
         return cached if _is_executable(cached) else None
-    # No tirith build here (e.g. Windows): stay silent -- no PATH probe, no download thread,
-    # no disk marker. Pattern-matching guards still run.
+    # No release build for this OS/architecture: stay silent -- no PATH probe,
+    # no download thread, no disk marker. Pattern-matching guards still run.
     if not is_platform_supported():
         _set_failed("unsupported_platform")
         return None
@@ -519,6 +538,30 @@ def ensure_installed(*, log_failures: bool = True):
                                            kwargs={"log_failures": log_failures})
         _install_thread.start()
     return None  # not available yet; commands fail-open until ready
+
+
+def ensure_installed_sync(*, log_failures: bool = True) -> str | None:
+    """Resolve/install Tirith synchronously for explicit provisioning flows.
+
+    Unlike ensure_installed(), this may block on a verified download. It is
+    never called by ordinary command execution or read-only health/status.
+    """
+    global _install_thread
+    cfg = _load_security_config()
+    if not cfg["tirith_enabled"] or not is_platform_supported():
+        return None
+    if cached := _cached_path():
+        return cached if _is_executable(cached) else None
+
+    with _install_lock:
+        if cached := _cached_path():
+            return cached if _is_executable(cached) else None
+        found, may_install = _resolve_locally(cfg["tirith_path"], warn_missing=True)
+        if found or not may_install:
+            return found
+        if _disk_marker_blocks_install():
+            return None
+        return _record_install_result(*_install_tirith(log_failures=log_failures))
 
 
 # --- Main API ---
