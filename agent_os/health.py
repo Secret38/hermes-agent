@@ -26,6 +26,7 @@ class HealthCheck:
     detail: str
     required_for_core: bool = False
     required_for_full: bool = False
+    required_for_production_security: bool = False
     remediation: str | None = None
 
     @property
@@ -39,6 +40,7 @@ class HealthCheck:
             "detail": self.detail,
             "required_for_core": self.required_for_core,
             "required_for_full": self.required_for_full,
+            "required_for_production_security": self.required_for_production_security,
             "remediation": self.remediation,
         }
 
@@ -50,6 +52,7 @@ class AgentOSHealthReport:
     core_ready: bool
     full_ready: bool
     checks: tuple[HealthCheck, ...]
+    production_security_ready: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -57,6 +60,7 @@ class AgentOSHealthReport:
             "store_path": self.store_path,
             "core_ready": self.core_ready,
             "full_ready": self.full_ready,
+            "production_security_ready": self.production_security_ready,
             "checks": [check.to_dict() for check in self.checks],
         }
 
@@ -222,6 +226,72 @@ def _computer_use_probe() -> bool:
     return bool(status.get("ready") is True)
 
 
+def _production_security_check() -> HealthCheck:
+    """Verify fail-closed policy for remote/content-driven production use."""
+
+    try:
+        from tools import approval_context
+
+        mode = approval_context._get_approval_mode()
+        cron_mode = approval_context._get_cron_approval_mode()
+        single_query_mode = approval_context._get_single_query_approval_mode()
+        unattended_mode = approval_context._get_unattended_approval_mode()
+        confirm_host_mutations = approval_context._confirm_host_mutations()
+        tirith_fail_open = approval_context._tirith_fail_open()
+        from tools import tirith_security
+        tirith_scanner_healthy = tirith_security.scanner_healthy()
+    except Exception as exc:
+        return HealthCheck(
+            "production_security",
+            HealthStatus.FAIL,
+            f"production security policy could not be resolved: {type(exc).__name__}: {exc}",
+            required_for_production_security=True,
+            remediation=(
+                "Repair config access and verify docs/agent-os-production-security.md."
+            ),
+        )
+
+    unsafe: list[str] = []
+    if mode != "manual":
+        unsafe.append(f"approvals.mode={mode}")
+    if cron_mode != "deny":
+        unsafe.append(f"approvals.cron_mode={cron_mode}")
+    if single_query_mode != "deny":
+        unsafe.append(f"approvals.single_query_mode={single_query_mode}")
+    if unattended_mode != "deny":
+        unsafe.append(f"approvals.unattended_mode={unattended_mode}")
+    if not confirm_host_mutations:
+        unsafe.append("approvals.confirm_host_mutations=false")
+    if tirith_fail_open:
+        unsafe.append("Tirith disabled or security.tirith_fail_open=true")
+    elif not tirith_scanner_healthy:
+        unsafe.append("Tirith scanner is not installed, executable, or healthy")
+    if "SUDO_PASSWORD" in os.environ:
+        unsafe.append("SUDO_PASSWORD is configured")
+
+    if unsafe:
+        return HealthCheck(
+            "production_security",
+            HealthStatus.FAIL,
+            "unsafe production policy: " + ", ".join(unsafe),
+            required_for_production_security=True,
+            remediation=(
+                "Use manual approvals with approvals.confirm_host_mutations=true; "
+                "deny cron/single-query/unattended approvals; "
+                "enable Tirith with security.tirith_fail_open=false; remove SUDO_PASSWORD "
+                "from the Agent environment. See docs/agent-os-production-security.md."
+            ),
+        )
+
+    return HealthCheck(
+        "production_security",
+        HealthStatus.PASS,
+        "manual approvals; host mutations require exact consent; unattended contexts deny; "
+        "Tirith scanner healthy and fail-closed; no stored sudo password",
+        required_for_production_security=True,
+    )
+
+
 def collect_agent_os_health(
     *,
     db_path: Path | str | None = None,
@@ -259,11 +329,15 @@ def collect_agent_os_health(
             failure="Hermes computer-use runtime is unavailable",
             remediation="Run hermes agent-os provision, then re-run hermes agent-os status --require-full.",
         ),
+        _production_security_check(),
     ]
 
     core_ready = all(check.ok for check in checks if check.required_for_core)
     full_ready = core_ready and all(
         check.ok for check in checks if check.required_for_full
+    )
+    production_security_ready = all(
+        check.ok for check in checks if check.required_for_production_security
     )
     return AgentOSHealthReport(
         platform=platform.platform(),
@@ -271,4 +345,5 @@ def collect_agent_os_health(
         core_ready=core_ready,
         full_ready=full_ready,
         checks=tuple(checks),
+        production_security_ready=production_security_ready,
     )

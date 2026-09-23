@@ -2465,8 +2465,21 @@ class MatrixAdapter(BasePlatformAdapter):
         if choice is None:
             return handled
         try:
-            from tools.approval import resolve_gateway_approval
-            count = resolve_gateway_approval(prompt.session_key, choice)
+            from tools.approval import gateway_approval_actor_authorized, resolve_gateway_approval
+            if not gateway_approval_actor_authorized(prompt.session_key, sender):
+                logger.warning(
+                    "Rejected Matrix approval reaction for session %s by non-owner user %s",
+                    prompt.session_key, sender or "<unknown>",
+                )
+                await self._send_invalid_reaction_feedback(
+                    room_id,
+                    reacts_to,
+                    "Only the user who initiated this run may approve or deny it.",
+                )
+                return True
+            count = resolve_gateway_approval(
+                prompt.session_key, choice, actor_user_id=sender
+            )
             if count:
                 prompt.resolved = True
                 self._approval_prompts_by_event.pop(reacts_to, None)

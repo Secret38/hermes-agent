@@ -1459,6 +1459,27 @@ class TurnRunner:
         cmd = _redact_approval_command(approval_data.get("command", ""))
         desc = approval_data.get("description", "dangerous command")
         flags = {k: approval_data.get(k, d) for k, d in (("allow_permanent", True), ("allow_session", True), ("smart_denied", False))}
+
+        # Consent is principal-bound, not merely chat-bound. The central approval queue is keyed by
+        # session (group sessions intentionally share a chat key), so preserve the human principal
+        # who initiated this turn beside the gateway's presentation state. Slash /approve|/deny
+        # handlers consult this before resolving the central queue. Do not put this field into the
+        # model-facing payload or durable transcript.
+        pending = dict(approval_data)
+        pending["_approval_owner_user_id"] = str(getattr(ctx.source, "user_id", "") or "").strip()
+        pending["_approval_owner_chat_id"] = str(getattr(ctx.source, "chat_id", "") or "").strip()
+        pending["_approval_owner_chat_type"] = str(getattr(ctx.source, "chat_type", "") or "").strip()
+        self._runner._pending_approvals[ctx.session_key] = pending
+        request_id = str(approval_data.get("request_id") or "").strip()
+        if request_id:
+            from tools.approval import bind_gateway_approval_principal
+            bind_gateway_approval_principal(
+                ctx.session_key,
+                request_id,
+                user_id=getattr(ctx.source, "user_id", None),
+                chat_id=getattr(ctx.source, "chat_id", None),
+                chat_type=getattr(ctx.source, "chat_type", None),
+            )
         # Check the *class*, not the instance — MagicMock auto-creates attributes in tests.
         if _renders_exec_approval_buttons(type(adapter)):
             try:

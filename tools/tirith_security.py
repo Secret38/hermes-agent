@@ -3,8 +3,8 @@ commands for content-level threats (homograph URLs, pipe-to-interpreter, termina
 The exit code is the verdict source of truth (0 allow, 1 block, 2 warn); JSON stdout only
 enriches findings. Operational failures (spawn error, timeout, unknown exit) respect
 ``fail_open``; programming errors propagate. Auto-install: a missing tirith is downloaded from
-GitHub releases to $HERMES_HOME/bin/tirith in a background thread -- SHA-256 always verified,
-cosign provenance when cosign is on PATH."""
+GitHub releases to $HERMES_HOME/bin/tirith (tirith.exe on Windows) in a background thread --
+SHA-256 always verified, cosign provenance when cosign is on PATH."""
 
 import hashlib
 import json
@@ -19,6 +19,7 @@ import tempfile
 import threading
 import time
 import urllib.request
+import zipfile
 from contextlib import suppress
 
 from hermes_constants import get_hermes_home, get_hermes_home_override, hermes_home_key
@@ -198,17 +199,34 @@ def _hermes_bin_dir() -> str:
     return d
 
 
-# Rust target triple components. Android (Termux) is ABI-compatible with Linux. Windows is
-# absent on purpose (no tirith build): None = "never available here", pattern guards still run.
-_TARGET_PLATFORMS = {"Darwin": "apple-darwin", "Linux": "unknown-linux-gnu", "Android": "unknown-linux-gnu"}
+# Rust target triple components. Android (Termux) is ABI-compatible with Linux.
+# Tirith v0.4.x also publishes an x86_64 Windows MSVC release asset; Windows ARM64
+# remains unsupported, so target construction has one explicit architecture constraint.
+_TARGET_PLATFORMS = {
+    "Darwin": "apple-darwin",
+    "Linux": "unknown-linux-gnu",
+    "Android": "unknown-linux-gnu",
+    "Windows": "pc-windows-msvc",
+}
 _TARGET_ARCHES = {"x86_64": "x86_64", "amd64": "x86_64", "aarch64": "aarch64", "arm64": "aarch64"}
 
 
 def _detect_target() -> str | None:
-    """Rust target triple for this platform, or None if tirith has no build for it."""
-    plat = _TARGET_PLATFORMS.get(platform.system())
+    """Rust target triple for this platform, or None if tirith has no release build for it."""
+    system = platform.system()
+    plat = _TARGET_PLATFORMS.get(system)
     arch = _TARGET_ARCHES.get(platform.machine().lower())
+    if system == "Windows" and arch != "x86_64":
+        return None
     return f"{arch}-{plat}" if plat and arch else None
+
+
+def _installed_binary_name() -> str:
+    return "tirith.exe" if platform.system() == "Windows" else "tirith"
+
+
+def _release_archive_name(target: str) -> str:
+    return f"tirith-{target}.zip" if target.endswith("-pc-windows-msvc") else f"tirith-{target}.tar.gz"
 
 
 def is_platform_supported() -> bool:
@@ -306,6 +324,28 @@ def _extract_tirith_binary(tar: tarfile.TarFile, dest_dir: str, log) -> tuple[st
     return None, "binary_not_in_archive"
 
 
+def _extract_tirith_zip_binary(archive: zipfile.ZipFile, dest_dir: str, log) -> tuple[str | None, str]:
+    """Copy tirith.exe from a Windows release ZIP without trusting archive paths or metadata."""
+    for member in archive.infolist():
+        normalized = member.filename.replace("\\", "/")
+        parts = [part for part in normalized.split("/") if part not in ("", ".")]
+        if not parts or parts[-1].lower() != "tirith.exe":
+            continue
+        if ".." in parts or member.is_dir():
+            log("tirith ZIP member is not a safe regular file: %s", member.filename)
+            return None, "binary_not_regular_file"
+        dest_path = os.path.join(dest_dir, "tirith.exe")
+        try:
+            with archive.open(member, "r") as src_file, open(dest_path, "wb") as out:
+                shutil.copyfileobj(src_file, out)
+        except (OSError, KeyError, RuntimeError, zipfile.BadZipFile):
+            log("tirith Windows binary could not be read from archive")
+            return None, "binary_extract_failed"
+        return dest_path, ""
+    log("tirith Windows binary not found in archive")
+    return None, "binary_not_in_archive"
+
+
 def _install_tirith(*, log_failures: bool = True) -> tuple[str | None, str]:
     """Download and install tirith to $HERMES_HOME/bin/tirith -> ``(installed_path,
     failure_reason)``; the reason ("" on success) is the disk marker's retryability tag."""
@@ -313,7 +353,7 @@ def _install_tirith(*, log_failures: bool = True) -> tuple[str | None, str]:
     if not (target := _detect_target()):
         logger.info("tirith auto-install: unsupported platform %s/%s", platform.system(), platform.machine())
         return None, "unsupported_platform"
-    archive_name = f"tirith-{target}.tar.gz"
+    archive_name = _release_archive_name(target)
     base_url = f"https://github.com/{_REPO}/releases/latest/download"
     try:
         tmpdir = tempfile.mkdtemp(prefix="tirith-install-")
@@ -334,11 +374,19 @@ def _install_tirith(*, log_failures: bool = True) -> tuple[str | None, str]:
             return None, reason
         if not _verify_checksum(archive_path, checksums_path, archive_name):
             return None, "checksum_failed"
-        with tarfile.open(archive_path, "r:gz") as tar:
-            src, reason = _extract_tirith_binary(tar, tmpdir, log)
+        try:
+            if archive_name.endswith(".zip"):
+                with zipfile.ZipFile(archive_path, "r") as archive:
+                    src, reason = _extract_tirith_zip_binary(archive, tmpdir, log)
+            else:
+                with tarfile.open(archive_path, "r:gz") as tar:
+                    src, reason = _extract_tirith_binary(tar, tmpdir, log)
+        except (tarfile.TarError, zipfile.BadZipFile, OSError) as exc:
+            log("tirith archive could not be opened: %s", exc)
+            return None, "archive_invalid"
         if src is None:
             return None, reason
-        dest = os.path.join(_hermes_bin_dir(), "tirith")
+        dest = os.path.join(_hermes_bin_dir(), _installed_binary_name())
         try:
             shutil.move(src, dest)
         except OSError:
@@ -351,7 +399,8 @@ def _install_tirith(*, log_failures: bool = True) -> tuple[str | None, str]:
                 with suppress(OSError):
                     os.unlink(dest)
                 return None, "cross_device_copy_failed"
-        os.chmod(dest, os.stat(dest).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        if platform.system() != "Windows":
+            os.chmod(dest, os.stat(dest).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
         logger.info("tirith installed to %s (%s)", dest, "cosign + SHA-256" if cosign_verified else "SHA-256 only")
         return dest, ""
     finally:
@@ -365,8 +414,54 @@ def _is_executable(path: str) -> bool:
 
 def _find_local_tirith() -> str | None:
     """Cheap local lookup for the default "tirith": PATH, then $HERMES_HOME/bin."""
-    hermes_bin = os.path.join(_hermes_bin_dir(), "tirith")
+    hermes_bin = os.path.join(_hermes_bin_dir(), _installed_binary_name())
     return shutil.which("tirith") or (hermes_bin if _is_executable(hermes_bin) else None)
+
+
+def _local_scanner_path() -> str | None:
+    """Resolve the configured scanner without downloads, mkdirs, or cache mutation."""
+    cfg = _load_security_config()
+    if not cfg["tirith_enabled"]:
+        return None
+    configured = str(cfg["tirith_path"] or "tirith")
+    if configured != "tirith":
+        expanded = os.path.expanduser(configured)
+        if _is_executable(expanded):
+            return expanded
+        return shutil.which(expanded)
+    if found := shutil.which("tirith"):
+        return found
+    hermes_bin = os.path.join(str(get_hermes_home()), "bin", _installed_binary_name())
+    return hermes_bin if _is_executable(hermes_bin) else None
+
+
+def scanner_available() -> bool:
+    """Read-only proof that a configured/local Tirith executable exists."""
+    return _local_scanner_path() is not None
+
+
+def scanner_healthy() -> bool:
+    """Read-only execution probe for production-readiness checks.
+
+    The probe never installs or mutates anything; it only executes the resolved
+    binary's version command under a short timeout.
+    """
+    path = _local_scanner_path()
+    if not path:
+        return False
+    cfg = _load_security_config()
+    timeout = max(1, min(int(cfg.get("tirith_timeout", 5)), 5))
+    try:
+        result = subprocess.run(
+            [path, "--version"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=timeout,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
 
 
 def _resolve_locally(configured_path: str, *, warn_missing: bool) -> tuple[str | None, bool]:
@@ -457,9 +552,9 @@ def ensure_installed(*, log_failures: bool = True):
         return None
     if cached := _cached_path():
         return cached if _is_executable(cached) else None
-    # No tirith build here (e.g. Windows): stay silent -- no PATH probe, no download thread,
-    # no disk marker. Pattern-matching guards still run.
-    if not is_platform_supported():
+    # The default path can only auto-install where an official release target
+    # exists. An explicit path is still resolved on every platform.
+    if cfg["tirith_path"] == "tirith" and not is_platform_supported():
         _set_failed("unsupported_platform")
         return None
     found, may_install = _resolve_locally(cfg["tirith_path"], warn_missing=False)
@@ -470,6 +565,34 @@ def ensure_installed(*, log_failures: bool = True):
                                            kwargs={"log_failures": log_failures})
         _install_thread.start()
     return None  # not available yet; commands fail-open until ready
+
+
+def ensure_installed_sync(*, log_failures: bool = True) -> str | None:
+    """Resolve/install Tirith synchronously for explicit provisioning flows.
+
+    Unlike ensure_installed(), this may block on a verified download. It is
+    never called by ordinary command execution or read-only health/status.
+    """
+    global _install_thread
+    cfg = _load_security_config()
+    if not cfg["tirith_enabled"]:
+        return None
+    # Explicit paths remain authoritative even where Hermes cannot auto-install
+    # an official release artifact (for example a locally built target).
+    if cfg["tirith_path"] == "tirith" and not is_platform_supported():
+        return None
+    if cached := _cached_path():
+        return cached if _is_executable(cached) else None
+
+    with _install_lock:
+        if cached := _cached_path():
+            return cached if _is_executable(cached) else None
+        found, may_install = _resolve_locally(cfg["tirith_path"], warn_missing=True)
+        if found or not may_install:
+            return found
+        if _disk_marker_blocks_install():
+            return None
+        return _record_install_result(*_install_tirith(log_failures=log_failures))
 
 
 # --- Main API ---

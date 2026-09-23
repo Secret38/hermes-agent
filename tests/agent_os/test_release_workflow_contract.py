@@ -83,6 +83,7 @@ def test_release_publication_is_blocked_on_every_v1_qualification_invariant():
         "durable_state_preserved",
         "full_uninstall",
         "full_ready",
+        "production_security_ready",
         'windows_golden -ne "GT-12,GT-13"',
         'golden_tasks -ne "20/20"',
     ):
@@ -104,6 +105,9 @@ def test_release_qualification_still_requires_runtime_repair_state_and_uninstall
     names = {step.get("name") for step in qualify.get("steps", [])}
 
     assert "Require full readiness from the installed runtime" in names
+    readiness = _step(qualify, "Require full readiness from the installed runtime")["run"]
+    assert "--require-full" in readiness
+    assert "--require-production-security" in readiness
     assert "Prove native Windows GT-12 and GT-13 from the installed checkout" in names
     assert "Prove canonical Agent OS V1 20/20 from the installed checkout" in names
     assert "Seed durable Agent OS state before repair" in names

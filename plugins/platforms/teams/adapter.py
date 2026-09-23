@@ -640,7 +640,23 @@ class TeamsAdapter(BasePlatformAdapter):
             return self._invoke_message("Unknown action.")
         if not has_blocking_approval(session_key):
             return self._invoke_card([TextBlock(text="⚠️ Approval already resolved or expired.", wrap=True)])
-        resolve_gateway_approval(session_key, choice)
+        clicker_id = (
+            getattr(ctx.activity.from_, "aad_object_id", None)
+            or getattr(ctx.activity.from_, "id", "")
+            or ""
+        )
+        from tools.approval import gateway_approval_actor_authorized
+        if not gateway_approval_actor_authorized(session_key, str(clicker_id)):
+            logger.warning(
+                "[teams] Rejected approval click for session %s by non-owner user %s",
+                session_key, clicker_id or "<unknown>",
+            )
+            return self._invoke_message("⛔ Only the user who initiated this run may approve or deny it.")
+        count = resolve_gateway_approval(
+            session_key, choice, actor_user_id=str(clicker_id)
+        )
+        if not count:
+            return self._invoke_card([TextBlock(text="⚠️ Approval already resolved or expired.", wrap=True)])
         body = _approval_body(data.get("cmd", ""), data.get("desc", ""))
         body.append(TextBlock(text=_APPROVAL_LABELS[choice], wrap=True, weight="Bolder"))
         return self._invoke_card(body)

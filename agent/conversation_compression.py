@@ -2514,7 +2514,7 @@ class _CompactionLifecycle:
 
 class _CompressionLease:
     """The per-attempt durable compression lock plus its lifecycle plumbing.
-    ``holder`` is None when no durable lock is owned (legacy DB, no session db); ``watermark`` is MAX(id) of
+    ``holder`` is None when no durable lock is owned (for example, no session DB); ``watermark`` is MAX(id) of
     active rows at lease start (None = archive everything, no concurrent-tail preservation this cycle)."""
 
     def __init__(
@@ -2598,8 +2598,9 @@ class _CompressionLease:
 
 def _resolve_lock_api(lock_db: Any) -> Tuple[Any, Optional[Exception]]:
     """Return ``(try_acquire_compression_lock, lookup_error)`` for ``lock_db``.
-    ``(None, None)`` = no db or legacy SessionDB without the lock API (fail open); ``(None, exc)`` = lookup
-    itself failed (caller fails closed)."""
+    ``(None, None)`` = no db or a SessionDB without the lock API; callers with a durable
+    session must fail closed rather than rotating history without the lineage lock.
+    ``(None, exc)`` = lookup itself failed."""
     if lock_db is None:
         return None, None
     try:
@@ -2697,8 +2698,8 @@ def _acquire_compression_lease(
     """Take the per-session compression lock; ``(None, prompt)`` means sit out.
     Two AIAgents sharing a session_id (e.g. background review fork) would both rotate and orphan a child.
     Keyed on the OLD id (what rivals read from SessionEntry). Loser sits out: messages unchanged, caller sees
-    no-op. Only structural absence of the lock API (version skew) fails open; once resolved, any exception
-    fails closed since unlocked runs can fork lineage."""
+    no-op. A durable session never compresses without the lock API: version skew is recoverable by restart,
+    whereas an unlocked rotation can fork lineage and orphan transcript history."""
     _lock_db = getattr(agent, "_session_db", None)
     _lock_sid = agent.session_id or ""
     # Clear stale lock-skip so this call's outcome alone is visible; else a manual
@@ -2725,17 +2726,27 @@ def _acquire_compression_lease(
             )
             _lock_acquired = False
         elif _try_acquire_lock is None:
-            # Lock API absent on this instance: log once, proceed unlocked so version skew
-            # cannot stall the outer auto-compression loop forever.
+            # Structural version skew is not a safe compatibility case: rotating a durable
+            # transcript without its lineage lock can orphan a child session. Sit out this
+            # cycle and keep the current history intact until the process is restarted.
             lease.holder = None
+            agent._compression_skipped_due_to_lock = True
             if getattr(agent, "_last_compression_lock_error_sid", None) != _lock_sid:
                 agent._last_compression_lock_error_sid = _lock_sid
                 logger.warning(
-                    "compression lock subsystem unavailable for session=%s — proceeding without lock. This usually means a stale "
-                    "in-memory module after an update; restart the process (or `hermes update`) to resync.",
+                    "compression lock subsystem unavailable for session=%s — compression skipped. "
+                    "This usually means a stale in-memory module after an update; restart the process "
+                    "(or `hermes update`) to resync.",
                     _lock_sid,
                 )
-            _lock_acquired = True  # acquired-but-unlocked compatibility path
+                with contextlib.suppress(Exception):
+                    agent._emit_warning(
+                        "⚠ Compression skipped because the session lock API is unavailable. "
+                        "Restart Hermes before retrying compression."
+                    )
+            return _abort_lease(
+                agent, lifecycle, system_message, attempt_started_at, "lock_api_unavailable"
+            )
         else:
             if not lease.begin_lock_setup():
                 logger.info(

@@ -102,19 +102,27 @@ def _make_prompt(chat_id="!testroom:matrix.org"):
     )
 
 
-def _run(adapter, event):
-    """Run _on_reaction and return whether the prompt was resolved."""
+def _run(adapter, event, *, central_authorized=True):
+    """Run _on_reaction and return (resolved, resolver_calls)."""
     prompt_event_id = "$prompt-event-1"
     prompt = _make_prompt()
     adapter._approval_prompts_by_event[prompt_event_id] = prompt
     adapter._redact_bot_approval_reactions = AsyncMock()
+    adapter._send_invalid_reaction_feedback = AsyncMock()
 
+    resolver_calls = []
     fake_approval = types.ModuleType("tools.approval")
-    fake_approval.resolve_gateway_approval = lambda session_key, choice: 1
+    fake_approval.gateway_approval_actor_authorized = (
+        lambda session_key, actor_user_id: central_authorized
+    )
+    fake_approval.resolve_gateway_approval = (
+        lambda session_key, choice, **kwargs:
+        resolver_calls.append((session_key, choice, kwargs.get("actor_user_id"))) or 1
+    )
     with patch.dict(sys.modules, {"tools.approval": fake_approval}):
         asyncio.run(adapter._on_reaction(event))
 
-    return prompt.resolved
+    return prompt.resolved, resolver_calls
 
 
 # ---------------------------------------------------------------------------
@@ -130,6 +138,30 @@ class TestApprovalReactionFailClosed:
         monkeypatch.delenv("GATEWAY_ALLOW_ALL_USERS", raising=False)
         adapter = _make_adapter(allowed_user_ids=None)
         event = _make_event("@stranger:matrix.org", "$prompt-event-1")
-        assert _run(adapter, event) is False
+        resolved, calls = _run(adapter, event)
+        assert resolved is False
+        assert calls == []
+
+
+    def test_allowlisted_room_participant_still_cannot_approve_another_users_turn(self, monkeypatch):
+        monkeypatch.delenv("GATEWAY_ALLOW_ALL_USERS", raising=False)
+        adapter = _make_adapter(allowed_user_ids={"@participant:matrix.org"})
+        event = _make_event("@participant:matrix.org", "$prompt-event-1")
+
+        resolved, calls = _run(adapter, event, central_authorized=False)
+
+        assert resolved is False
+        assert calls == []
+        adapter._send_invalid_reaction_feedback.assert_awaited_once()
+
+    def test_bound_owner_identity_is_forwarded_to_resolver(self, monkeypatch):
+        monkeypatch.delenv("GATEWAY_ALLOW_ALL_USERS", raising=False)
+        adapter = _make_adapter(allowed_user_ids={"@owner:matrix.org"})
+        event = _make_event("@owner:matrix.org", "$prompt-event-1")
+
+        resolved, calls = _run(adapter, event, central_authorized=True)
+
+        assert resolved is True
+        assert calls == [("session-abc", "once", "@owner:matrix.org")]
 
 
