@@ -333,7 +333,6 @@ function PlanGraph({ plan }: { plan: AgentOSPlan | null | undefined }) {
                         aria-label={`Inspect ${step.title}`}
                         className="grid size-6 shrink-0 place-items-center rounded text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground"
                         onClick={() => setSelectedStepId(step.id)}
-                        title="Inspect step"
                         type="button"
                       >
                         <Codicon name={stateGlyph(step.state)} size="0.78rem" />
@@ -416,7 +415,7 @@ function PlanGraph({ plan }: { plan: AgentOSPlan | null | undefined }) {
                       className="max-w-full truncate rounded border border-(--ui-stroke-tertiary) px-1.5 py-1 text-[0.58rem] text-(--ui-text-secondary) hover:bg-(--ui-control-hover-background)"
                       key={id}
                       onClick={() => setSelectedStepId(id)}
-                      title={titleById.get(id) ?? id}
+                      aria-label={titleById.get(id) ?? id}
                       type="button"
                     >
                       {titleById.get(id) ?? compactId(id)}
@@ -547,7 +546,7 @@ function Timeline({ events }: { events: AgentOSEvent[] }) {
             )}
             key={item.id}
             onClick={() => setFilter(item.id)}
-            title={item.label}
+            aria-label={item.label}
             type="button"
           >
             {item.id === 'all' ? 'All' : item.label}
@@ -566,7 +565,6 @@ function Timeline({ events }: { events: AgentOSEvent[] }) {
               aria-label={`Inspect ${humanize(event.type)} event`}
               className="aos-timeline-glyph hover:border-[color-mix(in_srgb,var(--dt-primary)_40%,var(--ui-stroke-tertiary))] hover:text-foreground"
               onClick={() => setSelectedEventId(event.id)}
-              title="Inspect event"
               type="button"
             >
               <Codicon name={eventIcon(event.type)} size="0.7rem" />
@@ -874,7 +872,6 @@ function ActionControls({ actions }: { actions: AgentOSAction[] }) {
                   aria-label={`Inspect ${action.tool} ${action.operation}`}
                   className="grid size-6 place-items-center rounded text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground"
                   onClick={() => setSelectedActionId(action.id)}
-                  title="Inspect action"
                   type="button"
                 >
                   <Codicon name="search" size="0.68rem" />
@@ -1088,7 +1085,7 @@ function TaskHeader({ task }: { task: AgentOSTask }) {
           <button
             className="inline-flex items-center gap-1 rounded border border-(--ui-stroke-tertiary) px-1.5 py-0.5 text-(--ui-text-secondary) hover:bg-(--ui-control-hover-background) hover:text-foreground"
             onClick={() => host.navigate(`/${encodeURIComponent(task.session_id!)}`)}
-            title={task.session_id}
+            aria-label={`Open originating session ${task.session_id}`}
             type="button"
           >
             <Codicon name="comment-discussion" size="0.62rem" />
@@ -1669,7 +1666,7 @@ function OperationsView() {
                         <button
                           className="rounded border border-[color-mix(in_srgb,var(--dt-primary)_40%,var(--ui-stroke-tertiary))] px-2 py-1 text-[0.58rem] font-medium text-foreground hover:bg-(--ui-control-hover-background)"
                           onClick={() => openHermesSession(task.workerSessionId!, workerRoute)}
-                          title="Open the exact worker session bound to this run"
+                          aria-label="Open the exact worker session bound to this run"
                           type="button"
                         >
                           Worker
@@ -1773,7 +1770,7 @@ function FleetView() {
                   <button
                     className="min-w-0 flex-1 text-left"
                     onClick={() => openHermesSession(session.id)}
-                    title="Open Hermes session"
+                    aria-label="Open Hermes session"
                     type="button"
                   >
                     <div className="truncate text-xs font-medium text-foreground">
@@ -2050,7 +2047,6 @@ export function AgentOSMissionControl() {
                 void queryClient.invalidateQueries({ queryKey: AGENT_OS_MISSIONS_KEY })
                 void queryClient.invalidateQueries({ queryKey: AGENT_OS_APPROVALS_KEY })
               }}
-              title="Refresh Agent OS state, memory and connections"
               type="button"
             >
               <Codicon className={cn(isFetching && 'animate-spin')} name="refresh" size="0.8rem" />
@@ -2188,7 +2184,7 @@ export function AgentOSStatusChip() {
       className="aos-state inline-flex h-full items-center gap-1.5 rounded-none px-1.5 text-[0.6875rem] text-(--ui-text-tertiary) transition-colors hover:bg-(--chrome-action-hover) hover:text-foreground"
       data-state={state}
       onClick={() => host.navigate('/agent-os')}
-      title={`Agent OS · ${data.summary.active_tasks} active tasks · ${data.summary.active_agents} active agents`}
+      aria-label={`Agent OS · ${data.summary.active_tasks} active tasks · ${data.summary.active_agents} active agents`}
       type="button"
     >
       <span className="aos-state-dot" />
