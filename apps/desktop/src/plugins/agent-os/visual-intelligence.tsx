@@ -8,7 +8,8 @@ import type {
   AgentOSLearningNode,
   AgentOSPlan,
   AgentOSPlanStep,
-  AgentOSTask
+  AgentOSTask,
+  AgentOSTopologyNode
 } from './types'
 
 type ExecutionNodeKind = 'action' | 'agent' | 'goal' | 'persist' | 'plan' | 'verify'
@@ -806,5 +807,221 @@ export function RuntimeObservatory({ task }: { task: AgentOSTask }) {
         />
       </div>
     </section>
+  )
+}
+
+export interface RuntimeTopologyCanvasNode {
+  id: string
+  label: string
+  kind: string
+  status: string
+  detail?: string
+  remediation?: null | string
+  column: number
+  row: number
+}
+
+export interface RuntimeTopologyCanvasModel {
+  nodes: RuntimeTopologyCanvasNode[]
+  edges: Array<{ source: string; target: string; relation: string }>
+  columns: number
+}
+
+export function buildRuntimeTopologyCanvasModel(
+  nodes: AgentOSTopologyNode[],
+  edges: Array<{ source: string; target: string; relation: string }>
+): RuntimeTopologyCanvasModel {
+  if (!nodes.length) return { nodes: [], edges: [], columns: 0 }
+
+  const known = new Set(nodes.map(node => node.id))
+  const validEdges = edges.filter(edge => known.has(edge.source) && known.has(edge.target))
+  const core =
+    nodes.find(node => node.id === 'agent-os') ??
+    nodes.find(node => node.kind === 'core') ??
+    nodes[0]
+  const levels = new Map<string, number>([[core.id, 0]])
+  const outgoing = new Map<string, string[]>()
+
+  for (const edge of validEdges) {
+    outgoing.set(edge.source, [...(outgoing.get(edge.source) ?? []), edge.target])
+  }
+
+  const queue = [core.id]
+  while (queue.length) {
+    const current = queue.shift()!
+    const level = levels.get(current) ?? 0
+    for (const target of outgoing.get(current) ?? []) {
+      if (levels.has(target)) continue
+      levels.set(target, level + 1)
+      queue.push(target)
+    }
+  }
+
+  const fallback = Math.max(0, ...levels.values()) + 1
+  for (const node of nodes) {
+    if (!levels.has(node.id)) levels.set(node.id, fallback)
+  }
+
+  const rows = new Map<number, number>()
+  const modelNodes = nodes
+    .slice()
+    .sort(
+      (a, b) =>
+        (levels.get(a.id) ?? 0) - (levels.get(b.id) ?? 0) ||
+        a.kind.localeCompare(b.kind) ||
+        a.label.localeCompare(b.label)
+    )
+    .map(node => {
+      const column = levels.get(node.id) ?? fallback
+      const row = rows.get(column) ?? 0
+      rows.set(column, row + 1)
+      return {
+        ...node,
+        column,
+        row
+      }
+    })
+
+  return {
+    nodes: modelNodes,
+    edges: validEdges,
+    columns: Math.max(...modelNodes.map(node => node.column), 0) + 1
+  }
+}
+
+const TOPOLOGY_NODE_WIDTH = 178
+const TOPOLOGY_NODE_HEIGHT = 76
+const TOPOLOGY_COLUMN_GAP = 86
+const TOPOLOGY_ROW_GAP = 22
+const TOPOLOGY_PADDING = 30
+
+export function RuntimeTopologyCanvas({
+  edges,
+  nodes
+}: {
+  edges: Array<{ source: string; target: string; relation: string }>
+  nodes: AgentOSTopologyNode[]
+}) {
+  const model = useMemo(() => buildRuntimeTopologyCanvasModel(nodes, edges), [edges, nodes])
+  const [selectedId, setSelectedId] = useState<string>()
+  const counts = new Map<number, number>()
+  for (const node of model.nodes) {
+    counts.set(node.column, (counts.get(node.column) ?? 0) + 1)
+  }
+  const maxRows = Math.max(1, ...counts.values())
+  const height = Math.max(
+    280,
+    TOPOLOGY_PADDING * 2 +
+      maxRows * TOPOLOGY_NODE_HEIGHT +
+      Math.max(0, maxRows - 1) * TOPOLOGY_ROW_GAP
+  )
+  const width =
+    TOPOLOGY_PADDING * 2 +
+    model.columns * TOPOLOGY_NODE_WIDTH +
+    Math.max(0, model.columns - 1) * TOPOLOGY_COLUMN_GAP
+  const positions = new Map(
+    model.nodes.map(node => {
+      const count = counts.get(node.column) ?? 1
+      const total = count * TOPOLOGY_NODE_HEIGHT + Math.max(0, count - 1) * TOPOLOGY_ROW_GAP
+      const x = TOPOLOGY_PADDING + node.column * (TOPOLOGY_NODE_WIDTH + TOPOLOGY_COLUMN_GAP)
+      const y = (height - total) / 2 + node.row * (TOPOLOGY_NODE_HEIGHT + TOPOLOGY_ROW_GAP)
+      return [node.id, { x, y }] as const
+    })
+  )
+  const selected = selectedId ? model.nodes.find(node => node.id === selectedId) : undefined
+
+  if (!model.nodes.length) {
+    return (
+      <div className="grid min-h-64 place-items-center text-xs text-(--ui-text-tertiary)">
+        No runtime topology is currently available.
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <div className="aos-runtime-topology-viewport aos-scrollbar">
+        <div className="aos-runtime-topology-stage" style={{ height, width }}>
+          <svg aria-hidden="true" className="aos-graph-edges" height={height} width={width}>
+            {model.edges.map((edge, index) => {
+              const source = positions.get(edge.source)
+              const target = positions.get(edge.target)
+              if (!source || !target) return null
+              const x1 = source.x + TOPOLOGY_NODE_WIDTH
+              const y1 = source.y + TOPOLOGY_NODE_HEIGHT / 2
+              const x2 = target.x
+              const y2 = target.y + TOPOLOGY_NODE_HEIGHT / 2
+              const dx = Math.max(42, (x2 - x1) * 0.43)
+              return (
+                <path
+                  className="aos-runtime-topology-edge"
+                  d={`M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`}
+                  key={`${edge.source}->${edge.target}:${index}`}
+                />
+              )
+            })}
+          </svg>
+
+          {model.nodes.map(node => {
+            const position = positions.get(node.id)!
+            return (
+              <button
+                className={cn(
+                  'aos-runtime-topology-node',
+                  selectedId === node.id && 'aos-runtime-topology-node-selected'
+                )}
+                data-status={node.status}
+                key={node.id}
+                onClick={() => setSelectedId(node.id)}
+                style={{
+                  height: TOPOLOGY_NODE_HEIGHT,
+                  left: position.x,
+                  top: position.y,
+                  width: TOPOLOGY_NODE_WIDTH
+                }}
+                type="button"
+              >
+                <span className="flex items-start justify-between gap-2">
+                  <span className="aos-kicker">{node.kind}</span>
+                  <span className="aos-graph-status-dot" />
+                </span>
+                <span className="mt-2 block truncate text-left text-[0.68rem] font-semibold text-foreground">
+                  {node.label}
+                </span>
+                <span className="mt-0.5 block truncate text-left text-[0.55rem] uppercase tracking-[0.05em] text-(--ui-text-tertiary)">
+                  {node.status}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      <div className="border-t border-(--ui-stroke-tertiary) px-3 py-2.5">
+        {selected ? (
+          <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(12rem,0.45fr)]">
+            <div className="min-w-0">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="aos-kicker">{selected.kind}</span>
+                <span className="truncate text-[0.66rem] font-medium text-foreground">{selected.label}</span>
+                <span className="shrink-0 text-[0.54rem] uppercase tracking-[0.06em] text-(--ui-text-tertiary)">
+                  {selected.status}
+                </span>
+              </div>
+              <div className="mt-1 text-[0.58rem] leading-relaxed text-(--ui-text-tertiary)">
+                {selected.detail || 'No additional runtime detail.'}
+              </div>
+            </div>
+            <div className="text-[0.56rem] leading-relaxed text-(--ui-text-quaternary)">
+              {selected.remediation || 'No remediation required or published.'}
+            </div>
+          </div>
+        ) : (
+          <div className="text-[0.58rem] text-(--ui-text-tertiary)">
+            Select a runtime node to inspect its health detail and remediation authority.
+          </div>
+        )}
+      </div>
+    </>
   )
 }
