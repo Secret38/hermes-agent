@@ -138,6 +138,30 @@ class TestNoApprovalAuthorityFailsClosed:
         assert result["approved"] is True
 
 
+
+
+class TestExecuteCodeConsentAuthority:
+    def test_headless_unknown_embedding_blocks_execute_code(self, monkeypatch):
+        monkeypatch.delenv("HERMES_INTERACTIVE", raising=False)
+        monkeypatch.delenv("HERMES_GATEWAY_SESSION", raising=False)
+        monkeypatch.delenv("HERMES_EXEC_ASK", raising=False)
+        monkeypatch.delenv("HERMES_CRON_SESSION", raising=False)
+        monkeypatch.delenv("HERMES_SINGLE_QUERY_SESSION", raising=False)
+        monkeypatch.setattr(approval_context, "_is_interactive_cli", lambda: False)
+        monkeypatch.setattr(approval_context, "_is_gateway_approval_context", lambda: False)
+        monkeypatch.setattr(approval_context, "_is_cron_approval_context", lambda: False)
+        monkeypatch.setattr(approval_context, "_is_single_query_approval_context", lambda: False)
+        monkeypatch.setattr(approval_context, "_is_unattended_platform_approval_context", lambda: False)
+        monkeypatch.setattr(approval_module, "_YOLO_MODE_FROZEN", False)
+        monkeypatch.setattr(approval_context, "_get_approval_mode", lambda: "manual")
+
+        result = approval_module.check_execute_code_guard("import os; os.system('id')", "local")
+
+        assert result["approved"] is False
+        assert result["pattern_key"] == "execute_code"
+        assert "no interactive user" in result["message"].lower()
+
+
 class TestApprovalModeParsing:
     def test_normalization_table(self):
         # Unquoted YAML `off`/`on` arrive as booleans; unknown/empty fall back
