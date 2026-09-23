@@ -24,6 +24,7 @@ vi.mock('@/store/session', async () => {
 
   return {
     $activeSessionId: atom(null),
+    $busy: atom(false),
     $connection: atom(null),
     $cronSessions: atom([]),
     $currentCwd: atom(''),
