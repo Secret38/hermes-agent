@@ -312,7 +312,7 @@ export function AgentOSForensicsPage() {
           <button
             className="grid size-7 shrink-0 place-items-center rounded-md border border-(--ui-stroke-tertiary) text-(--ui-text-secondary) hover:bg-(--ui-control-hover-background)"
             onClick={() => void refetch()}
-            title="Refresh ledger"
+            aria-label="Refresh ledger"
             type="button"
           >
             <Codicon name="refresh" size="0.78rem" />
