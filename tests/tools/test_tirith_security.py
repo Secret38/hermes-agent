@@ -6,6 +6,7 @@ import os
 import subprocess
 import tarfile
 import time
+import zipfile
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -300,16 +301,16 @@ class TestUnsupportedPlatform:
 
     @pytest.mark.parametrize("system, machine, expected", [
         ("Linux", "x86_64", True),
-        ("Windows", "AMD64", False),
+        ("Windows", "AMD64", True),
+        ("Windows", "ARM64", False),
         ("Linux", "riscv64", False),
     ])
     def test_is_platform_supported(self, system, machine, expected):
         # The patched (system, machine) pairs are table inputs, not a host
         # fake: is_platform_supported() is a pure string mapping that touches
         # no OS facility beneath the check, so there is nothing for a real
-        # host to falsify. Two of the rows (Windows/AMD64, Linux/riscv64)
-        # could never execute honestly anyway — the second has no CI runner
-        # on any lane.
+        # host to falsify. Unsupported Windows ARM64 and Linux/riscv64 stay
+        # explicit negatives while the shipped Windows x64 target is supported.
         with patch("tools.tirith_security.platform.system", return_value=system), \
              patch("tools.tirith_security.platform.machine", return_value=machine):
             assert _tirith_mod.is_platform_supported() is expected
@@ -317,9 +318,8 @@ class TestUnsupportedPlatform:
 
     @patch("tools.tirith_security._load_security_config")
     def test_check_command_security_unsupported_allows_silently(self, mock_cfg):
-        """Windows: skip the resolver and spawn entirely — return allow with
-        an empty summary so callers can't accidentally surface 'tirith
-        unavailable' messaging to the user."""
+        """An actually unsupported target skips resolver/spawn and returns an
+        empty allow result; supported Windows x64 no longer takes this path."""
         mock_cfg.return_value = {"tirith_enabled": True, "tirith_path": "tirith",
                                  "tirith_timeout": 5, "tirith_fail_open": True}
         with patch("tools.tirith_security.is_platform_supported", return_value=False), \
@@ -536,6 +536,94 @@ class TestInstallArchiveMemberValidation:
         assert path is None
         assert reason == "binary_not_regular_file"
         assert not os.path.lexists(hermes_home / "bin" / "tirith")
+
+
+
+class TestWindowsReleaseInstall:
+    def test_windows_target_and_archive_name(self):
+        with patch("tools.tirith_security.platform.system", return_value="Windows"), \
+             patch("tools.tirith_security.platform.machine", return_value="AMD64"):
+            assert _tirith_mod._detect_target() == "x86_64-pc-windows-msvc"
+            assert _tirith_mod._installed_binary_name() == "tirith.exe"
+            assert _tirith_mod._release_archive_name(_tirith_mod._detect_target()) == (
+                "tirith-x86_64-pc-windows-msvc.zip"
+            )
+
+    def test_windows_arm64_remains_unsupported(self):
+        with patch("tools.tirith_security.platform.system", return_value="Windows"), \
+             patch("tools.tirith_security.platform.machine", return_value="ARM64"):
+            assert _tirith_mod._detect_target() is None
+            assert _tirith_mod.is_platform_supported() is False
+
+    def test_zip_extractor_copies_only_tirith_exe_bytes(self, tmp_path):
+        archive_path = tmp_path / "tirith-x86_64-pc-windows-msvc.zip"
+        payload = b"MZ-test-tirith"
+        with zipfile.ZipFile(archive_path, "w") as archive:
+            archive.writestr("release/tirith.exe", payload)
+
+        with zipfile.ZipFile(archive_path, "r") as archive:
+            path, reason = _tirith_mod._extract_tirith_zip_binary(
+                archive, str(tmp_path / "extract"), lambda *_a: None
+            )
+
+        # The helper writes into the provided directory, matching the install tempdir contract.
+        # Create it before retrying because ZipFile.open itself must never choose extraction paths.
+        if reason == "binary_extract_failed":
+            extract_dir = tmp_path / "extract"
+            extract_dir.mkdir(exist_ok=True)
+            with zipfile.ZipFile(archive_path, "r") as archive:
+                path, reason = _tirith_mod._extract_tirith_zip_binary(
+                    archive, str(extract_dir), lambda *_a: None
+                )
+        assert reason == ""
+        assert path is not None
+        with open(path, "rb") as installed:
+            assert installed.read() == payload
+
+    def test_zip_extractor_rejects_parent_traversal_member(self, tmp_path):
+        archive_path = tmp_path / "tirith-x86_64-pc-windows-msvc.zip"
+        with zipfile.ZipFile(archive_path, "w") as archive:
+            archive.writestr("../tirith.exe", b"MZ")
+
+        with zipfile.ZipFile(archive_path, "r") as archive:
+            path, reason = _tirith_mod._extract_tirith_zip_binary(
+                archive, str(tmp_path), lambda *_a: None
+            )
+
+        assert path is None
+        assert reason == "binary_not_regular_file"
+
+    @patch("tools.tirith_security._verify_checksum", return_value=True)
+    @patch("tools.tirith_security.shutil.which", return_value=None)
+    @patch("tools.tirith_security._detect_target", return_value="x86_64-pc-windows-msvc")
+    def test_install_windows_zip_to_exe(self, mock_target, mock_which, mock_checksum,
+                                        tmp_path, monkeypatch):
+        del mock_target, mock_which, mock_checksum
+        payload = b"MZ-native-windows-tirith"
+        source_zip = tmp_path / "source.zip"
+        checksums = tmp_path / "checksums.txt"
+        with zipfile.ZipFile(source_zip, "w") as archive:
+            archive.writestr("tirith.exe", payload)
+        checksums.write_text(
+            "ignored  tirith-x86_64-pc-windows-msvc.zip\n", encoding="utf-8"
+        )
+
+        def download(url, dest, timeout=10):
+            del timeout
+            source = checksums if url.endswith("checksums.txt") else source_zip
+            with open(source, "rb") as src, open(dest, "wb") as dst:
+                dst.write(src.read())
+
+        hermes_home = tmp_path / "hermes-home"
+        monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+        with patch("tools.tirith_security._download_file", side_effect=download), \
+             patch("tools.tirith_security.platform.system", return_value="Windows"):
+            path, reason = _tirith_mod._install_tirith(log_failures=False)
+
+        assert reason == ""
+        assert path == str(hermes_home / "bin" / "tirith.exe")
+        with open(path, "rb") as installed:
+            assert installed.read() == payload
 
 
 # ---------------------------------------------------------------------------
