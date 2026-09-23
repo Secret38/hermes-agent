@@ -59,6 +59,15 @@ export function createAgentOSMission(input: {
     : Promise.reject(new Error('Agent OS Mission Control API is not ready'))
 }
 
+export function resumeAgentOSMission(jobId: string): Promise<{ ok: boolean; job: AgentOSMissionJob }> {
+  return rest
+    ? rest<{ ok: boolean; job: AgentOSMissionJob }>(`/missions/${encodeURIComponent(jobId)}/resume`, {
+        method: 'POST',
+        body: { confirm: true }
+      })
+    : Promise.reject(new Error('Agent OS Mission Control API is not ready'))
+}
+
 export function fetchAgentOSApprovals(): Promise<{ approvals: AgentOSPendingApproval[] }> {
   return rest
     ? rest<{ approvals: AgentOSPendingApproval[] }>('/approvals')
