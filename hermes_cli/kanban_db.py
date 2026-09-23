@@ -782,6 +782,7 @@ class Run:
     claim_lock: Optional[str]
     claim_expires: Optional[int]
     worker_pid: Optional[int]
+    worker_session_id: Optional[str]
     max_runtime_seconds: Optional[int]
     last_heartbeat_at: Optional[int]
     started_at: int
@@ -797,7 +798,7 @@ class Run:
             **{
                 col: _lossy_text(row[col]) for col in (
                     "task_id", "profile", "step_key", "status", "claim_lock", "claim_expires",
-                    "worker_pid", "max_runtime_seconds", "last_heartbeat_at", "outcome", "summary", "error",
+                    "worker_pid", "worker_session_id", "max_runtime_seconds", "last_heartbeat_at", "outcome", "summary", "error",
                 )
             },
             id=int(row["id"]),
@@ -1013,6 +1014,9 @@ CREATE TABLE IF NOT EXISTS task_runs (
     -- worker_pid after the run ends so a worker that outlives its terminal transition can
     -- still be found and reaped; NULL = legacy row, never signalled.
     worker_started_at   INTEGER,
+    -- Current Hermes CLI session id for this worker attempt. Updated when
+    -- compression rotates the worker session; NULL until the worker binds itself.
+    worker_session_id   TEXT,
     max_runtime_seconds INTEGER,
     last_heartbeat_at   INTEGER,
     started_at          INTEGER NOT NULL,
@@ -2005,6 +2009,46 @@ def _task_status(conn: sqlite3.Connection, task_id: str) -> Optional[str]:
 def _current_run_id(conn: sqlite3.Connection, task_id: str) -> Optional[int]:
     row = conn.execute("SELECT current_run_id FROM tasks WHERE id = ?", (task_id,)).fetchone()
     return int(row["current_run_id"]) if row and row["current_run_id"] else None
+
+
+def bind_run_worker_session(
+    conn: sqlite3.Connection, task_id: str, run_id: int, session_id: str,
+) -> bool:
+    """Bind the worker's real Hermes session id to exactly one active Kanban run.
+
+    A stale worker cannot overwrite a successor attempt: the selected run must
+    still be running and must still equal tasks.current_run_id. Rebinding the
+    same run is intentional because Hermes session compression can rotate the
+    worker's session id while the Kanban attempt stays the same.
+    """
+    task_id = str(task_id or "").strip()
+    session_id = str(session_id or "").strip()
+    try:
+        run_id = int(run_id)
+    except (TypeError, ValueError):
+        return False
+    if not task_id or not session_id or run_id <= 0:
+        return False
+
+    with write_txn(conn):
+        cur = conn.execute(
+            """
+            UPDATE task_runs
+               SET worker_session_id = ?
+             WHERE id = ?
+               AND task_id = ?
+               AND status = 'running'
+               AND ended_at IS NULL
+               AND EXISTS (
+                   SELECT 1 FROM tasks
+                    WHERE id = ?
+                      AND status = 'running'
+                      AND current_run_id = ?
+               )
+            """,
+            (session_id, run_id, task_id, task_id, run_id),
+        )
+        return cur.rowcount == 1
 
 
 # Distinguishes "caller named the acting profile" (which may legitimately be
