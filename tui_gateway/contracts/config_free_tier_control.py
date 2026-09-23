@@ -151,6 +151,40 @@ method("setup.runtime_check", params=SetupRuntimeCheckParams, result=SetupRuntim
        doc="Strict provider check through the same runtime resolution the agent uses on session creation.")
 
 
+# ── operator audit ─────────────────────────────────────────────────────────────────────────────
+
+
+class AuditListParams(ProfileParams):
+    limit: int | None = None
+    before_id: int | None = None
+    session_id: str | None = None
+    task_id: str | None = None
+    run_id: int | None = None
+    project_id: str | None = None
+
+
+class AuditEventRow(Result):
+    id: int
+    event: str
+    category: str
+    session_id: str | None = None
+    request_id: str | None = None
+    subject: str | None = None
+    outcome: str | None = None
+    task_id: str | None = None
+    run_id: int | None = None
+    project_id: str | None = None
+    created_at: float
+
+
+class AuditListResult(Result):
+    events: list[AuditEventRow]
+
+
+method("audit.list", params=AuditListParams, result=AuditListResult,
+       doc="Metadata-only durable operator/security events for the selected profile.")
+
+
 # ── diagnostics.share_nous ────────────────────────────────────────────────────────────────────
 
 
