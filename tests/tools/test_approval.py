@@ -140,6 +140,87 @@ class TestNoApprovalAuthorityFailsClosed:
 
 
 
+class TestProductionHostMutationConsent:
+    def _interactive(self, monkeypatch, callback):
+        monkeypatch.delenv("HERMES_CRON_SESSION", raising=False)
+        monkeypatch.delenv("HERMES_SINGLE_QUERY_SESSION", raising=False)
+        monkeypatch.delenv("HERMES_GATEWAY_SESSION", raising=False)
+        monkeypatch.delenv("HERMES_EXEC_ASK", raising=False)
+        monkeypatch.setenv("HERMES_SESSION_KEY", "test-production-host-consent")
+        monkeypatch.setattr(approval_context, "_is_interactive_cli", lambda: True)
+        monkeypatch.setattr(approval_context, "_is_gateway_approval_context", lambda: False)
+        monkeypatch.setattr(approval_context, "_is_cron_approval_context", lambda: False)
+        monkeypatch.setattr(approval_context, "_is_single_query_approval_context", lambda: False)
+        monkeypatch.setattr(approval_context, "_is_unattended_platform_approval_context", lambda: False)
+        monkeypatch.setattr(approval_context, "_confirm_host_mutations", lambda: True)
+        monkeypatch.setattr(approval_module, "_resolve_cli_approval_callback", lambda _cb=None: callback)
+        monkeypatch.setattr(approval_module, "_present_with_selected_transport", lambda **_kw: None)
+        monkeypatch.setattr(approval_module, "_transport_choice", lambda *_a, **_kw: (None, None))
+        monkeypatch.setattr(
+            "tools.tirith_security.check_command_security",
+            lambda _command: {"action": "allow", "findings": [], "summary": ""},
+        )
+
+    def test_safe_host_command_requires_exact_consent_even_under_yolo_and_mode_off(self, monkeypatch):
+        seen = []
+
+        def callback(command, description, **kwargs):
+            seen.append((command, description, kwargs))
+            return "session"  # stale/broader client choice must collapse to once.
+
+        self._interactive(monkeypatch, callback)
+        monkeypatch.setattr(approval_context, "_get_approval_mode", lambda: "off")
+        monkeypatch.setattr(approval_module, "_YOLO_MODE_FROZEN", True)
+        approval_module.clear_session("test-production-host-consent")
+
+        first = check_all_command_guards("printf '%s\\n' first", "local", callback)
+        second = check_all_command_guards("printf '%s\\n' second", "local", callback)
+
+        assert first["approved"] is True
+        assert second["approved"] is True
+        assert len(seen) == 2
+        assert all(item[2]["allow_session"] is False for item in seen)
+        assert all(item[2]["allow_permanent"] is False for item in seen)
+        assert is_approved("test-production-host-consent", "production_host_command") is False
+
+    def test_safe_host_command_fails_closed_without_consent_authority(self, monkeypatch):
+        monkeypatch.delenv("HERMES_INTERACTIVE", raising=False)
+        monkeypatch.delenv("HERMES_GATEWAY_SESSION", raising=False)
+        monkeypatch.delenv("HERMES_EXEC_ASK", raising=False)
+        monkeypatch.delenv("HERMES_CRON_SESSION", raising=False)
+        monkeypatch.delenv("HERMES_SINGLE_QUERY_SESSION", raising=False)
+        monkeypatch.setattr(approval_context, "_is_interactive_cli", lambda: False)
+        monkeypatch.setattr(approval_context, "_is_gateway_approval_context", lambda: False)
+        monkeypatch.setattr(approval_context, "_is_cron_approval_context", lambda: False)
+        monkeypatch.setattr(approval_context, "_is_single_query_approval_context", lambda: False)
+        monkeypatch.setattr(approval_context, "_is_unattended_platform_approval_context", lambda: False)
+        monkeypatch.setattr(approval_context, "_confirm_host_mutations", lambda: True)
+        monkeypatch.setattr(approval_context, "_get_approval_mode", lambda: "manual")
+        monkeypatch.setattr(approval_module, "_YOLO_MODE_FROZEN", False)
+
+        result = check_all_command_guards("printf '%s\\n' hello", "local")
+
+        assert result["approved"] is False
+        assert result["pattern_key"] == "production_host_command"
+        assert "exact production approval" in result["message"]
+
+    def test_explicit_unattended_approve_can_authorize_host_command(self, monkeypatch):
+        monkeypatch.setattr(approval_context, "_is_interactive_cli", lambda: False)
+        monkeypatch.setattr(approval_context, "_is_gateway_approval_context", lambda: False)
+        monkeypatch.setattr(approval_context, "_is_cron_approval_context", lambda: False)
+        monkeypatch.setattr(approval_context, "_is_single_query_approval_context", lambda: False)
+        monkeypatch.setattr(approval_context, "_is_unattended_platform_approval_context", lambda: True)
+        monkeypatch.setattr(approval_context, "_get_session_platform", lambda: "webhook")
+        monkeypatch.setattr(approval_context, "_get_unattended_approval_mode", lambda: "approve")
+        monkeypatch.setattr(approval_context, "_confirm_host_mutations", lambda: True)
+        monkeypatch.setattr(approval_context, "_get_approval_mode", lambda: "manual")
+        monkeypatch.setattr(approval_module, "_YOLO_MODE_FROZEN", False)
+
+        result = check_all_command_guards("printf '%s\\n' trusted", "local")
+
+        assert result["approved"] is True
+
+
 class TestExecuteCodeConsentAuthority:
     def _interactive_manual(self, monkeypatch, callback):
         monkeypatch.delenv("HERMES_CRON_SESSION", raising=False)
