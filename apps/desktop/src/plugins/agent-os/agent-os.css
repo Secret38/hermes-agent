@@ -515,6 +515,26 @@
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--dt-primary) 16%, transparent);
 }
 
+
+.aos-observatory-lane {
+  min-width: 0;
+  padding: 0.85rem;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--dt-primary) 3%, transparent), transparent 60%),
+    color-mix(in srgb, var(--ui-bg-secondary) 82%, transparent);
+}
+
+.aos-observatory-lane + .aos-observatory-lane {
+  border-top: 1px solid var(--ui-stroke-tertiary);
+}
+
+@media (min-width: 1024px) {
+  .aos-observatory-lane + .aos-observatory-lane {
+    border-top: 0;
+    border-left: 1px solid var(--ui-stroke-tertiary);
+  }
+}
+
 @media (max-width: 1050px) {
   .aos-overview-grid {
     grid-template-columns: minmax(14rem, 0.75fr) minmax(0, 1.25fr) !important;
