@@ -188,6 +188,22 @@ def _cfg_get_thinking_mode(params):
     return {"value": raw}
 
 
+def _cfg_get_computer_use_security(params):
+    from tools.computer_use.cua_backend import computer_use_security_summary
+    return computer_use_security_summary()
+
+
+def _cfg_get_telemetry_security(params):
+    from hermes_cli.observability.shared_metrics_send_config import telemetry_security_summary
+    return telemetry_security_summary(_load_cfg())
+
+
+def _cfg_get_network_security(params):
+    from hermes_cli.network_security import network_security_summary
+    model, runtime = _resolve_agent_model_runtime(None, None)
+    return network_security_summary(_load_cfg(), model=model, runtime=runtime)
+
+
 def _cfg_get_mtime(params):
     cfg_path = _hermes_home / "config.yaml"
     try:
@@ -216,6 +232,9 @@ _CONFIG_GETTERS = {
     "busy": lambda params: {"value": _load_busy_input_mode()},
     "approval_mode": lambda params: {"value": _load_approval_mode()},
     "approvals.mode": lambda params: {"value": _load_approval_mode()},
+    "computer_use.security": _cfg_get_computer_use_security,
+    "telemetry.security": _cfg_get_telemetry_security,
+    "network.security": _cfg_get_network_security,
     "details_mode": lambda params: {"value": _display_word("details_mode", "collapsed", _DETAIL_MODES)},
     "thinking_mode": _cfg_get_thinking_mode,
     "density": lambda params: {"value": "on" if bool(_display_raw().get("tui_compact", False)) else "off"},
