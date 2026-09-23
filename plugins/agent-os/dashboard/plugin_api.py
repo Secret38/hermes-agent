@@ -57,7 +57,7 @@ def _safe_mcp_servers():
             if item.get("url"):
                 try:
                     parsed = urlparse(str(item["url"]))
-                    target = parsed.netloc or parsed.hostname or ""
+                    target = parsed.hostname or ""
                 except ValueError:
                     target = ""
             elif item.get("command"):
