@@ -13,15 +13,17 @@ import {
 } from '@hermes/plugin-sdk'
 
 import { bindAgentOSApi } from './api'
+import { AgentOSForensicsPage } from './forensics'
 import { AgentOSMissionControl, AgentOSStatusChip } from './page'
 
 const openMissionControl = () => host.navigate('/agent-os')
+const openForensics = () => host.navigate('/agent-os/forensics')
 
 const plugin: HermesPlugin = {
   id: 'agent-os',
   name: 'Agent OS',
   description:
-    'Mission Control for durable tasks, plans, agents, runtime health, verification, recovery, operational memory and connections.',
+    'Mission Control for durable tasks, plans, agents, runtime health, verification, recovery, operational memory, connections and replayable execution evidence.',
   defaultEnabled: true,
 
   register(ctx) {
@@ -35,6 +37,12 @@ const plugin: HermesPlugin = {
         render: () => <AgentOSMissionControl />
       },
       {
+        id: 'forensics-page',
+        area: ROUTES_AREA,
+        data: { path: '/agent-os/forensics' } satisfies RouteContribution,
+        render: () => <AgentOSForensicsPage />
+      },
+      {
         id: 'nav',
         area: SIDEBAR_NAV_AREA,
         order: 10,
@@ -42,6 +50,16 @@ const plugin: HermesPlugin = {
           codicon: 'circuit-board',
           label: 'Agent OS',
           path: '/agent-os'
+        } satisfies SidebarNavContribution
+      },
+      {
+        id: 'forensics-nav',
+        area: SIDEBAR_NAV_AREA,
+        order: 11,
+        data: {
+          codicon: 'history',
+          label: 'Execution Replay',
+          path: '/agent-os/forensics'
         } satisfies SidebarNavContribution
       },
       {
@@ -58,6 +76,16 @@ const plugin: HermesPlugin = {
           label: 'Agent OS: Open Mission Control',
           keywords: ['agent os', 'mission control', 'tasks', 'plans', 'memory', 'connections', 'runtime'],
           run: openMissionControl
+        } satisfies PaletteContribution
+      },
+      {
+        id: 'forensics',
+        area: PALETTE_AREA,
+        data: {
+          id: 'agent-os.forensics',
+          label: 'Agent OS: Open Execution Replay',
+          keywords: ['agent os', 'replay', 'forensics', 'ledger', 'evidence', 'artifacts', 'verification', 'recovery'],
+          run: openForensics
         } satisfies PaletteContribution
       },
       {
