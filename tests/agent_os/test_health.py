@@ -111,8 +111,7 @@ def test_production_security_passes_only_for_fail_closed_policy(monkeypatch, tmp
     monkeypatch.setattr(approval_context, "_get_single_query_approval_mode", lambda: "deny")
     monkeypatch.setattr(approval_context, "_get_unattended_approval_mode", lambda: "deny")
     monkeypatch.setattr(approval_context, "_tirith_fail_open", lambda: False)
-    monkeypatch.setattr(tirith_security, "is_platform_supported", lambda: True)
-    monkeypatch.setattr(tirith_security, "scanner_available", lambda: True)
+    monkeypatch.setattr(tirith_security, "scanner_healthy", lambda: True)
 
     report = collect_agent_os_health(
         db_path=tmp_path / "agent_os.db",
@@ -134,8 +133,7 @@ def test_production_security_rejects_stored_sudo_password(monkeypatch, tmp_path)
     monkeypatch.setattr(approval_context, "_get_single_query_approval_mode", lambda: "deny")
     monkeypatch.setattr(approval_context, "_get_unattended_approval_mode", lambda: "deny")
     monkeypatch.setattr(approval_context, "_tirith_fail_open", lambda: False)
-    monkeypatch.setattr(tirith_security, "is_platform_supported", lambda: True)
-    monkeypatch.setattr(tirith_security, "scanner_available", lambda: True)
+    monkeypatch.setattr(tirith_security, "scanner_healthy", lambda: True)
 
     report = collect_agent_os_health(
         db_path=tmp_path / "agent_os.db",
@@ -149,7 +147,7 @@ def test_production_security_rejects_stored_sudo_password(monkeypatch, tmp_path)
     assert security.status is HealthStatus.FAIL
     assert "SUDO_PASSWORD" in security.detail
 
-def test_production_security_rejects_unsupported_tirith_platform(monkeypatch, tmp_path):
+def test_production_security_rejects_unhealthy_tirith_scanner(monkeypatch, tmp_path):
     from tools import approval_context, tirith_security
 
     monkeypatch.delenv("SUDO_PASSWORD", raising=False)
@@ -158,8 +156,7 @@ def test_production_security_rejects_unsupported_tirith_platform(monkeypatch, tm
     monkeypatch.setattr(approval_context, "_get_single_query_approval_mode", lambda: "deny")
     monkeypatch.setattr(approval_context, "_get_unattended_approval_mode", lambda: "deny")
     monkeypatch.setattr(approval_context, "_tirith_fail_open", lambda: False)
-    monkeypatch.setattr(tirith_security, "is_platform_supported", lambda: False)
-    monkeypatch.setattr(tirith_security, "scanner_available", lambda: False)
+    monkeypatch.setattr(tirith_security, "scanner_healthy", lambda: False)
 
     report = collect_agent_os_health(
         db_path=tmp_path / "agent_os.db",
@@ -172,7 +169,7 @@ def test_production_security_rejects_unsupported_tirith_platform(monkeypatch, tm
     assert report.production_security_ready is False
     security = next(c for c in report.checks if c.name == "production_security")
     assert security.status is HealthStatus.FAIL
-    assert "not supported on this platform" in security.detail
+    assert "not installed, executable, or healthy" in security.detail
 
 
 
@@ -185,8 +182,7 @@ def test_production_security_rejects_missing_tirith_binary(monkeypatch, tmp_path
     monkeypatch.setattr(approval_context, "_get_single_query_approval_mode", lambda: "deny")
     monkeypatch.setattr(approval_context, "_get_unattended_approval_mode", lambda: "deny")
     monkeypatch.setattr(approval_context, "_tirith_fail_open", lambda: False)
-    monkeypatch.setattr(tirith_security, "is_platform_supported", lambda: True)
-    monkeypatch.setattr(tirith_security, "scanner_available", lambda: False)
+    monkeypatch.setattr(tirith_security, "scanner_healthy", lambda: False)
 
     report = collect_agent_os_health(
         db_path=tmp_path / "agent_os.db",
@@ -199,4 +195,4 @@ def test_production_security_rejects_missing_tirith_binary(monkeypatch, tmp_path
     assert report.production_security_ready is False
     security = next(c for c in report.checks if c.name == "production_security")
     assert security.status is HealthStatus.FAIL
-    assert "not installed or executable" in security.detail
+    assert "not installed, executable, or healthy" in security.detail
