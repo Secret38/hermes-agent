@@ -1187,7 +1187,13 @@ class GatewaySlashCommandsMixin(
         # SlashAccessPolicy intentionally treats "no admin list configured" as unrestricted for
         # backward compatibility. Security consent must not inherit that behavior: admin authority
         # counts only when this scope has an explicit admin list.
-        policy = policy_for_source(getattr(self, "config", None), source)
+        return self._approval_actor_is_explicit_admin(event)
+
+    def _approval_actor_is_explicit_admin(self, event: MessageEvent) -> bool:
+        user_id = str(getattr(event.source, "user_id", "") or "").strip()
+        if not user_id:
+            return False
+        policy = policy_for_source(getattr(self, "config", None), event.source)
         return bool(policy.enabled and policy.is_admin(user_id))
 
     def _approval_response_denied_text(self) -> str:
@@ -1214,7 +1220,13 @@ class GatewaySlashCommandsMixin(
         args = event.get_command_args().strip().lower().split()
         choices = {_APPROVE_CHOICE_BY_ARG[a] for a in args if a in _APPROVE_CHOICE_BY_ARG}
         choice = "always" if "always" in choices else "session" if "session" in choices else "once"
-        count = resolve_gateway_approval(session_key, choice, resolve_all="all" in args)
+        count = resolve_gateway_approval(
+            session_key,
+            choice,
+            resolve_all="all" in args,
+            actor_user_id=getattr(event.source, "user_id", None),
+            actor_is_explicit_admin=self._approval_actor_is_explicit_admin(event),
+        )
         if not count:
             return t("gateway.approve.no_pending")
         confirmation_text = t(f"gateway.approve.{choice}_{'plural' if count > 1 else 'singular'}", count=count)
@@ -1245,7 +1257,14 @@ class GatewaySlashCommandsMixin(
         tokens = raw_args.split()
         resolve_all = bool(tokens) and tokens[0].lower() == "all"
         reason = (raw_args[len(tokens[0]):].strip() if resolve_all else raw_args)[:280].strip()
-        count = resolve_gateway_approval(session_key, "deny", resolve_all=resolve_all, reason=reason or None)
+        count = resolve_gateway_approval(
+            session_key,
+            "deny",
+            resolve_all=resolve_all,
+            reason=reason or None,
+            actor_user_id=getattr(event.source, "user_id", None),
+            actor_is_explicit_admin=self._approval_actor_is_explicit_admin(event),
+        )
         if not count:
             return t("gateway.deny.no_pending")
         logger.info("User denied %d dangerous command(s) via /deny%s", count,
