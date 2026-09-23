@@ -181,6 +181,9 @@ def detect_hardline_command(command: str) -> tuple:
     """Check hardline patterns (NEVER bypassable, even in YOLO) -> (is_hardline, description)."""
     if _command_parser_limit_exceeded(command):
         return (True, _PARSER_LIMIT_DESCRIPTION)
+    structural = _structural_hardline_description(command)
+    if structural:
+        return (True, structural)
     # The malformed-quoting verdict needs the author's quote state. Normalization strips escapes
     # (`\"` -> `"`), so a shell-valid pattern like `grep -o "[^\"]*"` lexed as unterminated and was
     # reported as a hardline block (118 of 125 hardline blocks in one week of real use, every one a
@@ -1241,6 +1244,92 @@ def _iter_shell_command_word_spans(command: str):
             positionals = _COMMAND_WRAPPER_POSITIONAL_ARGS.get(name, 0)
 
 
+_DYNAMIC_EXECUTABLE_RE = re.compile(
+    r"(?:\\$[A-Za-z_][A-Za-z0-9_]*|\\$\\{[^}]+\\}|\\$\\(|\x60)"
+)
+_SECRET_ENV_SOURCES = frozenset({"env", "printenv", "set", "export"})
+_STDIN_EGRESS_CLIENTS = frozenset({"curl", "wget", "nc", "ncat", "socat"})
+_SENSITIVE_READERS = frozenset({
+    "cat", "head", "tail", "less", "more", "grep", "awk", "sed",
+    "cp", "scp", "rsync", "tar", "base64", "xxd", "strings",
+})
+_CURL_STDIN_UPLOAD_RE = re.compile(
+    r"(?:^|\\s)(?:-d|--data(?:-ascii|-binary|-raw|-urlencode)?)"
+    r"(?:=|\\s+)@-(?=\\s|$)"
+    r"|(?:^|\\s)(?:-T|--upload-file)(?:=|\\s+)-(?=\\s|$)",
+    re.IGNORECASE,
+)
+_WGET_STDIN_UPLOAD_RE = re.compile(
+    r"(?:^|\\s)(?:--post-file|--body-file)=-?(?=\\s|$)",
+    re.IGNORECASE,
+)
+
+
+def _command_words(command: str) -> list[tuple[int, int, str, str]]:
+    """Executable-position words as (start, end, raw, basename)."""
+    rows: list[tuple[int, int, str, str]] = []
+    for start, end, word in _iter_shell_command_word_spans(command):
+        resolved = _deobfuscate_shell_word_for_detection(word)
+        rows.append((start, end, word, os.path.basename(resolved).lower()))
+    return rows
+
+
+def _unquoted_pipe_positions(command: str) -> list[int]:
+    """Positions of real shell pipelines, excluding || and quoted data."""
+    positions: list[int] = []
+    for kind, i, _, quote in _scan_shell(command, subst="uq", comments=True):
+        if kind != "char" or quote is not None or command[i] != "|":
+            continue
+        before = command[i - 1] if i else ""
+        after = command[i + 1] if i + 1 < len(command) else ""
+        if before == "|" or after == "|":
+            continue
+        positions.append(i)
+    return positions
+
+
+def _pipeline_exfiltration_description(command: str) -> str | None:
+    """Block obvious environment-to-network stdin exfiltration pipelines."""
+    words = _command_words(command)
+    for pipe in _unquoted_pipe_positions(command):
+        left = [row for row in words if row[1] <= pipe]
+        right = [row for row in words if row[0] > pipe]
+        if not left or not right:
+            continue
+        source = max(left, key=lambda row: row[1])
+        sink = min(right, key=lambda row: row[0])
+        if source[3] not in _SECRET_ENV_SOURCES or sink[3] not in _STDIN_EGRESS_CLIENTS:
+            continue
+        sink_segment = _shell_command_segment(command, sink[0])
+        if sink[3] == "curl" and not _CURL_STDIN_UPLOAD_RE.search(sink_segment):
+            continue
+        if sink[3] == "wget" and not _WGET_STDIN_UPLOAD_RE.search(sink_segment):
+            continue
+        return "environment/secret data piped to network egress"
+    return None
+
+
+def _structural_hardline_description(command: str) -> str | None:
+    """Non-bypassable ambiguity and confidentiality floors."""
+    for start, _, raw, name in _command_words(command):
+        if _DYNAMIC_EXECUTABLE_RE.search(raw):
+            return "dynamic executable expansion is not allowed"
+        if name in _SENSITIVE_READERS and re.search(
+            r"(?<![A-Za-z0-9_.-])/etc/shadow(?![A-Za-z0-9_.-])",
+            _shell_command_segment(command, start),
+            re.IGNORECASE,
+        ):
+            return "read of system password hashes (/etc/shadow)"
+    return _pipeline_exfiltration_description(command)
+
+
+def _structural_dangerous_description(command: str) -> str | None:
+    """Recoverable structural risks that require the normal approval gate."""
+    if any(name == "sudo" for _, _, _, name in _command_words(command)):
+        return "privileged command via sudo"
+    return None
+
+
 def _shell_command_segment(command: str, start: int) -> str:
     """Bound a candidate to its command, preserving quoted argument bytes."""
     end = len(command)
@@ -1496,6 +1585,9 @@ def detect_dangerous_command(command: str) -> tuple:
     """Check dangerous patterns -> (is_dangerous, pattern_key, description)."""
     if _command_parser_limit_exceeded(command):
         return (True, _PARSER_LIMIT_DESCRIPTION, _PARSER_LIMIT_DESCRIPTION)
+    structural = _structural_dangerous_description(command)
+    if structural:
+        return (True, structural, structural)
     if _is_verification_artifact_cleanup(command):
         return (False, None, None)
     for command_variant in _command_detection_variants(command):
