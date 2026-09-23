@@ -13,6 +13,7 @@ import { useAgentOSAudit } from './audit-data'
 import { ExternalConnectionsSection, SemanticMemorySection } from './context'
 import { MissionControlActions } from './control'
 import { useHermesOperations, useLiveFleet } from './operations-data'
+import { ProjectsView } from './projects'
 import { useComputerUseSecurity, useNetworkSecurity, useTelemetrySecurity } from './security-data'
 import { openHermesSession } from './session-navigation'
 import { exactOperationsRoute, exactWorkerRoute } from './selectors'
@@ -27,7 +28,7 @@ import type {
   AgentOSTopologyNode
 } from './types'
 
-type MissionTab = 'overview' | 'tasks' | 'operations' | 'fleet' | 'memory' | 'connections' | 'security'
+type MissionTab = 'overview' | 'tasks' | 'operations' | 'projects' | 'fleet' | 'memory' | 'connections' | 'security'
 
 const ACTIVE_TASK_STATES = new Set([
   'CREATED',
@@ -697,8 +698,7 @@ function TaskList({
           onClick={() => onSelect(task.id)}
           type="button"
         >
-          <div className="flex w-full min-w-0 items-start justify-between gap-3">
-            <span className="line-clamp-2 min-w-0 text-xs font-medium leading-relaxed text-foreground">{task.goal}</span>            <StateBadge compact state={task.state} />
+          <div className="flex w-full min-w-0 items-start justify-between gap-3">            <span className="line-clamp-2 min-w-0 text-xs font-medium leading-relaxed text-foreground">{task.goal}</span>            <StateBadge compact state={task.state} />
           </div>
           <div className="mt-1.5 flex w-full min-w-0 items-center gap-2 text-[0.6rem] text-(--ui-text-tertiary)">
             <span className="truncate font-mono">{compactId(task.id)}</span>
@@ -1397,8 +1397,7 @@ function MemoryView({ snapshot }: { snapshot: AgentOSSnapshot }) {
         <MetricCard icon="comment-discussion" label="Sessions" value={memory.sessions.length} />
         <MetricCard icon="save" label="Checkpoints" value={memory.checkpoints.length} />
         <MetricCard icon="git-merge" label="Relations" value={memory.relations.length} />
-      </div>
-      <div className="grid gap-3 xl:grid-cols-[1fr_1fr_1fr]">
+      </div>      <div className="grid gap-3 xl:grid-cols-[1fr_1fr_1fr]">
         <section className="aos-panel overflow-hidden">
           <SectionHeader icon="folder" meta={`${memory.workspaces.length}`} title="Workspace memory" />
           <div className="aos-memory-column aos-scrollbar max-h-[30rem] space-y-1 overflow-y-auto p-3">
@@ -2008,6 +2007,7 @@ export function AgentOSMissionControl() {
     { id: 'overview', label: 'Mission Control', icon: 'dashboard' },
     { id: 'tasks', label: 'Tasks', icon: 'checklist' },
     { id: 'operations', label: 'Operations', icon: 'server-process' },
+    { id: 'projects', label: 'Projects', icon: 'project' },
     { id: 'fleet', label: 'Fleet', icon: 'hubot' },
     { id: 'memory', label: 'Memory', icon: 'database' },
     { id: 'connections', label: 'Connections', icon: 'type-hierarchy' },
@@ -2097,8 +2097,7 @@ export function AgentOSMissionControl() {
               <Codicon className="mx-auto text-destructive" name="error" size="1.6rem" />
               <div className="mt-3 text-sm font-semibold text-foreground">Mission Control API unavailable</div>
               <p className="mt-1.5 text-xs leading-relaxed text-(--ui-text-tertiary)">
-                {error instanceof Error ? error.message : String(error)}
-              </p>
+                {error instanceof Error ? error.message : String(error)}              </p>
               <button
                 className="mt-4 rounded-md border border-(--ui-stroke-tertiary) bg-(--ui-bg-secondary) px-3 py-1.5 text-xs font-medium text-foreground hover:bg-(--ui-control-hover-background)"
                 onClick={() => void refetch()}
@@ -2150,6 +2149,7 @@ export function AgentOSMissionControl() {
               />
             )}
             {tab === 'operations' && <OperationsView />}
+            {tab === 'projects' && <ProjectsView />}
             {tab === 'fleet' && <FleetView />}
             {tab === 'memory' && <MemoryView snapshot={snapshot} />}
             {tab === 'connections' && <ConnectionsView snapshot={snapshot} />}
