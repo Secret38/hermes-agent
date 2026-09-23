@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { AgentOSTask } from './types'
-import { buildExecutionCanvasModel } from './visual-intelligence'
+import { buildExecutionCanvasModel, buildKnowledgeCanvasModel } from './visual-intelligence'
 
 function taskFixture(): AgentOSTask {
   return {
@@ -196,5 +196,63 @@ describe('Agent OS visual intelligence graph', () => {
     expect(
       model.edges.some(edge => edge.source === 'step:step-1' && edge.label === 'executes as')
     ).toBe(false)
+  })
+})
+
+describe('Agent OS semantic knowledge canvas', () => {
+  it('renders only real visible memory-to-skill relationships', () => {
+    const graph = {
+      nodes: [
+        { id: 'memory:a:0', label: 'Release lesson', kind: 'memory', memorySource: 'session' },
+        { id: 'skill:release', label: 'Release qualification', kind: 'skill', category: 'release', useCount: 4 },
+        { id: 'skill:isolated', label: 'Isolated skill', kind: 'skill', category: 'other' }
+      ],
+      edges: [
+        { source: 'memory:a:0', target: 'skill:release' },
+        { source: 'memory:missing', target: 'skill:release' }
+      ],
+      clusters: [],
+      memory: [],
+      stats: {
+        memory_nodes: 1,
+        memory_skill_edges: 2,
+        learned_skills: 2
+      }
+    }
+
+    const model = buildKnowledgeCanvasModel(graph)
+
+    expect(model.nodes.map(node => node.id)).toEqual(
+      expect.arrayContaining(['memory:a:0', 'skill:release', 'skill:isolated'])
+    )
+    expect(model.edges).toEqual([{ source: 'memory:a:0', target: 'skill:release' }])
+  })
+
+  it('prioritizes highly connected knowledge without inventing edges when bounded', () => {
+    const graph = {
+      nodes: [
+        { id: 'memory:1', label: 'One', kind: 'memory' },
+        { id: 'memory:2', label: 'Two', kind: 'memory' },
+        { id: 'skill:1', label: 'Skill one', kind: 'skill' },
+        { id: 'skill:2', label: 'Skill two', kind: 'skill' }
+      ],
+      edges: [
+        { source: 'memory:1', target: 'skill:1' },
+        { source: 'memory:1', target: 'skill:2' },
+        { source: 'memory:2', target: 'skill:2' }
+      ],
+      clusters: [],
+      memory: [],
+      stats: {
+        memory_nodes: 2,
+        memory_skill_edges: 3,
+        learned_skills: 2
+      }
+    }
+
+    const model = buildKnowledgeCanvasModel(graph, 2)
+
+    expect(model.nodes.map(node => node.id)).toEqual(['memory:1', 'skill:2'])
+    expect(model.edges).toEqual([{ source: 'memory:1', target: 'skill:2' }])
   })
 })
