@@ -140,6 +140,56 @@ class TestNoApprovalAuthorityFailsClosed:
 
 
 
+class TestExactToolApprovalInfrastructure:
+    def test_exact_non_bypassable_tool_approval_ignores_yolo_off_and_cached_scope(self, monkeypatch):
+        session_key = "test-exact-tool-approval"
+        calls = []
+
+        monkeypatch.setenv("HERMES_SESSION_KEY", session_key)
+        monkeypatch.delenv("HERMES_CRON_SESSION", raising=False)
+        monkeypatch.delenv("HERMES_SINGLE_QUERY_SESSION", raising=False)
+        monkeypatch.delenv("HERMES_GATEWAY_SESSION", raising=False)
+        monkeypatch.delenv("HERMES_EXEC_ASK", raising=False)
+        monkeypatch.setattr(approval_context, "_is_interactive_cli", lambda: True)
+        monkeypatch.setattr(approval_context, "_is_gateway_approval_context", lambda: False)
+        monkeypatch.setattr(approval_context, "_is_cron_approval_context", lambda: False)
+        monkeypatch.setattr(approval_context, "_is_single_query_approval_context", lambda: False)
+        monkeypatch.setattr(approval_context, "_is_unattended_platform_approval_context", lambda: False)
+        monkeypatch.setattr(approval_context, "_get_approval_mode", lambda: "off")
+        monkeypatch.setattr(approval_module, "_YOLO_MODE_FROZEN", True)
+        monkeypatch.setattr(approval_module, "_present_with_selected_transport", lambda **_kw: None)
+        monkeypatch.setattr(approval_module, "_transport_choice", lambda *_a, **_kw: (None, None))
+
+        def callback(command, description, **kwargs):
+            calls.append((command, kwargs))
+            return "always"  # stale/broad client choice must collapse to once.
+
+        monkeypatch.setattr(
+            approval_module, "_resolve_cli_approval_callback", lambda _cb=None: callback
+        )
+        approval_module.clear_session(session_key)
+        key = "plugin_rule:production_host_mutation:write_file:deadbeef"
+        approve_session(session_key, key)
+        approval_module._permanent_approved.add(key)
+
+        for payload in ("<write_file> first", "<write_file> second"):
+            result = approval_module.request_tool_approval(
+                "write_file",
+                "exact production mutation",
+                rule_key="production_host_mutation:write_file:deadbeef",
+                display_target=payload,
+                exact_once=True,
+                non_bypassable=True,
+            )
+            assert result["approved"] is True
+
+        assert len(calls) == 2
+        assert calls[0][0] == "<write_file> first"
+        assert calls[1][0] == "<write_file> second"
+        assert all(kwargs["allow_session"] is False for _, kwargs in calls)
+        assert all(kwargs["allow_permanent"] is False for _, kwargs in calls)
+
+
 class TestProductionHostMutationConsent:
     def _interactive(self, monkeypatch, callback):
         monkeypatch.delenv("HERMES_CRON_SESSION", raising=False)
