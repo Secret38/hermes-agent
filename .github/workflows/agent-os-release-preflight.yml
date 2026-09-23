@@ -152,3 +152,4 @@ jobs:
           finally {
             Remove-Item -LiteralPath $probe -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath $pfx -Force -ErrorAction SilentlyContinue
+          }
