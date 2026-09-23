@@ -18,7 +18,7 @@ security:
   tirith_fail_open: false
 ```
 
-The five release-critical policy decisions are:
+The release-critical policy decisions are:
 
 1. `approvals.mode: manual` — dangerous-but-recoverable commands require a
    human decision. Do not use `off` for production remote/content-driven
@@ -32,6 +32,10 @@ The five release-critical policy decisions are:
 5. `security.tirith_fail_open: false` — when Tirith scanning is enabled but
    unavailable or errors, the scanner failure must not become permission to
    execute.
+6. **No `SUDO_PASSWORD` in the Agent process environment** — production must
+   not preload a reusable sudo password for model-driven shell execution.
+   Legitimate elevation should cross an explicit human approval/authentication
+   boundary instead of turning sudo into a stored capability.
 
 Keep `security.tirith_enabled: true` unless the deployment has an equivalent
 independent scanner. The setting is listed separately because the critical
@@ -68,4 +72,5 @@ path for host-terminal privilege.
 Production qualification must verify these resolved values from the exact
 installed profile before enabling remote channels. A release is not considered
 production-ready when any unattended mode is set to `approve`, the global
-approval mode is `off`, or Tirith is configured fail-open.
+approval mode is `off`, Tirith is configured fail-open, or `SUDO_PASSWORD`
+is present in the Agent environment.
