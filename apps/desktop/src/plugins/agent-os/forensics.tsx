@@ -282,8 +282,10 @@ export function AgentOSForensicsPage() {
 
   const task = tasks.find(item => item.id === taskId)
   const allEvents = task?.events ?? []
+  const eventCount = allEvents.length
+  const lastSequence = allEvents.at(-1)?.sequence
   const filteredEvents = useMemo(() => allEvents.filter(event => eventMatches(event, filter)), [allEvents, filter])
-  const safeCursor = Math.min(Math.max(cursor, 0), Math.max(allEvents.length - 1, 0))
+  const safeCursor = Math.min(Math.max(cursor, 0), Math.max(eventCount - 1, 0))
   const replayEvents = allEvents.length ? allEvents.slice(0, safeCursor + 1) : []
   const state = useMemo(() => replayState(replayEvents), [replayEvents])
   const selectedEvent =
@@ -291,9 +293,9 @@ export function AgentOSForensicsPage() {
     (allEvents.length ? allEvents[safeCursor] : undefined)
 
   useEffect(() => {
-    setCursor(Math.max(allEvents.length - 1, 0))
-    setSelectedSequence(allEvents.at(-1)?.sequence)
-  }, [taskId, allEvents.length])
+    setCursor(Math.max(eventCount - 1, 0))
+    setSelectedSequence(lastSequence)
+  }, [taskId, eventCount, lastSequence])
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-(--ui-bg-primary) text-foreground">
@@ -370,14 +372,14 @@ export function AgentOSForensicsPage() {
                   </div>
                 </div>
                 <span className="shrink-0 font-mono text-[0.58rem] text-(--ui-text-tertiary)">
-                  {allEvents.length ? `${safeCursor + 1} / ${allEvents.length}` : '0 events'}
+                  {eventCount ? `${safeCursor + 1} / ${eventCount}` : '0 events'}
                 </span>
               </div>
               <input
                 aria-label="Replay position"
                 className="mt-3 w-full accent-current"
-                disabled={!allEvents.length}
-                max={Math.max(allEvents.length - 1, 0)}
+                disabled={!eventCount}
+                max={Math.max(eventCount - 1, 0)}
                 min={0}
                 onChange={event => {
                   const next = Number(event.target.value)
