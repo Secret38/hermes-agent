@@ -50,19 +50,71 @@ def _install_computer_use() -> bool:
     return bool(install_cua_driver(upgrade=False))
 
 
+
+_PRODUCTION_SECURITY_POLICY = {
+    ("approvals", "mode"): "manual",
+    ("approvals", "cron_mode"): "deny",
+    ("approvals", "single_query_mode"): "deny",
+    ("approvals", "unattended_mode"): "deny",
+    ("security", "tirith_enabled"): True,
+    ("security", "tirith_fail_open"): False,
+}
+
+
+def _configure_production_security() -> tuple[bool, str]:
+    """Apply the explicit Agent OS fail-closed profile and provision Tirith.
+
+    This is intentionally opt-in at the Agent OS product layer; ordinary Hermes
+    CLI installs keep their existing approval/scanner defaults.
+    """
+    from hermes_cli.config import load_config, save_config
+    from tools import tirith_security
+
+    config = load_config()
+    changed = False
+    for path, desired in _PRODUCTION_SECURITY_POLICY.items():
+        node = config
+        for part in path[:-1]:
+            child = node.get(part)
+            if not isinstance(child, dict):
+                child = {}
+                node[part] = child
+            node = child
+        if node.get(path[-1]) != desired:
+            node[path[-1]] = desired
+            changed = True
+
+    if changed:
+        save_config(
+            config,
+            preserve_keys=set(_PRODUCTION_SECURITY_POLICY),
+            merge_existing=True,
+        )
+
+    scanner = tirith_security.ensure_installed_sync(log_failures=True)
+    if not scanner or not tirith_security.scanner_available():
+        raise RuntimeError(
+            "Tirith could not be provisioned as an executable local scanner"
+        )
+    return changed, scanner
+
+
 def provision_agent_os_runtime(
     *,
     include_browser: bool = True,
     include_computer_use: bool = True,
+    include_production_security: bool = False,
     browser_probe: Callable[[], bool] | None = None,
     computer_use_probe: Callable[[], bool] | None = None,
     browser_installer: Callable[[], object] | None = None,
     computer_use_installer: Callable[[], object] | None = None,
+    production_security_provisioner: Callable[[], object] | None = None,
 ) -> AgentOSProvisionReport:
     """Provision selected external runtimes and verify the resulting state.
 
     The operation is explicit and idempotent. Existing Hermes installers remain
-    the only installation backends; Agent OS only orchestrates and verifies them.
+    the installation backends; the optional production-security profile is an
+    Agent OS product policy and never changes ordinary Hermes installs implicitly.
     """
 
     AgentOSStore().initialize()
@@ -120,11 +172,36 @@ def provision_agent_os_runtime(
             )
         )
 
+    security_changed = False
+    security_error = ""
+    if include_production_security:
+        try:
+            result = (production_security_provisioner or _configure_production_security)()
+            if isinstance(result, tuple) and result:
+                security_changed = bool(result[0])
+            else:
+                security_changed = True
+        except Exception as exc:
+            security_error = f"{type(exc).__name__}: {exc}"
+
     health = collect_agent_os_health(
         fix=False,
         browser_probe=browser_probe,
         computer_use_probe=computer_use_probe,
     )
+    if include_production_security:
+        components.append(
+            ProvisionComponent(
+                "production_security",
+                health.production_security_ready,
+                changed=security_changed and health.production_security_ready,
+                detail=(
+                    "fail-closed profile and scanner verified"
+                    if health.production_security_ready
+                    else f"provisioning failed{': ' + security_error if security_error else ''}"
+                ),
+            )
+        )
     selected_ready = all(component.ready for component in components)
     return AgentOSProvisionReport(
         components=tuple(components),
