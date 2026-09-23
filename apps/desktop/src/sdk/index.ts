@@ -669,6 +669,10 @@ export const host = {
     /** Stored (durable) id of the focused session — for navigation and
      *  session-list matching, where runtime ids don't survive reloads. */
     focusedStoredSessionId: readonlyAtom<null | string>($focusedStoredSessionId),
+    /** Stored id selected in the primary workspace. Unlike focusedStoredSessionId,
+     * this does not follow an interacted background tile and is the authority for
+     * actions that must wait for the main session surface to settle. */
+    selectedStoredSessionId: readonlyAtom<null | string>($selectedStoredSessionId),
     /** Live usage snapshot of the focused session (`context_used` /
      *  `context_max` / `context_percent`, token counts, `cost_usd`) —
      *  streamed by the backend, no RPC needed. Null while unresolved.
@@ -1902,6 +1906,7 @@ export {
   goToProject,
   refreshProjectTree
 } from '@/store/projects'
+export type { SidebarProjectTree } from '@/app/chat/sidebar/projects/workspace-groups'
 export {
   $approvalRequestQueues,
   $secretRequests,
