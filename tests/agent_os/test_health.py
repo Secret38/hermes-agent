@@ -110,6 +110,7 @@ def test_production_security_passes_only_for_fail_closed_policy(monkeypatch, tmp
     monkeypatch.setattr(approval_context, "_get_cron_approval_mode", lambda: "deny")
     monkeypatch.setattr(approval_context, "_get_single_query_approval_mode", lambda: "deny")
     monkeypatch.setattr(approval_context, "_get_unattended_approval_mode", lambda: "deny")
+    monkeypatch.setattr(approval_context, "_confirm_host_mutations", lambda: True)
     monkeypatch.setattr(approval_context, "_tirith_fail_open", lambda: False)
     monkeypatch.setattr(tirith_security, "scanner_healthy", lambda: True)
 
@@ -132,6 +133,7 @@ def test_production_security_rejects_stored_sudo_password(monkeypatch, tmp_path)
     monkeypatch.setattr(approval_context, "_get_cron_approval_mode", lambda: "deny")
     monkeypatch.setattr(approval_context, "_get_single_query_approval_mode", lambda: "deny")
     monkeypatch.setattr(approval_context, "_get_unattended_approval_mode", lambda: "deny")
+    monkeypatch.setattr(approval_context, "_confirm_host_mutations", lambda: True)
     monkeypatch.setattr(approval_context, "_tirith_fail_open", lambda: False)
     monkeypatch.setattr(tirith_security, "scanner_healthy", lambda: True)
 
@@ -155,6 +157,7 @@ def test_production_security_rejects_unhealthy_tirith_scanner(monkeypatch, tmp_p
     monkeypatch.setattr(approval_context, "_get_cron_approval_mode", lambda: "deny")
     monkeypatch.setattr(approval_context, "_get_single_query_approval_mode", lambda: "deny")
     monkeypatch.setattr(approval_context, "_get_unattended_approval_mode", lambda: "deny")
+    monkeypatch.setattr(approval_context, "_confirm_host_mutations", lambda: True)
     monkeypatch.setattr(approval_context, "_tirith_fail_open", lambda: False)
     monkeypatch.setattr(tirith_security, "scanner_healthy", lambda: False)
 
@@ -181,6 +184,7 @@ def test_production_security_rejects_missing_tirith_binary(monkeypatch, tmp_path
     monkeypatch.setattr(approval_context, "_get_cron_approval_mode", lambda: "deny")
     monkeypatch.setattr(approval_context, "_get_single_query_approval_mode", lambda: "deny")
     monkeypatch.setattr(approval_context, "_get_unattended_approval_mode", lambda: "deny")
+    monkeypatch.setattr(approval_context, "_confirm_host_mutations", lambda: True)
     monkeypatch.setattr(approval_context, "_tirith_fail_open", lambda: False)
     monkeypatch.setattr(tirith_security, "scanner_healthy", lambda: False)
 
