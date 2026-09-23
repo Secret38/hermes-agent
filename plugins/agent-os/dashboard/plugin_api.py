@@ -187,7 +187,7 @@ async def create_mission(request: MissionCreateRequest):
 
 
 @router.post("/missions/{job_id}/resume")
-async def resume_mission(job_id: str, request: MissionResumeRequest):
+async def resume_mission(job_id: str, _request: MissionResumeRequest):
     service = _mission_service()
     try:
         job = service.resume(job_id)
