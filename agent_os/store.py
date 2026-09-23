@@ -371,6 +371,16 @@ class AgentOSStore:
         finally:
             conn.close()
 
+    def list_tasks(self) -> list[TaskRecord]:
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                "SELECT * FROM tasks ORDER BY created_at, id"
+            ).fetchall()
+            return [self._task_from_row(row) for row in rows]
+        finally:
+            conn.close()
+
     def transition_task(self, task_id: str, target: TaskState, *, payload: dict[str, Any] | None = None) -> TaskRecord:
         conn = self._connect()
         try:
@@ -767,6 +777,20 @@ class AgentOSStore:
         conn = self._connect()
         try:
             row = conn.execute("SELECT * FROM plans WHERE id = ?", (plan_id,)).fetchone()
+            return None if row is None else self._plan_from_row(row)
+        finally:
+            conn.close()
+
+    def latest_plan_for_task(self, task_id: str) -> PlanRecord | None:
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                """SELECT * FROM plans
+                    WHERE task_id = ?
+                    ORDER BY revision DESC, created_at DESC, id DESC
+                    LIMIT 1""",
+                (task_id,),
+            ).fetchone()
             return None if row is None else self._plan_from_row(row)
         finally:
             conn.close()
