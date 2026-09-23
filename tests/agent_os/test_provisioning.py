@@ -178,6 +178,7 @@ def test_configure_production_security_writes_only_explicit_profile(monkeypatch)
             "cron_mode": "approve",
             "single_query_mode": "approve",
             "unattended_mode": "approve",
+            "confirm_host_mutations": False,
         },
         "security": {
             "tirith_enabled": False,
@@ -215,6 +216,7 @@ def test_configure_production_security_writes_only_explicit_profile(monkeypatch)
         "cron_mode": "deny",
         "single_query_mode": "deny",
         "unattended_mode": "deny",
+        "confirm_host_mutations": True,
     }
     assert config["security"]["tirith_enabled"] is True
     assert config["security"]["tirith_fail_open"] is False
@@ -234,6 +236,7 @@ def test_configure_production_security_is_idempotent(monkeypatch):
             "cron_mode": "deny",
             "single_query_mode": "deny",
             "unattended_mode": "deny",
+            "confirm_host_mutations": True,
         },
         "security": {
             "tirith_enabled": True,
