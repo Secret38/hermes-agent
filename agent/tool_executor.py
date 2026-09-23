@@ -647,8 +647,20 @@ def _blocked_tool_result(agent, ref: _ToolCallRef, *, block_message: Optional[st
 
 
 _PRODUCTION_EXACT_APPROVAL_TOOLS = frozenset({
-    "write_file", "patch", "process_manage", "send_message", "cronjob_manage",
-    "skill_manage", "memory", "computer_use", "computer",
+    # Host filesystem / processes / durable agent state.
+    "write_file", "patch", "process_manage", "process", "cronjob_manage", "cronjob",
+    "skill_manage", "memory",
+    # Desktop and broad browser automation.
+    "computer_use", "computer", "browser_exec",
+    # Credential-bearing browser vault operations.
+    "browser_vault_unlock", "browser_vault_fill", "browser_vault_save_login",
+    "browser_vault_enter_code",
+    # External systems and connector authorization.
+    "ha_call_service", "manage_connections", "send_message",
+    # Persistent project/workflow mutation.
+    "kanban_complete", "kanban_block", "kanban_request_review",
+    "kanban_request_changes", "kanban_comment", "kanban_create", "kanban_link",
+    "kanban_unblock", "kanban_attach", "kanban_attach_url",
 })
 
 
