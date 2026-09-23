@@ -8,7 +8,6 @@ approval resolved by Mission Control.
 
 from __future__ import annotations
 
-import json
 import threading
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -271,70 +270,37 @@ class MissionRuntimeService:
         any executor, browser, terminal or computer-use side effect can run.
         """
 
-        conn = self.store._connect()
-        try:
-            rows = conn.execute(
-                """
-                SELECT
-                    t.id,
-                    t.goal,
-                    t.state,
-                    t.session_id,
-                    t.workspace_id,
-                    t.metadata_json,
-                    t.created_at,
-                    t.updated_at,
-                    (
-                        SELECT p.id
-                          FROM plans p
-                         WHERE p.task_id = t.id
-                         ORDER BY p.revision DESC, p.created_at DESC, p.id DESC
-                         LIMIT 1
-                    ) AS plan_id
-                  FROM tasks t
-                 ORDER BY t.created_at, t.id
-                """
-            ).fetchall()
-        finally:
-            conn.close()
-
         hydrated: dict[str, MissionJob] = {}
-        for row in rows:
-            try:
-                metadata = json.loads(row["metadata_json"] or "{}")
-            except (TypeError, ValueError, json.JSONDecodeError):
-                continue
-            if not isinstance(metadata, dict):
-                continue
-            if metadata.get("source") != "mission-control":
+        for task in self.store.list_tasks():
+            if task.metadata.get("source") != "mission-control":
                 continue
 
-            job_id = str(metadata.get("mission_job_id") or "").strip()
+            job_id = str(task.metadata.get("mission_job_id") or "").strip()
             if not job_id:
                 continue
 
-            task_state = TaskState(row["state"])
-            if task_state is TaskState.COMPLETED:
+            if task.state is TaskState.COMPLETED:
                 state = MissionJobState.COMPLETED
-            elif task_state is TaskState.FAILED:
+            elif task.state is TaskState.FAILED:
                 state = MissionJobState.FAILED
-            elif task_state is TaskState.CANCELLED:
+            elif task.state is TaskState.CANCELLED:
                 state = MissionJobState.CANCELLED
-            elif task_state is TaskState.BLOCKED:
+            elif task.state is TaskState.BLOCKED:
                 state = MissionJobState.BLOCKED
             else:
                 state = MissionJobState.INTERRUPTED
 
+            plan = self.store.latest_plan_for_task(task.id)
             hydrated[job_id] = MissionJob(
                 id=job_id,
-                goal=str(row["goal"]),
-                workspace_id=row["workspace_id"],
-                session_id=row["session_id"],
+                goal=task.goal,
+                workspace_id=task.workspace_id,
+                session_id=task.session_id,
                 state=state,
-                task_id=str(row["id"]),
-                plan_id=row["plan_id"],
-                created_at=str(row["created_at"]),
-                updated_at=str(row["updated_at"]),
+                task_id=task.id,
+                plan_id=plan.id if plan is not None else None,
+                created_at=task.created_at,
+                updated_at=task.updated_at,
             )
 
         with self._lock:
