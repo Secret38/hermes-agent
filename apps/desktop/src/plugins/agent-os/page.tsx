@@ -11,6 +11,9 @@ import {
 } from './api'
 import { ExternalConnectionsSection, SemanticMemorySection } from './context'
 import { MissionControlActions } from './control'
+import { useHermesOperations, useLiveFleet } from './operations-data'
+import { openHermesSession } from './session-navigation'
+import { exactOperationsRoute, exactWorkerRoute } from './selectors'
 import type {
   AgentOSAction,
   AgentOSAgent,
@@ -22,7 +25,7 @@ import type {
   AgentOSTopologyNode
 } from './types'
 
-type MissionTab = 'overview' | 'tasks' | 'memory' | 'connections'
+type MissionTab = 'overview' | 'tasks' | 'operations' | 'fleet' | 'memory' | 'connections'
 
 const ACTIVE_TASK_STATES = new Set([
   'CREATED',
@@ -1573,6 +1576,201 @@ function ConnectionsView({ snapshot }: { snapshot: AgentOSSnapshot }) {
   )
 }
 
+function OperationsView() {
+  const operations = useHermesOperations()
+  const routes = operations.routes.data ?? []
+  const rows = operations.snapshots.flatMap(snapshot =>
+    snapshot.tasks.map(task => ({ snapshot, task }))
+  )
+  const running = rows.filter(row => row.task.status === 'running').length
+  const attention = rows.filter(
+    row => row.task.status === 'blocked' || row.task.status === 'review' || Boolean(row.task.warning?.count)
+  ).length
+
+  return (
+    <div className="space-y-3">
+      <div className="aos-summary-grid grid grid-cols-2 gap-2 md:grid-cols-4">
+        <MetricCard icon="plug" label="Sources" value={operations.sources.length} />
+        <MetricCard icon="checklist" label="Operational tasks" value={rows.length} />
+        <MetricCard icon="pulse" label="Running" value={running} />
+        <MetricCard icon="bell" label="Needs attention" value={attention} />
+      </div>
+
+      <section className="aos-panel overflow-hidden">
+        <SectionHeader
+          icon="server-process"
+          meta={operations.query.isFetching ? 'refreshing' : `${rows.length} visible`}
+          title="Operational work"
+        />
+        {operations.query.error ? (
+          <div className="p-4 text-xs text-destructive">
+            {operations.query.error instanceof Error ? operations.query.error.message : String(operations.query.error)}
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="grid min-h-48 place-items-center p-6 text-center text-xs text-(--ui-text-tertiary)">
+            No external operational tasks are currently published.
+          </div>
+        ) : (
+          <div className="aos-scrollbar max-h-[38rem] overflow-y-auto p-2.5">
+            <div className="space-y-1.5">
+              {rows.map(({ snapshot, task }) => {
+                const source = operations.sources.find(item => item.id === snapshot.sourceId)
+                const workerRoute = exactWorkerRoute(task, snapshot, routes)
+                const originRoute = exactOperationsRoute(snapshot.connectionId, snapshot.profile, routes)
+
+                return (
+                  <div
+                    className="rounded-md border border-(--ui-stroke-tertiary) bg-(--ui-bg-secondary) p-2.5"
+                    key={`${snapshot.sourceId}:${snapshot.scopeKey ?? ''}:${task.id}`}
+                  >
+                    <div className="flex min-w-0 items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="aos-kicker">{snapshot.sourceLabel}</span>
+                          {snapshot.scopeLabel && (
+                            <span className="truncate text-[0.56rem] text-(--ui-text-quaternary)">
+                              {snapshot.scopeLabel}
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-1 truncate text-xs font-medium text-foreground" title={task.title}>
+                          {task.title}
+                        </div>
+                        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[0.58rem] text-(--ui-text-tertiary)">
+                          {task.assignee && <span>assignee {task.assignee}</span>}
+                          {task.projectName && <span>project {task.projectName}</span>}
+                          {task.runId != null && <span>run {task.runId}</span>}
+                          {task.warning?.count ? <span>{task.warning.count} diagnostic(s)</span> : null}
+                        </div>
+                      </div>
+                      <StateBadge compact state={task.status} />
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap justify-end gap-1.5">
+                      {source?.openTask && (
+                        <button
+                          className="rounded border border-(--ui-stroke-tertiary) px-2 py-1 text-[0.58rem] text-(--ui-text-secondary) hover:bg-(--ui-control-hover-background)"
+                          onClick={() => source.openTask?.(task.id)}
+                          type="button"
+                        >
+                          Open source
+                        </button>
+                      )}
+                      {task.originSessionId && originRoute && (
+                        <button
+                          className="rounded border border-(--ui-stroke-tertiary) px-2 py-1 text-[0.58rem] text-(--ui-text-secondary) hover:bg-(--ui-control-hover-background)"
+                          onClick={() => openHermesSession(task.originSessionId!, originRoute)}
+                          type="button"
+                        >
+                          Origin
+                        </button>
+                      )}
+                      {task.workerSessionId && workerRoute && (
+                        <button
+                          className="rounded border border-[color-mix(in_srgb,var(--dt-primary)_40%,var(--ui-stroke-tertiary))] px-2 py-1 text-[0.58rem] font-medium text-foreground hover:bg-(--ui-control-hover-background)"
+                          onClick={() => openHermesSession(task.workerSessionId!, workerRoute)}
+                          title="Open the exact worker session bound to this run"
+                          type="button"
+                        >
+                          Worker
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+      </section>
+    </div>
+  )
+}
+
+function FleetView() {
+  const fleet = useLiveFleet()
+  const sessions = fleet.data.sessions
+  const subagents = sessions.reduce((total, session) => total + session.subagents.length, 0)
+  const active = sessions.filter(session => ['working', 'waiting', 'starting'].includes(session.status)).length
+
+  return (
+    <div className="space-y-3">
+      <div className="aos-summary-grid grid grid-cols-2 gap-2 md:grid-cols-4">
+        <MetricCard icon="comment-discussion" label="Live sessions" value={sessions.length} />
+        <MetricCard icon="pulse" label="Active sessions" value={active} />
+        <MetricCard icon="hubot" label="Subagents" value={subagents} />
+        <MetricCard
+          icon="history"
+          label="Snapshot"
+          value={fleet.updatedAt ? formatTime(new Date(fleet.updatedAt).toISOString()) : '—'}
+        />
+      </div>
+
+      <section className="aos-panel overflow-hidden">
+        <SectionHeader icon="type-hierarchy" meta={`${sessions.length} gateway session(s)`} title="Live fleet" />
+        {sessions.length === 0 ? (
+          <div className="grid min-h-48 place-items-center p-6 text-center text-xs text-(--ui-text-tertiary)">
+            No live sessions are currently reported by the active gateway scope.
+          </div>
+        ) : (
+          <div className="aos-scrollbar max-h-[40rem] space-y-2 overflow-y-auto p-3">
+            {sessions.map(session => (
+              <div
+                className="rounded-md border border-(--ui-stroke-tertiary) bg-(--ui-bg-secondary) p-2.5"
+                key={session.id}
+              >
+                <div className="flex min-w-0 items-start justify-between gap-3">
+                  <button
+                    className="min-w-0 flex-1 text-left"
+                    onClick={() => openHermesSession(session.id)}
+                    title="Open Hermes session"
+                    type="button"
+                  >
+                    <div className="truncate text-xs font-medium text-foreground">
+                      {session.title || session.preview || session.session_key}
+                    </div>
+                    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[0.58rem] text-(--ui-text-tertiary)">
+                      {session.model && <span>{session.model}</span>}
+                      <span>{session.message_count} messages</span>
+                      <span>{session.subagents.length} subagent(s)</span>
+                    </div>
+                  </button>
+                  <StateBadge compact state={session.status} />
+                </div>
+
+                {session.subagents.length > 0 && (
+                  <div className="mt-2 grid gap-1.5 border-t border-(--ui-stroke-tertiary) pt-2 md:grid-cols-2">
+                    {session.subagents.map(agent => (
+                      <div
+                        className="rounded border border-(--ui-stroke-tertiary) bg-(--ui-bg-primary) p-2"
+                        key={agent.subagent_id}
+                      >
+                        <div className="flex min-w-0 items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="truncate text-[0.65rem] font-medium text-foreground">
+                              {agent.goal || agent.subagent_id}
+                            </div>
+                            <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-[0.55rem] text-(--ui-text-tertiary)">
+                              {agent.model && <span>{agent.model}</span>}
+                              {agent.last_tool && <span>tool {agent.last_tool}</span>}
+                              {agent.tool_count != null && <span>{agent.tool_count} calls</span>}
+                            </div>
+                          </div>
+                          <StateBadge compact state={agent.status || 'ACTIVE'} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
+  )
+}
+
 function TasksView({
   onSelect,
   query,
@@ -1650,6 +1848,8 @@ export function AgentOSMissionControl() {
   const tabs: Array<{ id: MissionTab; label: string; icon: string }> = [
     { id: 'overview', label: 'Mission Control', icon: 'dashboard' },
     { id: 'tasks', label: 'Tasks', icon: 'checklist' },
+    { id: 'operations', label: 'Operations', icon: 'server-process' },
+    { id: 'fleet', label: 'Fleet', icon: 'hubot' },
     { id: 'memory', label: 'Memory', icon: 'database' },
     { id: 'connections', label: 'Connections', icon: 'type-hierarchy' }
   ]
@@ -1789,6 +1989,8 @@ export function AgentOSMissionControl() {
                 snapshot={snapshot}
               />
             )}
+            {tab === 'operations' && <OperationsView />}
+            {tab === 'fleet' && <FleetView />}
             {tab === 'memory' && <MemoryView snapshot={snapshot} />}
             {tab === 'connections' && <ConnectionsView snapshot={snapshot} />}
           </>
