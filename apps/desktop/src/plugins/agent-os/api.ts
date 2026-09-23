@@ -1,6 +1,6 @@
 import { type PluginRestOptions, queryClient } from '@hermes/plugin-sdk'
 
-import type { AgentOSSnapshot } from './types'
+import type { AgentOSContextSnapshot, AgentOSSnapshot } from './types'
 
 type Rest = <T>(path: string, opts?: PluginRestOptions) => Promise<T>
 type Socket = (path: string, onMessage: (data: unknown) => void) => () => void
@@ -8,6 +8,7 @@ type Socket = (path: string, onMessage: (data: unknown) => void) => () => void
 let rest: null | Rest = null
 
 export const AGENT_OS_SNAPSHOT_KEY = ['agent-os', 'mission-control'] as const
+export const AGENT_OS_CONTEXT_KEY = ['agent-os', 'mission-context'] as const
 
 export function bindAgentOSApi(nextRest: Rest, socket: Socket): () => void {
   rest = nextRest
@@ -30,4 +31,11 @@ export function fetchAgentOSSnapshot(): Promise<AgentOSSnapshot> {
   return rest
     ? rest<AgentOSSnapshot>('/snapshot?limit=60')
     : Promise.reject(new Error('Agent OS Mission Control API is not ready'))
+}
+
+
+export function fetchAgentOSContext(): Promise<AgentOSContextSnapshot> {
+  return rest
+    ? rest<AgentOSContextSnapshot>('/context')
+    : Promise.reject(new Error('Agent OS Mission Control context API is not ready'))
 }
