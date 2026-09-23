@@ -1470,6 +1470,16 @@ class TurnRunner:
         pending["_approval_owner_chat_id"] = str(getattr(ctx.source, "chat_id", "") or "").strip()
         pending["_approval_owner_chat_type"] = str(getattr(ctx.source, "chat_type", "") or "").strip()
         self._runner._pending_approvals[ctx.session_key] = pending
+        request_id = str(approval_data.get("request_id") or "").strip()
+        if request_id:
+            from tools.approval import bind_gateway_approval_principal
+            bind_gateway_approval_principal(
+                ctx.session_key,
+                request_id,
+                user_id=getattr(ctx.source, "user_id", None),
+                chat_id=getattr(ctx.source, "chat_id", None),
+                chat_type=getattr(ctx.source, "chat_type", None),
+            )
         # Check the *class*, not the instance — MagicMock auto-creates attributes in tests.
         if _renders_exec_approval_buttons(type(adapter)):
             try:
