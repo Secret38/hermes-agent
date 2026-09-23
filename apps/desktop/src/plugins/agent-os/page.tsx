@@ -13,6 +13,7 @@ import { useAgentOSAudit } from './audit-data'
 import { ExternalConnectionsSection, SemanticMemorySection } from './context'
 import { MissionControlActions } from './control'
 import { useHermesOperations, useLiveFleet } from './operations-data'
+import { useComputerUseSecurity, useNetworkSecurity, useTelemetrySecurity } from './security-data'
 import { openHermesSession } from './session-navigation'
 import { exactOperationsRoute, exactWorkerRoute } from './selectors'
 import type {
@@ -26,7 +27,7 @@ import type {
   AgentOSTopologyNode
 } from './types'
 
-type MissionTab = 'overview' | 'tasks' | 'operations' | 'fleet' | 'memory' | 'connections'
+type MissionTab = 'overview' | 'tasks' | 'operations' | 'fleet' | 'memory' | 'connections' | 'security'
 
 const ACTIVE_TASK_STATES = new Set([
   'CREATED',
@@ -697,8 +698,7 @@ function TaskList({
           type="button"
         >
           <div className="flex w-full min-w-0 items-start justify-between gap-3">
-            <span className="line-clamp-2 min-w-0 text-xs font-medium leading-relaxed text-foreground">{task.goal}</span>
-            <StateBadge compact state={task.state} />
+            <span className="line-clamp-2 min-w-0 text-xs font-medium leading-relaxed text-foreground">{task.goal}</span>            <StateBadge compact state={task.state} />
           </div>
           <div className="mt-1.5 flex w-full min-w-0 items-center gap-2 text-[0.6rem] text-(--ui-text-tertiary)">
             <span className="truncate font-mono">{compactId(task.id)}</span>
@@ -1398,7 +1398,6 @@ function MemoryView({ snapshot }: { snapshot: AgentOSSnapshot }) {
         <MetricCard icon="save" label="Checkpoints" value={memory.checkpoints.length} />
         <MetricCard icon="git-merge" label="Relations" value={memory.relations.length} />
       </div>
-
       <div className="grid gap-3 xl:grid-cols-[1fr_1fr_1fr]">
         <section className="aos-panel overflow-hidden">
           <SectionHeader icon="folder" meta={`${memory.workspaces.length}`} title="Workspace memory" />
@@ -1823,6 +1822,114 @@ function FleetView() {
   )
 }
 
+function SecurityView() {
+  const computerUse = useComputerUseSecurity()
+  const telemetry = useTelemetrySecurity()
+  const network = useNetworkSecurity()
+
+  const networkRows = network.data
+    ? [
+        ['Model provider', network.data.model_provider.class, network.data.model_provider.provider],
+        ['MCP', network.data.mcp.enabled ? 'mixed' : 'disabled', `${network.data.mcp.enabled}/${network.data.mcp.configured} enabled`],
+        ['Shared metrics', network.data.telemetry.class, network.data.telemetry.transmission_enabled ? 'transmitting' : 'not transmitting'],
+        ['Browser', network.data.browser.class, 'user-directed destinations'],
+        ['Computer use', network.data.computer_use.class, 'controlled apps may have their own egress'],
+        ['Messaging', network.data.messaging.class, 'no narrow runtime authority'],
+        ['Updates', network.data.updates.class, network.data.updates.mode]
+      ]
+    : []
+
+  return (
+    <div className="space-y-3">
+      <div className="aos-panel p-4">
+        <div className="aos-kicker">Security & privacy</div>
+        <div className="mt-1.5 text-lg font-semibold tracking-tight text-foreground">Execution boundary</div>
+        <p className="mt-2 max-w-4xl text-xs leading-relaxed text-(--ui-text-tertiary)">
+          This surface reports sanitized runtime/config authorities only. Unknown means Hermes cannot prove the boundary;
+          it does not mean offline. Raw endpoints, secrets, headers, commands and prompt content are intentionally absent.
+        </p>
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        <section className="aos-panel overflow-hidden">
+          <SectionHeader icon="shield" title="Computer Use" />
+          <div className="grid gap-2 p-3 sm:grid-cols-2">
+            <MetricCard
+              icon="lock"
+              label="Permission mode"
+              value={computerUse.data?.permission_mode?.toUpperCase() ?? (computerUse.isLoading ? '…' : 'UNKNOWN')}
+            />
+            <MetricCard
+              icon="broadcast"
+              label="Driver telemetry"
+              value={computerUse.data ? (computerUse.data.telemetry_enabled ? 'ENABLED' : 'DISABLED') : 'UNKNOWN'}
+            />
+          </div>
+          {computerUse.data && (
+            <div className="border-t border-(--ui-stroke-tertiary) p-3 text-[0.62rem] leading-relaxed text-(--ui-text-tertiary)">
+              Capability manifest · {computerUse.data.manifest.configured ? 'configured' : 'not configured'}
+              {computerUse.data.manifest.configured
+                ? ` · ${computerUse.data.manifest.readable ? 'readable' : 'unreadable'} · v${computerUse.data.manifest.version ?? 'unknown'}`
+                : ''}
+              {computerUse.data.manifest.required ? ' · required by bounded mode' : ''}
+            </div>
+          )}
+          {computerUse.error && <div className="p-3 text-xs text-destructive">{String(computerUse.error)}</div>}
+        </section>
+
+        <section className="aos-panel overflow-hidden">
+          <SectionHeader icon="radio-tower" title="Shared metrics" />
+          <div className="grid gap-2 p-3 sm:grid-cols-2">
+            <MetricCard
+              icon="database"
+              label="Collection"
+              value={telemetry.data ? (telemetry.data.shared_metrics.collection_enabled ? 'ENABLED' : 'DISABLED') : 'UNKNOWN'}
+            />
+            <MetricCard
+              icon="cloud-upload"
+              label="Transmission"
+              value={telemetry.data ? (telemetry.data.shared_metrics.transmission_enabled ? 'ENABLED' : 'DISABLED') : 'UNKNOWN'}
+            />
+          </div>
+          {telemetry.data && (
+            <div className="border-t border-(--ui-stroke-tertiary) p-3 text-[0.62rem] text-(--ui-text-tertiary)">
+              Destination class · {humanize(telemetry.data.shared_metrics.destination)}
+              {telemetry.data.shared_metrics.transmission_requested && !telemetry.data.shared_metrics.transmission_enabled
+                ? ' · transmission requested but not effective'
+                : ''}
+            </div>
+          )}
+          {telemetry.error && <div className="p-3 text-xs text-destructive">{String(telemetry.error)}</div>}
+        </section>
+      </div>
+
+      <section className="aos-panel overflow-hidden">
+        <SectionHeader icon="globe" meta={network.data?.coverage === 'partial' ? 'PARTIAL COVERAGE' : undefined} title="Outbound network inventory" />
+        {network.isLoading ? (
+          <div className="grid min-h-32 place-items-center text-xs text-(--ui-text-tertiary)">Reading sanitized network posture…</div>
+        ) : network.error ? (
+          <div className="p-4 text-xs text-destructive">{String(network.error)}</div>
+        ) : (
+          <div className="grid gap-1 p-3 md:grid-cols-2">
+            {networkRows.map(([label, state, detail]) => (
+              <div className="flex min-w-0 items-center gap-3 rounded border border-(--ui-stroke-tertiary) bg-(--ui-bg-secondary) p-2.5" key={label}>
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-medium text-foreground">{label}</div>
+                  <div className="mt-0.5 truncate text-[0.6rem] text-(--ui-text-tertiary)">{detail}</div>
+                </div>
+                <StateBadge compact state={String(state).toUpperCase()} />
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="border-t border-(--ui-stroke-tertiary) px-3 py-2 text-[0.56rem] leading-relaxed text-(--ui-text-quaternary)">
+          Classification only · no live network probe is performed. Browser destinations and app-driven Computer Use egress remain unknown by design.
+        </div>
+      </section>
+    </div>
+  )
+}
+
 function TasksView({
   onSelect,
   query,
@@ -1903,7 +2010,8 @@ export function AgentOSMissionControl() {
     { id: 'operations', label: 'Operations', icon: 'server-process' },
     { id: 'fleet', label: 'Fleet', icon: 'hubot' },
     { id: 'memory', label: 'Memory', icon: 'database' },
-    { id: 'connections', label: 'Connections', icon: 'type-hierarchy' }
+    { id: 'connections', label: 'Connections', icon: 'type-hierarchy' },
+    { id: 'security', label: 'Security', icon: 'shield' }
   ]
 
   return (
@@ -2045,6 +2153,7 @@ export function AgentOSMissionControl() {
             {tab === 'fleet' && <FleetView />}
             {tab === 'memory' && <MemoryView snapshot={snapshot} />}
             {tab === 'connections' && <ConnectionsView snapshot={snapshot} />}
+            {tab === 'security' && <SecurityView />}
           </>
         )}
       </div>
