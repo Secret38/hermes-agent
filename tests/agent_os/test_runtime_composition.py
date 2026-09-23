@@ -109,3 +109,30 @@ def test_runtime_compiler_rejects_unregistered_tool_even_without_planner_manifes
 
     with pytest.raises(InvalidPlan, match="unavailable action tool"):
         runtime.submit_goal("try unavailable tool")
+
+
+
+def test_runtime_submit_goal_preserves_desktop_context(tmp_path):
+    store = AgentOSStore(tmp_path / "agent_os.db")
+    runtime = AgentOSRuntime(
+        store,
+        planner=StaticPlanner(
+            proposal(),
+            PlannerCapabilities.create(action_tools=("fixture",)),
+        ),
+        action_kernels={"fixture": kernel(store)},
+        scheduler_owner_id="mission-control-test",
+    )
+
+    submission = runtime.submit_goal(
+        "work in the selected desktop context",
+        workspace_id=r"C:\work\project",
+        session_id="session-123",
+        metadata={"source": "mission-control"},
+    )
+
+    persisted = store.get_task(submission.task.id)
+    assert persisted is not None
+    assert persisted.workspace_id == r"C:\work\project"
+    assert persisted.session_id == "session-123"
+    assert persisted.metadata["source"] == "mission-control"
