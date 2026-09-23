@@ -263,6 +263,62 @@ def _(rid, params: dict) -> dict:
         return _err(rid, _CONFIG_GET_ERR[key], str(e))
 
 
+@method("system.estop.get")
+def _(rid, params: dict) -> dict:
+    """Backend-global emergency stop for NEW work only."""
+    from agent import estop
+
+    state = estop.get_state()
+    return _ok(rid, {
+        "engaged": state is not None,
+        "reason": state.get("reason") if state else None,
+        "engaged_at": state.get("engaged_at") if state else None,
+    })
+
+
+@method("system.estop.set")
+def _(rid, params: dict) -> dict:
+    """Engage/disengage the native Hermes new-work gate."""
+    from agent import estop
+    from hermes_cli.operations_audit import append_event
+
+    engaged = bool(params.get("engaged"))
+    reason = str(params.get("reason") or "").strip() or None
+
+    if engaged:
+        estop.engage(reason=reason)
+        event_name = "system.estop.engaged"
+        event_id = append_event(
+            event_name,
+            category="control",
+            subject="new_work",
+            outcome=reason or "operator",
+        )
+    else:
+        estop.disengage()
+        event_name = "system.estop.disengaged"
+        event_id = append_event(
+            event_name,
+            category="control",
+            subject="new_work",
+            outcome="operator",
+        )
+
+    if event_id is not None:
+        _emit(
+            "audit.changed",
+            "",
+            {"id": event_id, "event": event_name, "subject": "new_work"},
+        )
+
+    state = estop.get_state()
+    return _ok(rid, {
+        "engaged": state is not None,
+        "reason": state.get("reason") if state else None,
+        "engaged_at": state.get("engaged_at") if state else None,
+    })
+
+
 @method("audit.list")
 @_profile_scoped
 def _(rid, params: dict) -> dict:
