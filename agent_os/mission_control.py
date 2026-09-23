@@ -26,6 +26,10 @@ class MissionBusyError(RuntimeError):
     """Raised when an interactive mission is already driving the desktop."""
 
 
+class MissionPausedError(RuntimeError):
+    """Raised when Hermes' global new-work emergency stop is engaged."""
+
+
 class MissionJobState(StrEnum):
     QUEUED = "QUEUED"
     PLANNING = "PLANNING"
@@ -306,6 +310,19 @@ class MissionRuntimeService:
         with self._lock:
             self._jobs.update(hydrated)
 
+    @staticmethod
+    def _ensure_new_work_allowed() -> None:
+        from agent import estop
+
+        state = estop.get_state()
+        if state is None:
+            return
+        reason = str(state.get("reason") or "").strip()
+        suffix = f" ({reason})" if reason else ""
+        raise MissionPausedError(
+            f"Hermes new-work emergency stop is engaged{suffix}."
+        )
+
     def submit(
         self,
         goal: str,
@@ -313,6 +330,7 @@ class MissionRuntimeService:
         workspace_id: str | None = None,
         session_id: str | None = None,
     ) -> dict[str, Any]:
+        self._ensure_new_work_allowed()
         goal = str(goal or "").strip()
         if not goal:
             raise ValueError("goal must not be empty")
@@ -351,6 +369,7 @@ class MissionRuntimeService:
     def resume(self, job_id: str) -> dict[str, Any]:
         """Resume one interrupted durable mission after explicit user intent."""
 
+        self._ensure_new_work_allowed()
         with self._lock:
             if self._worker is not None and self._worker.is_alive():
                 raise MissionBusyError(
