@@ -1115,7 +1115,7 @@ export function AgentOSMissionControl() {
   const { data: snapshot, error, isFetching, refetch } = useQuery({
     queryFn: fetchAgentOSSnapshot,
     queryKey: AGENT_OS_SNAPSHOT_KEY,
-    refetchInterval: 3_000
+    refetchInterval: 20_000
   })
 
   const selected = useMemo(() => {
@@ -1278,7 +1278,7 @@ export function AgentOSStatusChip() {
   const { data } = useQuery({
     queryFn: fetchAgentOSSnapshot,
     queryKey: AGENT_OS_SNAPSHOT_KEY,
-    refetchInterval: 10_000
+    refetchInterval: 30_000
   })
 
   if (!data) {
