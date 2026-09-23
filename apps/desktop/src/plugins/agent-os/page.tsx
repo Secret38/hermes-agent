@@ -17,7 +17,7 @@ import { ProjectsView } from './projects'
 import { useComputerUseSecurity, useNetworkSecurity, useTelemetrySecurity } from './security-data'
 import { openHermesSession } from './session-navigation'
 import { exactOperationsRoute, exactWorkerRoute } from './selectors'
-import { ExecutionCanvas, RuntimeObservatory } from './visual-intelligence'
+import { ExecutionCanvas, RuntimeObservatory, RuntimeTopologyCanvas } from './visual-intelligence'
 import type {
   AgentOSAction,
   AgentOSAgent,
@@ -25,8 +25,7 @@ import type {
   AgentOSPlan,
   AgentOSPlanStep,
   AgentOSSnapshot,
-  AgentOSTask,
-  AgentOSTopologyNode
+  AgentOSTask
 } from './types'
 
 type MissionTab = 'overview' | 'tasks' | 'operations' | 'projects' | 'fleet' | 'memory' | 'connections' | 'security'
@@ -1487,30 +1486,7 @@ function MemoryView({ snapshot }: { snapshot: AgentOSSnapshot }) {
   )
 }
 
-function TopologyNode({ node }: { node: AgentOSTopologyNode }) {
-  return (
-    <div className="aos-topology-node" data-status={node.status}>
-      <div className="flex min-w-0 items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="aos-kicker">{humanize(node.kind)}</div>
-          <div className="mt-1 truncate text-xs font-semibold text-foreground">{node.label}</div>
-        </div>
-        <StateBadge compact state={node.status} />
-      </div>
-      {node.detail && <div className="mt-2 line-clamp-3 text-[0.62rem] leading-relaxed text-(--ui-text-tertiary)">{node.detail}</div>}
-      {node.remediation && (
-        <div className="mt-2 border-t border-(--ui-stroke-tertiary) pt-2 text-[0.6rem] leading-relaxed text-(--ui-text-tertiary)">
-          {node.remediation}
-        </div>
-      )}
-    </div>
-  )
-}
-
 function ConnectionsView({ snapshot }: { snapshot: AgentOSSnapshot }) {
-  const core = snapshot.topology.nodes.find(node => node.id === 'agent-os')
-  const children = snapshot.topology.nodes.filter(node => node.id !== 'agent-os')
-
   return (
     <div className="space-y-3">
       <div className="aos-panel p-4">
@@ -1535,25 +1511,7 @@ function ConnectionsView({ snapshot }: { snapshot: AgentOSSnapshot }) {
 
       <section className="aos-panel overflow-hidden">
         <SectionHeader icon="type-hierarchy" meta={`${snapshot.topology.edges.length} links`} title="Execution topology" />
-        <div className="aos-topology p-5">
-          {core && (
-            <div className="aos-topology-core rounded-lg border border-[color-mix(in_srgb,var(--dt-primary)_35%,var(--ui-stroke-tertiary))] bg-[color-mix(in_srgb,var(--dt-primary)_7%,var(--ui-bg-secondary))] p-3 text-center">
-              <div className="mx-auto mb-2 grid size-8 place-items-center rounded-full border border-(--ui-stroke-tertiary) bg-(--ui-bg-primary)">
-                <Codicon name="circuit-board" size="0.95rem" />
-              </div>
-              <div className="text-sm font-semibold text-foreground">{core.label}</div>
-              <div className="mt-1 flex justify-center">
-                <StateBadge compact state={core.status} />
-              </div>
-            </div>
-          )}
-
-          <div className="aos-topology-grid">
-            {children.map(node => (
-              <TopologyNode key={node.id} node={node} />
-            ))}
-          </div>
-        </div>
+        <RuntimeTopologyCanvas edges={snapshot.topology.edges} nodes={snapshot.topology.nodes} />
       </section>
 
       <ExternalConnectionsSection />
