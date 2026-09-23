@@ -164,3 +164,90 @@ def test_provision_security_failure_is_part_of_success_contract(tmp_path, monkey
     assert component.name == "production_security"
     assert component.ready is False
     assert "scanner install failed" in component.detail
+
+
+
+def test_configure_production_security_writes_only_explicit_profile(monkeypatch):
+    import hermes_cli.config as config_module
+    from tools import tirith_security
+
+    source = {
+        "model": {"default": "keep-me"},
+        "approvals": {
+            "mode": "smart",
+            "cron_mode": "approve",
+            "single_query_mode": "approve",
+            "unattended_mode": "approve",
+        },
+        "security": {
+            "tirith_enabled": False,
+            "tirith_fail_open": True,
+            "protected_instruction_files": True,
+        },
+    }
+    saved = {}
+
+    monkeypatch.setattr(config_module, "load_config", lambda: {
+        key: value.copy() if isinstance(value, dict) else value
+        for key, value in source.items()
+    })
+
+    def save_config(config, **kwargs):
+        saved["config"] = config
+        saved["kwargs"] = kwargs
+
+    monkeypatch.setattr(config_module, "save_config", save_config)
+    monkeypatch.setattr(
+        tirith_security, "ensure_installed_sync",
+        lambda log_failures=True: "C:/Hermes/bin/tirith.exe",
+    )
+    monkeypatch.setattr(tirith_security, "scanner_available", lambda: True)
+
+    changed, scanner = provisioning._configure_production_security()
+
+    assert changed is True
+    assert scanner.endswith("tirith.exe")
+    config = saved["config"]
+    assert config["model"]["default"] == "keep-me"
+    assert config["security"]["protected_instruction_files"] is True
+    assert config["approvals"] == {
+        "mode": "manual",
+        "cron_mode": "deny",
+        "single_query_mode": "deny",
+        "unattended_mode": "deny",
+    }
+    assert config["security"]["tirith_enabled"] is True
+    assert config["security"]["tirith_fail_open"] is False
+    assert saved["kwargs"]["merge_existing"] is True
+    assert saved["kwargs"]["preserve_keys"] == set(
+        provisioning._PRODUCTION_SECURITY_POLICY
+    )
+
+
+def test_configure_production_security_is_idempotent(monkeypatch):
+    import hermes_cli.config as config_module
+    from tools import tirith_security
+
+    config = {
+        "approvals": {
+            "mode": "manual",
+            "cron_mode": "deny",
+            "single_query_mode": "deny",
+            "unattended_mode": "deny",
+        },
+        "security": {
+            "tirith_enabled": True,
+            "tirith_fail_open": False,
+        },
+    }
+    save_calls = []
+    monkeypatch.setattr(config_module, "load_config", lambda: config)
+    monkeypatch.setattr(config_module, "save_config", lambda *a, **k: save_calls.append((a, k)))
+    monkeypatch.setattr(tirith_security, "ensure_installed_sync", lambda **_k: "tirith")
+    monkeypatch.setattr(tirith_security, "scanner_available", lambda: True)
+
+    changed, scanner = provisioning._configure_production_security()
+
+    assert changed is False
+    assert scanner == "tirith"
+    assert save_calls == []
