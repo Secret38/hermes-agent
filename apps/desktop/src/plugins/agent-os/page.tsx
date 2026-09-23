@@ -1,8 +1,8 @@
-import { cn, Codicon, host, useQuery } from '@hermes/plugin-sdk'
+import { cn, Codicon, host, queryClient, useQuery } from '@hermes/plugin-sdk'
 import { useMemo, useState } from 'react'
 
 import './agent-os.css'
-import { AGENT_OS_SNAPSHOT_KEY, fetchAgentOSSnapshot } from './api'
+import { AGENT_OS_CONTEXT_KEY, AGENT_OS_SNAPSHOT_KEY, fetchAgentOSSnapshot } from './api'
 import { ExternalConnectionsSection, SemanticMemorySection } from './context'
 import type {
   AgentOSAction,
@@ -1170,8 +1170,11 @@ export function AgentOSMissionControl() {
             <button
               aria-label="Refresh Agent OS"
               className="grid size-7 place-items-center rounded-md border border-(--ui-stroke-tertiary) bg-(--ui-bg-secondary) text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground"
-              onClick={() => void refetch()}
-              title="Refresh"
+              onClick={() => {
+                void refetch()
+                void queryClient.invalidateQueries({ queryKey: AGENT_OS_CONTEXT_KEY })
+              }}
+              title="Refresh Agent OS state, memory and connections"
               type="button"
             >
               <Codicon className={cn(isFetching && 'animate-spin')} name="refresh" size="0.8rem" />
