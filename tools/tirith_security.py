@@ -418,23 +418,50 @@ def _find_local_tirith() -> str | None:
     return shutil.which("tirith") or (hermes_bin if _is_executable(hermes_bin) else None)
 
 
-def scanner_available() -> bool:
-    """Read-only proof that the configured Tirith executable is locally runnable.
-
-    Never creates directories, downloads assets, or mutates resolver state. This
-    is the health/status predicate; provisioning uses ensure_installed_sync().
-    """
+def _local_scanner_path() -> str | None:
+    """Resolve the configured scanner without downloads, mkdirs, or cache mutation."""
     cfg = _load_security_config()
     if not cfg["tirith_enabled"]:
-        return False
+        return None
     configured = str(cfg["tirith_path"] or "tirith")
     if configured != "tirith":
         expanded = os.path.expanduser(configured)
-        return bool(_is_executable(expanded) or shutil.which(expanded))
-    if shutil.which("tirith"):
-        return True
+        if _is_executable(expanded):
+            return expanded
+        return shutil.which(expanded)
+    if found := shutil.which("tirith"):
+        return found
     hermes_bin = os.path.join(str(get_hermes_home()), "bin", _installed_binary_name())
-    return _is_executable(hermes_bin)
+    return hermes_bin if _is_executable(hermes_bin) else None
+
+
+def scanner_available() -> bool:
+    """Read-only proof that a configured/local Tirith executable exists."""
+    return _local_scanner_path() is not None
+
+
+def scanner_healthy() -> bool:
+    """Read-only execution probe for production-readiness checks.
+
+    The probe never installs or mutates anything; it only executes the resolved
+    binary's version command under a short timeout.
+    """
+    path = _local_scanner_path()
+    if not path:
+        return False
+    cfg = _load_security_config()
+    timeout = max(1, min(int(cfg.get("tirith_timeout", 5)), 5))
+    try:
+        result = subprocess.run(
+            [path, "--version"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=timeout,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
 
 
 def _resolve_locally(configured_path: str, *, warn_missing: bool) -> tuple[str | None, bool]:
@@ -525,9 +552,9 @@ def ensure_installed(*, log_failures: bool = True):
         return None
     if cached := _cached_path():
         return cached if _is_executable(cached) else None
-    # No release build for this OS/architecture: stay silent -- no PATH probe,
-    # no download thread, no disk marker. Pattern-matching guards still run.
-    if not is_platform_supported():
+    # The default path can only auto-install where an official release target
+    # exists. An explicit path is still resolved on every platform.
+    if cfg["tirith_path"] == "tirith" and not is_platform_supported():
         _set_failed("unsupported_platform")
         return None
     found, may_install = _resolve_locally(cfg["tirith_path"], warn_missing=False)
@@ -548,7 +575,11 @@ def ensure_installed_sync(*, log_failures: bool = True) -> str | None:
     """
     global _install_thread
     cfg = _load_security_config()
-    if not cfg["tirith_enabled"] or not is_platform_supported():
+    if not cfg["tirith_enabled"]:
+        return None
+    # Explicit paths remain authoritative even where Hermes cannot auto-install
+    # an official release artifact (for example a locally built target).
+    if cfg["tirith_path"] == "tirith" and not is_platform_supported():
         return None
     if cached := _cached_path():
         return cached if _is_executable(cached) else None
