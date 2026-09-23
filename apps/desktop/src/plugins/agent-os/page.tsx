@@ -2,8 +2,15 @@ import { cn, Codicon, host, queryClient, useQuery } from '@hermes/plugin-sdk'
 import { useMemo, useState } from 'react'
 
 import './agent-os.css'
-import { AGENT_OS_CONTEXT_KEY, AGENT_OS_SNAPSHOT_KEY, fetchAgentOSSnapshot } from './api'
+import {
+  AGENT_OS_APPROVALS_KEY,
+  AGENT_OS_CONTEXT_KEY,
+  AGENT_OS_MISSIONS_KEY,
+  AGENT_OS_SNAPSHOT_KEY,
+  fetchAgentOSSnapshot
+} from './api'
 import { ExternalConnectionsSection, SemanticMemorySection } from './context'
+import { MissionControlActions } from './control'
 import type {
   AgentOSAction,
   AgentOSAgent,
@@ -1680,6 +1687,8 @@ export function AgentOSMissionControl() {
               onClick={() => {
                 void refetch()
                 void queryClient.invalidateQueries({ queryKey: AGENT_OS_CONTEXT_KEY })
+                void queryClient.invalidateQueries({ queryKey: AGENT_OS_MISSIONS_KEY })
+                void queryClient.invalidateQueries({ queryKey: AGENT_OS_APPROVALS_KEY })
               }}
               title="Refresh Agent OS state, memory and connections"
               type="button"
@@ -1748,6 +1757,15 @@ export function AgentOSMissionControl() {
           </div>
         ) : (
           <>
+            <div className="mb-3">
+              <MissionControlActions
+                coreReady={snapshot.health.core_ready}
+                onSelectTask={taskId => {
+                  setSelectedId(taskId)
+                  setTab('tasks')
+                }}
+              />
+            </div>
             {tab === 'overview' &&
               (snapshot.tasks.length ? (
                 <Overview
