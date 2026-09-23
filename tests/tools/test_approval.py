@@ -2275,3 +2275,45 @@ class TestLifecycleGuardLaunchctlParity:
     ``force=True``. A verb covered only by the approval layer is therefore
     reachable from inside the gateway, where SIGTERM propagates to the child
     before the command completes and the service may never come back (#74973).
+
+    ``bootout`` was missing exactly this way: it is the modern replacement for
+    the ``unload`` the guard already listed. See #80260.
+    """
+
+    def test_hard_block_covers_every_lifecycle_verb(self):
+        from cron.lifecycle_guard import contains_gateway_lifecycle_command
+
+        for cmd in GATEWAY_LIFECYCLE_LAUNCHCTL:
+            assert contains_gateway_lifecycle_command(cmd) is True, cmd
+
+    def test_bypassable_layer_is_never_stricter(self):
+        """One-directional invariant: anything ``detect_dangerous_command``
+        flags as gateway lifecycle, the hard block must also catch.
+
+        Not equality — the hard block is legitimately stricter (it also covers
+        ``load``/``restart``, which the approval layer leaves alone). What must
+        never happen is the reverse: a command stopped only by the layer that
+        ``force=True`` skips, leaving no cover inside the gateway."""
+        from cron.lifecycle_guard import contains_gateway_lifecycle_command
+
+        for cmd in GATEWAY_LIFECYCLE_LAUNCHCTL:
+            dangerous, _, _ = detect_dangerous_command(cmd)
+            if not dangerous:
+                continue
+            assert contains_gateway_lifecycle_command(cmd) is True, (
+                f"approval layer flags this but the unbypassable hard block "
+                f"does not: {cmd}"
+            )
+
+    def test_unrelated_labels_are_not_blocked(self):
+        """The label anchor must still scope this to the gateway — unrelated
+        services, including other Hermes ones, stay runnable."""
+        from cron.lifecycle_guard import contains_gateway_lifecycle_command
+
+        for cmd in (
+            "launchctl bootout gui/501/com.example.unrelated",
+            "launchctl remove ai.hermes.update-checker",
+            "launchctl disable gui/501/com.apple.WindowServer",
+            "launchctl print system/com.apple.WindowServer",
+        ):
+            assert contains_gateway_lifecycle_command(cmd) is False, cmd
