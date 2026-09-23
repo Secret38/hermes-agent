@@ -244,6 +244,40 @@ def _(rid, params: dict) -> dict:
         return _err(rid, _CONFIG_GET_ERR[key], str(e))
 
 
+@method("audit.list")
+@_profile_scoped
+def _(rid, params: dict) -> dict:
+    """Metadata-only operator/security audit events for the selected profile."""
+    from hermes_cli.operations_audit import list_events
+
+    try:
+        limit = max(1, min(int(params.get("limit") or 200), 1000))
+    except (TypeError, ValueError):
+        limit = 200
+    before_id = params.get("before_id")
+    try:
+        before_id = int(before_id) if before_id is not None else None
+    except (TypeError, ValueError):
+        before_id = None
+    session_id = str(params.get("session_id") or "").strip() or None
+    task_id = str(params.get("task_id") or "").strip() or None
+    project_id = str(params.get("project_id") or "").strip() or None
+    run_id = params.get("run_id")
+    try:
+        run_id = int(run_id) if run_id is not None else None
+    except (TypeError, ValueError):
+        run_id = None
+    events = list_events(
+        limit=limit,
+        before_id=before_id,
+        session_id=session_id,
+        task_id=task_id,
+        run_id=run_id,
+        project_id=project_id,
+    )
+    return _ok(rid, {"events": events})
+
+
 # ── setup readiness
 
 def _readiness_check(rid, params, probe):
