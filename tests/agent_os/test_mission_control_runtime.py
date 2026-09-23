@@ -6,7 +6,12 @@ import time
 import pytest
 
 from agent_os.contracts import ActionRecord, TaskRecord
-from agent_os.mission_control import MissionApprovalBroker, MissionBusyError, MissionRuntimeService
+from agent_os.mission_control import (
+    MissionApprovalBroker,
+    MissionBusyError,
+    MissionPausedError,
+    MissionRuntimeService,
+)
 from agent_os.orchestration.plan import PlanRecord, PlanState, PlanStepKind, PlanStepRecord
 from agent_os.permissions import PermissionOutcome
 from agent_os.risk import RiskAssessment, RiskLevel
@@ -189,6 +194,32 @@ def test_mission_service_requires_explicit_resume_for_interrupted_job(tmp_path, 
     release.set()
     worker.join(timeout=1)
     assert not worker.is_alive()
+
+
+def test_mission_service_honors_global_new_work_emergency_stop(tmp_path, monkeypatch):
+    from agent import estop
+
+    service = MissionRuntimeService(AgentOSStore(tmp_path / "agent_os.db"))
+    monkeypatch.setattr(
+        estop,
+        "get_state",
+        lambda: {"reason": "operator pause", "engaged_at": "2026-09-23T00:00:00+00:00"},
+    )
+
+    with pytest.raises(MissionPausedError, match="operator pause"):
+        service.submit("must not start")
+
+    task, _plan = _durable_interrupted_mission(
+        service.store,
+        job_id="paused-resume",
+    )
+    service._hydrate_jobs()
+
+    with pytest.raises(MissionPausedError, match="operator pause"):
+        service.resume("paused-resume")
+
+    assert service.store.get_task(task.id).state is TaskState.READY
+    assert service._worker is None
 
 
 def test_mission_service_serializes_interactive_top_level_missions(tmp_path, monkeypatch):

@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 from agent_os.dashboard import build_dashboard_snapshot, dashboard_event_sequence
-from agent_os.mission_control import MissionBusyError, MissionRuntimeService
+from agent_os.mission_control import MissionBusyError, MissionPausedError, MissionRuntimeService
 
 router = APIRouter()
 
@@ -179,7 +179,7 @@ async def create_mission(request: MissionCreateRequest):
             workspace_id=request.workspace_id,
             session_id=request.session_id,
         )
-    except MissionBusyError as exc:
+    except (MissionBusyError, MissionPausedError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -191,7 +191,7 @@ async def resume_mission(job_id: str, _request: MissionResumeRequest):
     service = _mission_service()
     try:
         job = service.resume(job_id)
-    except MissionBusyError as exc:
+    except (MissionBusyError, MissionPausedError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

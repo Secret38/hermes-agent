@@ -386,6 +386,18 @@ class SessionControlUpdatePayload(Payload):
 event("session.control.update", SessionControlUpdatePayload, doc="Persisted goal / loop / heartbeat state changed.")
 
 
+class AuditChangedPayload(Payload):
+    """Metadata-only invalidation emitted after a durable operator-audit append."""
+
+    id: int
+    event: str
+    subject: str
+
+
+event("audit.changed", AuditChangedPayload,
+      doc="Durable operator/security audit changed; refetch audit.list for authoritative history.")
+
+
 class BillingStepUpVerificationPayload(Payload):
     """``methods_session`` billing.step_up on_verification."""
 

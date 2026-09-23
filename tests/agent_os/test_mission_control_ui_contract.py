@@ -112,3 +112,74 @@ def test_mission_control_keeps_execution_replay_and_forensics_contract():
     assert "recovery.attempted" in replay
     assert "artifact.recorded" in replay
     assert "approval.requested" in replay
+
+
+def test_mission_control_keeps_security_posture_contract():
+    page = _source("page.tsx")
+    security = _source("security-data.ts")
+
+    for marker in (
+        "Security & privacy",
+        "Execution boundary",
+        "Computer Use",
+        "Shared metrics",
+        "Outbound network inventory",
+        "PARTIAL COVERAGE",
+        "Classification only",
+    ):
+        assert marker in page
+
+    assert "computer_use.security" in security
+    assert "telemetry.security" in security
+    assert "network.security" in security
+    assert "raw endpoint" not in security.lower()
+
+
+def test_mission_control_keeps_authoritative_projects_workspace_contract():
+    page = _source("page.tsx")
+    projects = _source("projects.tsx")
+    project_data = _source("project-data.ts")
+    workspace = _source("project-workspace.ts")
+
+    assert "ProjectsView" in page
+    for marker in (
+        "Authoritative projects",
+        "Hermes Projects",
+        "Workspace roots",
+        "Project workspace",
+        "No path/name inference",
+        "No operational tasks linked by exact project id",
+    ):
+        assert marker in projects
+
+    assert "$projectTree" in project_data
+    assert "fetchProjectSessions" in project_data
+    assert "task.projectId === projectId" in project_data
+
+    for marker in (
+        "openHermesWorkspaceSession",
+        "$workspaceCwdOwner",
+        "revealDesktopPane('files')",
+        "revealReview",
+        "openBrowserTab",
+        "revealDesktopPane('terminal')",
+    ):
+        assert marker in workspace
+
+
+def test_mission_control_keeps_global_new_work_emergency_stop_contract():
+    control = _source("control.tsx")
+    control_data = _source("control-data.ts")
+
+    for marker in (
+        "Pause new work",
+        "Resume new work",
+        "NEW WORK PAUSED",
+        "Existing in-flight work",
+        "estop.data?.engaged",
+    ):
+        assert marker in control
+
+    assert "system.estop.get" in control_data
+    assert "system.estop.set" in control_data
+    assert "audit.changed" in control_data

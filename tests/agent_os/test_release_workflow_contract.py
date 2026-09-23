@@ -137,7 +137,16 @@ def test_release_preflight_requires_protected_source_gui_runner_and_signing_iden
 
     smoke = _step(signing, "Smoke-test Authenticode signing and trusted timestamp")["run"]
     assert "signtool" in smoke
+    assert r"signtool\.exe$' }" in smoke
     assert 'sign /fd SHA256 /tr "http://timestamp.digicert.com" /td SHA256' in smoke
     assert "verify /pa /all /v" in smoke
     assert "Get-AuthenticodeSignature" in smoke
     assert "TimeStamperCertificate" in smoke
+    assert smoke.count("signtool.FullName sign") == 1
+    assert smoke.count("signtool.FullName verify") == 1
+    assert smoke.count("Get-AuthenticodeSignature") == 1
+    assert smoke.count("TimeStamperCertificate") == 1
+    assert smoke.count("try {") == 1
+    assert smoke.count("finally {") == 1
+    assert "} } |" not in smoke
+    assert smoke.rstrip().endswith("}")

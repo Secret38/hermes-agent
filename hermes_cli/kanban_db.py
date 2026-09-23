@@ -159,8 +159,43 @@ def _fire_kanban_lifecycle_hook(event: str, task_id: str, **fields: Any) -> None
         _log.debug("kanban lifecycle hook %s failed: %s", event, exc)
 
 
+_TASK_AUDIT_EVENTS = {
+    "kanban_task_claimed": ("run.started", "running"),
+    "kanban_task_completed": ("run.completed", "completed"),
+}
+
+
+def _audit_task_lifecycle(
+    event: str,
+    task: Optional["Task"],
+    task_id: str,
+    run_id: Optional[int],
+) -> None:
+    """Mirror selected committed Kanban transitions into metadata-only audit."""
+    mapped = _TASK_AUDIT_EVENTS.get(event)
+    if mapped is None:
+        return
+    event_name, outcome = mapped
+    try:
+        from hermes_cli.operations_audit import append_event
+
+        append_event(
+            event_name,
+            category="execution",
+            session_id=task.session_id if task else None,
+            subject="kanban",
+            outcome=outcome,
+            task_id=task_id,
+            run_id=run_id,
+            project_id=task.project_id if task else None,
+        )
+    except Exception:  # pragma: no cover - best effort only
+        _log.debug("kanban audit append failed for %s", event, exc_info=True)
+
+
 def _fire_task_hook(event: str, task: Optional["Task"], task_id: str, run_id: Optional[int], **fields: Any) -> None:
-    """Lifecycle hook for a task transition; ``assignee`` from the (possibly missing) row."""
+    """Post-commit lifecycle observer plus metadata-only audit correlation."""
+    _audit_task_lifecycle(event, task, task_id, run_id)
     _fire_kanban_lifecycle_hook(
         event, task_id, board=get_current_board(),
         assignee=task.assignee if task else None, run_id=run_id, **fields,
@@ -193,12 +228,29 @@ def _fire_worker_spawned_hook(
     board: Optional[str] = None,
 ) -> None:
     """``on_kanban_worker_spawned`` AFTER the PID is durably persisted; best-effort."""
+    run_id = _current_run_id(conn, task.id)
+    try:
+        from hermes_cli.operations_audit import append_event
+
+        append_event(
+            "worker.started",
+            category="execution",
+            session_id=task.session_id,
+            subject="kanban_worker",
+            outcome="running",
+            task_id=task.id,
+            run_id=run_id,
+            project_id=task.project_id,
+        )
+    except Exception:  # pragma: no cover - best effort only
+        _log.debug("kanban worker audit append failed", exc_info=True)
+
     if not _kanban_observer_consumed("on_kanban_worker_spawned"):
         return
     try:
         _fire_kanban_lifecycle_hook(
             "on_kanban_worker_spawned", task.id, board=board or get_current_board(),
-            assignee=task.assignee, run_id=_current_run_id(conn, task.id),
+            assignee=task.assignee, run_id=run_id,
             worker_pid=int(pid) if pid else None, workspace_path=str(workspace_path),
         )
     except Exception as exc:  # pragma: no cover - defensive
@@ -782,6 +834,7 @@ class Run:
     claim_lock: Optional[str]
     claim_expires: Optional[int]
     worker_pid: Optional[int]
+    worker_session_id: Optional[str]
     max_runtime_seconds: Optional[int]
     last_heartbeat_at: Optional[int]
     started_at: int
@@ -797,7 +850,7 @@ class Run:
             **{
                 col: _lossy_text(row[col]) for col in (
                     "task_id", "profile", "step_key", "status", "claim_lock", "claim_expires",
-                    "worker_pid", "max_runtime_seconds", "last_heartbeat_at", "outcome", "summary", "error",
+                    "worker_pid", "worker_session_id", "max_runtime_seconds", "last_heartbeat_at", "outcome", "summary", "error",
                 )
             },
             id=int(row["id"]),
@@ -1013,6 +1066,9 @@ CREATE TABLE IF NOT EXISTS task_runs (
     -- worker_pid after the run ends so a worker that outlives its terminal transition can
     -- still be found and reaped; NULL = legacy row, never signalled.
     worker_started_at   INTEGER,
+    -- Current Hermes CLI session id for this worker attempt. Updated when
+    -- compression rotates the worker session; NULL until the worker binds itself.
+    worker_session_id   TEXT,
     max_runtime_seconds INTEGER,
     last_heartbeat_at   INTEGER,
     started_at          INTEGER NOT NULL,
@@ -2005,6 +2061,46 @@ def _task_status(conn: sqlite3.Connection, task_id: str) -> Optional[str]:
 def _current_run_id(conn: sqlite3.Connection, task_id: str) -> Optional[int]:
     row = conn.execute("SELECT current_run_id FROM tasks WHERE id = ?", (task_id,)).fetchone()
     return int(row["current_run_id"]) if row and row["current_run_id"] else None
+
+
+def bind_run_worker_session(
+    conn: sqlite3.Connection, task_id: str, run_id: int, session_id: str,
+) -> bool:
+    """Bind the worker's real Hermes session id to exactly one active Kanban run.
+
+    A stale worker cannot overwrite a successor attempt: the selected run must
+    still be running and must still equal tasks.current_run_id. Rebinding the
+    same run is intentional because Hermes session compression can rotate the
+    worker's session id while the Kanban attempt stays the same.
+    """
+    task_id = str(task_id or "").strip()
+    session_id = str(session_id or "").strip()
+    try:
+        run_id = int(run_id)
+    except (TypeError, ValueError):
+        return False
+    if not task_id or not session_id or run_id <= 0:
+        return False
+
+    with write_txn(conn):
+        cur = conn.execute(
+            """
+            UPDATE task_runs
+               SET worker_session_id = ?
+             WHERE id = ?
+               AND task_id = ?
+               AND status = 'running'
+               AND ended_at IS NULL
+               AND EXISTS (
+                   SELECT 1 FROM tasks
+                    WHERE id = ?
+                      AND status = 'running'
+                      AND current_run_id = ?
+               )
+            """,
+            (session_id, run_id, task_id, task_id, run_id),
+        )
+        return cur.rowcount == 1
 
 
 # Distinguishes "caller named the acting profile" (which may legitimately be

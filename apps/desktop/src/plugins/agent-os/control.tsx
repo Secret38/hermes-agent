@@ -1,4 +1,4 @@
-import { cn, Codicon, queryClient, useQuery } from '@hermes/plugin-sdk'
+import { cn, Codicon, host, queryClient, useQuery } from '@hermes/plugin-sdk'
 import { useState } from 'react'
 
 import {
@@ -11,6 +11,8 @@ import {
   resolveAgentOSApproval,
   resumeAgentOSMission
 } from './api'
+import { useAgentOSEstop } from './control-data'
+import { openHumanGateSession, resolveHumanGateApproval, useHumanGates, type HumanGate } from './human-gates'
 import type { AgentOSMissionJob, AgentOSPendingApproval } from './types'
 
 const ACTIVE_MISSION_STATES = new Set(['QUEUED', 'PLANNING', 'RUNNING', 'WAITING_APPROVAL'])
@@ -50,7 +52,7 @@ function MissionRow({
           className="inline-flex h-7 shrink-0 items-center gap-1 rounded border border-[color-mix(in_srgb,#d49b45_40%,var(--ui-stroke-tertiary))] px-2 text-[0.6rem] font-medium text-[#d49b45] hover:bg-[color-mix(in_srgb,#d49b45_8%,transparent)] disabled:opacity-50"
           disabled={busy}
           onClick={() => onResume(job)}
-          title="Resume this interrupted durable mission"
+          aria-label="Resume this interrupted durable mission"
           type="button"
         >
           {busy ? <Codicon className="animate-spin" name="loading" size="0.62rem" /> : <Codicon name="debug-continue" size="0.62rem" />}
@@ -61,7 +63,7 @@ function MissionRow({
         <button
           className="grid size-7 shrink-0 place-items-center rounded border border-(--ui-stroke-tertiary) text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground"
           onClick={() => onSelectTask(job.task_id!)}
-          title="Inspect durable task"
+          aria-label="Inspect durable task"
           type="button"
         >
           <Codicon name="arrow-right" size="0.7rem" />
@@ -124,6 +126,85 @@ function ApprovalCard({
   )
 }
 
+function gateIcon(kind: HumanGate['kind']): string {
+  if (kind === 'approval') return 'shield'
+  if (kind === 'clarify') return 'question'
+  if (kind === 'sudo') return 'key'
+  if (kind === 'secret') return 'lock'
+  if (kind === 'vault-code') return 'verified'
+
+  return 'archive'
+}
+
+function HumanGateCard({
+  busy,
+  gate,
+  onDecision
+}: {
+  busy: boolean
+  gate: HumanGate
+  onDecision: (gate: HumanGate, choice: 'deny' | 'once') => void
+}) {
+  const provenance = gate.approvalProvenance
+  const provenanceText = provenance
+    ? [
+        `mode ${provenance.mode}`,
+        provenance.toolName ? `tool ${provenance.toolName}` : null,
+        provenance.patternKeys.length ? `rule ${provenance.patternKeys.join(', ')}` : null,
+        provenance.smartDenied ? 'smart guardian override' : null
+      ].filter(Boolean).join(' · ')
+    : ''
+
+  return (
+    <div className="rounded-lg border border-(--ui-stroke-tertiary) bg-(--ui-bg-secondary) p-2.5">
+      <div className="flex min-w-0 items-start gap-2.5">
+        <button
+          className="flex min-w-0 flex-1 items-start gap-2.5 text-left"
+          onClick={() => openHumanGateSession(gate)}
+          aria-label="Open owning Hermes session"
+          type="button"
+        >
+          <Codicon className="mt-0.5 shrink-0 text-[#d49b45]" name={gateIcon(gate.kind)} size="0.75rem" />
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-center justify-between gap-2">
+              <span className="truncate text-[0.68rem] font-semibold text-foreground">{gate.label}</span>
+              <span className="shrink-0 text-[0.55rem] font-medium tracking-[0.06em] text-[#d49b45]">{gate.state}</span>
+            </div>
+            <div className="mt-1 line-clamp-2 text-[0.61rem] leading-relaxed text-(--ui-text-tertiary)">
+              {gate.sessionLabel} · {gate.detail}
+            </div>
+            {provenanceText && (
+              <div className="mt-1 truncate font-mono text-[0.55rem] text-(--ui-text-quaternary)" title={provenanceText}>
+                {provenanceText}
+              </div>
+            )}
+          </div>
+        </button>
+        {gate.kind === 'approval' && (
+          <div className="flex shrink-0 gap-1">
+            <button
+              className="rounded border border-(--ui-stroke-tertiary) px-2 py-1 text-[0.58rem] text-(--ui-text-secondary) hover:bg-(--ui-control-hover-background) disabled:opacity-50"
+              disabled={busy}
+              onClick={() => onDecision(gate, 'deny')}
+              type="button"
+            >
+              Deny
+            </button>
+            <button
+              className="rounded border border-[color-mix(in_srgb,var(--dt-primary)_40%,var(--ui-stroke-tertiary))] px-2 py-1 text-[0.58rem] font-medium text-foreground hover:bg-(--ui-control-hover-background) disabled:opacity-50"
+              disabled={busy}
+              onClick={() => onDecision(gate, 'once')}
+              type="button"
+            >
+              Run once
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export function MissionControlActions({
   coreReady,
   onSelectTask
@@ -136,8 +217,10 @@ export function MissionControlActions({
   const [workspace, setWorkspace] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [decisionId, setDecisionId] = useState<string>()
+  const [humanDecisionId, setHumanDecisionId] = useState<string>()
   const [resumeId, setResumeId] = useState<string>()
   const [error, setError] = useState<string>()
+  const [changingEstop, setChangingEstop] = useState(false)
 
   const { data: missionData } = useQuery({
     queryFn: fetchAgentOSMissions,
@@ -150,6 +233,8 @@ export function MissionControlActions({
     refetchInterval: 1_500
   })
 
+  const humanGates = useHumanGates()
+  const estop = useAgentOSEstop()
   const jobs = missionData?.jobs ?? []
   const approvals = approvalData?.approvals ?? []
   const active = jobs.find(job => ACTIVE_MISSION_STATES.has(job.state))
@@ -164,7 +249,7 @@ export function MissionControlActions({
   const submit = async () => {
     const trimmed = goal.trim()
 
-    if (!trimmed || submitting || active) return
+    if (!trimmed || submitting || active || estop.data?.engaged) return
 
     setSubmitting(true)
     setError(undefined)
@@ -187,7 +272,7 @@ export function MissionControlActions({
   }
 
   const resume = async (job: AgentOSMissionJob) => {
-    if (resumeId || submitting || active) return
+    if (resumeId || submitting || active || estop.data?.engaged) return
 
     setResumeId(job.id)
     setError(undefined)
@@ -199,6 +284,44 @@ export function MissionControlActions({
       setError(cause instanceof Error ? cause.message : String(cause))
     } finally {
       setResumeId(undefined)
+    }
+  }
+
+  const decideHumanGate = async (gate: HumanGate, choice: 'deny' | 'once') => {
+    if (humanDecisionId) return
+
+    setHumanDecisionId(gate.id)
+    setError(undefined)
+    try {
+      const resolved = await resolveHumanGateApproval(gate, choice)
+      if (!resolved) {
+        throw new Error('This approval is no longer pending.')
+      }
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause)
+      setError(message)
+      host.notifyError(cause, 'Could not resolve Hermes approval')
+    } finally {
+      setHumanDecisionId(undefined)
+    }
+  }
+
+  const setNewWorkPaused = async (engaged: boolean) => {
+    if (changingEstop) return
+
+    setChangingEstop(true)
+    setError(undefined)
+    try {
+      await estop.setEngaged(
+        engaged,
+        engaged ? 'Agent OS operator emergency stop' : undefined
+      )
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause)
+      setError(message)
+      host.notifyError(cause, engaged ? 'Could not pause new work' : 'Could not resume new work')
+    } finally {
+      setChangingEstop(false)
     }
   }
 
@@ -232,22 +355,83 @@ export function MissionControlActions({
           </div>
         </div>
 
-        <button
+        <div className="flex items-center gap-1.5">
+          {estop.data?.engaged ? (
+            <button
+              className="inline-flex items-center gap-1.5 rounded-md border border-[color-mix(in_srgb,#d49b45_45%,var(--ui-stroke-tertiary))] px-2.5 py-1.5 text-[0.65rem] font-semibold text-[#d49b45] hover:bg-[color-mix(in_srgb,#d49b45_8%,transparent)] disabled:opacity-50"
+              disabled={changingEstop}
+              onClick={() => void setNewWorkPaused(false)}
+              aria-label="Resume new work. Existing in-flight work is not affected."
+              type="button"
+            >
+              <Codicon name="play" size="0.68rem" />
+              Resume new work
+            </button>
+          ) : (
+            <button
+              className="inline-flex items-center gap-1.5 rounded-md border border-(--ui-stroke-tertiary) px-2.5 py-1.5 text-[0.65rem] font-medium text-(--ui-text-secondary) hover:bg-(--ui-control-hover-background) hover:text-foreground disabled:opacity-50"
+              disabled={changingEstop || estop.isError}
+              onClick={() => void setNewWorkPaused(true)}
+              aria-label="Pause new gateway turns, scheduled fires and Kanban dispatch. Existing in-flight work continues."
+              type="button"
+            >
+              <Codicon name="debug-pause" size="0.68rem" />
+              Pause new work
+            </button>
+          )}
+
+          <button
           className={cn(
             'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[0.65rem] font-semibold transition-colors',
-            coreReady && !active
+            coreReady && !active && !estop.data?.engaged
               ? 'border-[color-mix(in_srgb,var(--dt-primary)_45%,var(--ui-stroke-tertiary))] bg-[color-mix(in_srgb,var(--dt-primary)_10%,var(--ui-bg-secondary))] text-foreground hover:bg-[color-mix(in_srgb,var(--dt-primary)_16%,var(--ui-bg-secondary))]'
               : 'cursor-not-allowed border-(--ui-stroke-tertiary) text-(--ui-text-tertiary) opacity-60'
           )}
-          disabled={!coreReady || Boolean(active)}
+          disabled={!coreReady || Boolean(active) || Boolean(estop.data?.engaged)}
           onClick={() => setComposerOpen(value => !value)}
-          title={!coreReady ? 'Agent OS core is not ready' : active ? 'An interactive mission is already running' : 'Start a new Agent OS mission'}
+          aria-label={!coreReady ? 'Agent OS core is not ready' : estop.data?.engaged ? 'New work is paused by the global emergency stop' : active ? 'An interactive mission is already running' : 'Start a new Agent OS mission'}
           type="button"
         >
           <Codicon name="add" size="0.7rem" />
           New mission
-        </button>
+          </button>
+        </div>
       </div>
+
+      {estop.data?.engaged && (
+        <div className="flex items-center gap-2 border-b border-(--ui-stroke-tertiary) bg-[color-mix(in_srgb,#d49b45_7%,transparent)] px-3 py-2 text-[0.62rem] text-(--ui-text-secondary)">
+          <Codicon name="debug-pause" size="0.7rem" />
+          <span className="font-semibold text-[#d49b45]">NEW WORK PAUSED</span>
+          <span className="truncate text-(--ui-text-tertiary)">
+            Gateway turns, scheduled fires and Kanban dispatch are gated. Existing in-flight work is intentionally not killed.
+            {estop.data.reason ? ` · ${estop.data.reason}` : ''}
+          </span>
+        </div>
+      )}
+
+      {humanGates.length > 0 && (
+        <div className="border-b border-(--ui-stroke-tertiary) bg-[color-mix(in_srgb,#d49b45_3%,transparent)] p-3">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <div>
+              <div className="aos-kicker">What needs me</div>
+              <div className="mt-0.5 text-[0.58rem] text-(--ui-text-tertiary)">
+                Canonical Hermes approvals, clarification, sudo, credentials, vault and verification-code gates
+              </div>
+            </div>
+            <span className="shrink-0 text-[0.58rem] tabular-nums text-[#d49b45]">{humanGates.length} waiting</span>
+          </div>
+          <div className="grid gap-1.5 xl:grid-cols-2">
+            {humanGates.slice(0, 8).map(gate => (
+              <HumanGateCard
+                busy={humanDecisionId === gate.id}
+                gate={gate}
+                key={gate.id}
+                onDecision={decideHumanGate}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       {approvals.length > 0 && (
         <div className="border-b border-(--ui-stroke-tertiary) bg-[color-mix(in_srgb,#d49b45_3%,transparent)] p-3">

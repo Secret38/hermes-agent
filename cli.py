@@ -4119,6 +4119,31 @@ def _sync_cli_session_id_from_agent(cli) -> None:
     """Keep ``cli.session_id`` in sync when mid-run compression rotated the agent's session."""
     if getattr(cli.agent, "session_id", None) and cli.agent.session_id != cli.session_id:
         cli.session_id = cli.agent.session_id
+        _bind_kanban_worker_session(cli)
+
+
+def _bind_kanban_worker_session(cli) -> None:
+    """Persist this worker's real Hermes session id onto its active Kanban run.
+
+    Best-effort and worker-only. The DB helper verifies task id, run id, active
+    status and current_run_id, so a late process cannot rewrite a successor run.
+    """
+    task_id = (os.environ.get("HERMES_KANBAN_TASK") or "").strip()
+    raw_run_id = (os.environ.get("HERMES_KANBAN_RUN_ID") or "").strip()
+    session_id = str(getattr(cli, "session_id", "") or "").strip()
+    if not task_id or not raw_run_id or not session_id:
+        return
+    try:
+        run_id = int(raw_run_id)
+    except ValueError:
+        return
+    try:
+        from hermes_cli import kanban_db as _kb
+        from hermes_cli import kanban_db_connect as _kbc
+        with _kbc.connect_closing() as conn:
+            _kb.bind_run_worker_session(conn, task_id, run_id, session_id)
+    except Exception:
+        logger.debug("could not bind Kanban worker session", exc_info=True)
 
 
 # ``failure_reason`` values that say nothing about the task itself: the provider is walled,
@@ -4571,6 +4596,7 @@ def _run_single_query_mode(cli, query, image, quiet, oneshot, stream_json: bool 
     from hermes_cli.quiet_single_query import exit_single_query
     if not cli._claim_active_session("cli", stderr=bool(quiet)):
         exit_single_query(1)
+    _bind_kanban_worker_session(cli)
     try:
         query, single_query_images = _collect_query_images(query, image)
         single_query_image_urls = _collect_kanban_task_images(single_query_images)
