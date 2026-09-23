@@ -147,3 +147,4 @@ def test_release_preflight_requires_protected_source_gui_runner_and_signing_iden
     assert smoke.count("Get-AuthenticodeSignature") == 1
     assert smoke.count("TimeStamperCertificate") == 1
     assert "} } |" not in smoke
+    assert smoke.rstrip().endswith("}")
