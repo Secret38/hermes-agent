@@ -201,7 +201,7 @@ def test_configure_production_security_writes_only_explicit_profile(monkeypatch)
         tirith_security, "ensure_installed_sync",
         lambda log_failures=True: "C:/Hermes/bin/tirith.exe",
     )
-    monkeypatch.setattr(tirith_security, "scanner_available", lambda: True)
+    monkeypatch.setattr(tirith_security, "scanner_healthy", lambda: True)
 
     changed, scanner = provisioning._configure_production_security()
 
@@ -244,7 +244,7 @@ def test_configure_production_security_is_idempotent(monkeypatch):
     monkeypatch.setattr(config_module, "load_config", lambda: config)
     monkeypatch.setattr(config_module, "save_config", lambda *a, **k: save_calls.append((a, k)))
     monkeypatch.setattr(tirith_security, "ensure_installed_sync", lambda **_k: "tirith")
-    monkeypatch.setattr(tirith_security, "scanner_available", lambda: True)
+    monkeypatch.setattr(tirith_security, "scanner_healthy", lambda: True)
 
     changed, scanner = provisioning._configure_production_security()
 
