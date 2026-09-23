@@ -37,6 +37,10 @@ class ApprovalDecisionRequest(BaseModel):
     choice: Literal["allow_once", "deny"]
 
 
+class MissionResumeRequest(BaseModel):
+    confirm: Literal[True] = True
+
+
 @lru_cache(maxsize=1)
 def _mission_service() -> MissionRuntimeService:
     return MissionRuntimeService()
@@ -179,6 +183,20 @@ async def create_mission(request: MissionCreateRequest):
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True, "job": job}
+
+
+@router.post("/missions/{job_id}/resume")
+async def resume_mission(job_id: str, request: MissionResumeRequest):
+    service = _mission_service()
+    try:
+        job = service.resume(job_id)
+    except MissionBusyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {"ok": True, "job": job}
 
 
