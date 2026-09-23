@@ -135,35 +135,106 @@ def unregister_gateway_notify(session_key: str) -> None:
             entry.event.set()
 
 
+_DIRECT_APPROVAL_CHAT_TYPES = frozenset({"", "dm", "direct", "private", "c2c", "im"})
+
+
+def bind_gateway_approval_principal(
+    session_key: str,
+    request_id: str,
+    *,
+    user_id: str | None,
+    chat_id: str | None,
+    chat_type: str | None,
+) -> bool:
+    """Bind a gateway approval to the human principal that initiated its turn.
+
+    The approval queue is session-keyed, and group sessions intentionally share one key among
+    participants. This metadata is control-plane-only: it is neither model-visible nor persisted
+    into the conversation transcript. Returns False when the request already settled.
+    """
+    with _lock:
+        entry = next(
+            (
+                candidate
+                for candidate in _gateway_queues.get(session_key, [])
+                if candidate.data.get("request_id") == request_id
+            ),
+            None,
+        )
+        if entry is None:
+            return False
+        entry.data["_approval_owner_user_id"] = str(user_id or "").strip()
+        entry.data["_approval_owner_chat_id"] = str(chat_id or "").strip()
+        entry.data["_approval_owner_chat_type"] = str(chat_type or "").strip().lower()
+        return True
+
+
+def _approval_actor_authorized(entry, actor_user_id: str | None, actor_is_explicit_admin: bool) -> bool:
+    """Whether *actor_user_id* may settle this entry.
+
+    Legacy/non-chat entries have no owner metadata and retain their historical resolver contract.
+    Once a gateway binds a shared-chat principal, however, missing identity is never consent.
+    """
+    data = entry.data
+    if "_approval_owner_chat_type" not in data:
+        return True
+    chat_type = str(data.get("_approval_owner_chat_type") or "").strip().lower()
+    if chat_type in _DIRECT_APPROVAL_CHAT_TYPES:
+        return True
+    if actor_is_explicit_admin:
+        return True
+    owner = str(data.get("_approval_owner_user_id") or "").strip()
+    actor = str(actor_user_id or "").strip()
+    return bool(owner and actor and owner == actor)
+
+
 def resolve_gateway_approval(session_key: str, choice: str,
                              resolve_all: bool = False,
                              reason: Optional[str] = None,
-                             request_id: Optional[str] = None) -> int:
-    """Unblock waiting agent thread(s) from the gateway's /approve or /deny handler.
+                             request_id: Optional[str] = None,
+                             *,
+                             actor_user_id: Optional[str] = None,
+                             actor_is_explicit_admin: bool = False) -> int:
+    """Unblock waiting agent thread(s) from an approval surface.
 
-    *resolve_all* resolves every pending approval (``/approve all``); otherwise the oldest
-    (FIFO) or the one matching *request_id*. *reason* is the ``/deny <reason>`` free text,
-    relayed to the agent in the BLOCKED message. Returns the number resolved.
+    *resolve_all* resolves every pending approval the actor is authorized to settle; otherwise
+    the oldest authorized FIFO entry or the entry matching *request_id*. *reason* is the
+    ``/deny <reason>`` free text relayed to the agent. Shared-chat approvals bound by
+    :func:`bind_gateway_approval_principal` require the initiating user or an explicitly
+    authorized administrator. Returns the number resolved.
     """
     with _lock:
         queue = _gateway_queues.get(session_key)
         if not queue:
             return 0
+
         if request_id:
-            targets = [entry for entry in queue if entry.data.get("request_id") == request_id]
-            if not targets:
-                return 0
-            queue[:] = [entry for entry in queue if entry not in targets]
+            candidates = [entry for entry in queue if entry.data.get("request_id") == request_id]
         elif resolve_all:
-            targets = list(queue)
-            queue.clear()
+            candidates = list(queue)
         else:
-            targets = [queue.pop(0)]
+            candidates = list(queue[:1])
+
+        targets = [
+            entry
+            for entry in candidates
+            if _approval_actor_authorized(entry, actor_user_id, actor_is_explicit_admin)
+        ]
+        if not targets:
+            if candidates:
+                logger.warning(
+                    "Rejected gateway approval settlement for shared session %s: actor is not the bound owner/admin",
+                    session_key,
+                )
+            return 0
+
+        target_ids = {id(entry) for entry in targets}
+        queue[:] = [entry for entry in queue if id(entry) not in target_ids]
         if not queue:
             _gateway_queues.pop(session_key, None)
-        # Popping the entry and committing its outcome are ONE critical section: the waiter's
-        # ``_drop_entry`` reads ``entry.result`` under this same lock after its deadline check, so a
-        # choice acked to the client here can never be popped-and-lost as a timeout (#112548).
+
+        # Removing the entry and committing its outcome are ONE critical section: the waiter's
+        # ``_drop_entry`` reads ``entry.result`` under this same lock after its deadline check.
         for entry in targets:
             entry.result = choice
             if reason:
