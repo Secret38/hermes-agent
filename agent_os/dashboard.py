@@ -187,6 +187,25 @@ def _topology_edges(
     ]
 
 
+def dashboard_event_sequence(*, db_path: Path | str | None = None) -> int:
+    """Return the current append-only event sequence without mutating the store."""
+
+    path = Path(db_path) if db_path is not None else default_db_path()
+    if not path.exists():
+        return 0
+    try:
+        conn = _open_readonly(path)
+    except Exception:
+        return 0
+    try:
+        row = conn.execute("SELECT COALESCE(MAX(sequence), 0) FROM events").fetchone()
+        return int(row[0] if row is not None else 0)
+    except sqlite3.DatabaseError:
+        return 0
+    finally:
+        conn.close()
+
+
 def build_dashboard_snapshot(
     *,
     limit: int = 40,
