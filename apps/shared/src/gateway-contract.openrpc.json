@@ -3535,6 +3535,42 @@
       }
     },
     {
+      "name": "system.estop.get",
+      "summary": "Read the backend-global emergency stop used by gateway, cron and Kanban new-work gates.",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/EstopGetParams"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/EstopState"
+        }
+      }
+    },
+    {
+      "name": "system.estop.set",
+      "summary": "Engage or disengage the backend-global emergency stop; in-flight work is not killed.",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/EstopSetParams"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/EstopState"
+        }
+      }
+    },
+    {
       "name": "terminal.resize",
       "summary": "Record the client's column width for server-side rendering.",
       "params": [
@@ -3951,6 +3987,26 @@
   ],
   "components": {
     "schemas": {
+      "_SessionScoped": {
+        "additionalProperties": false,
+        "description": "Handlers that look a live session up with ``_sessions.get(params.get(\"session_id\"))``: an\nabsent / unknown id falls back to the launch profile's config, so it is never required.",
+        "properties": {
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Session Id"
+          }
+        },
+        "title": "_SessionScoped",
+        "type": "object"
+      },
       "ActiveIdResult": {
         "additionalProperties": false,
         "properties": {
@@ -4733,6 +4789,252 @@
           "attached"
         ],
         "title": "AttachedImageResult",
+        "type": "object"
+      },
+      "AuditChangedPayload": {
+        "additionalProperties": false,
+        "description": "Metadata-only invalidation emitted after a durable operator-audit append.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "event": {
+            "title": "Event",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "event",
+          "subject"
+        ],
+        "title": "AuditChangedPayload",
+        "type": "object"
+      },
+      "AuditEventRow": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "event": {
+            "title": "Event",
+            "type": "string"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Session Id"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Request Id"
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subject"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Outcome"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Task Id"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Run Id"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Project Id"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "event",
+          "category",
+          "created_at"
+        ],
+        "title": "AuditEventRow",
+        "type": "object"
+      },
+      "AuditListParams": {
+        "additionalProperties": false,
+        "properties": {
+          "profile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Profile"
+          },
+          "limit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Limit"
+          },
+          "before_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Before Id"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Session Id"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Task Id"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Run Id"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Project Id"
+          }
+        },
+        "title": "AuditListParams",
+        "type": "object"
+      },
+      "AuditListResult": {
+        "additionalProperties": false,
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/AuditEventRow"
+            },
+            "title": "Events",
+            "type": "array"
+          }
+        },
+        "required": [
+          "events"
+        ],
+        "title": "AuditListResult",
         "type": "object"
       },
       "AutoContinue": {
@@ -7090,6 +7392,35 @@
         "title": "ClarifyResult",
         "type": "object"
       },
+      "ClientCapabilitiesParams": {
+        "additionalProperties": false,
+        "properties": {
+          "server_requests": {
+            "default": false,
+            "title": "Server Requests",
+            "type": "boolean"
+          }
+        },
+        "title": "ClientCapabilitiesParams",
+        "type": "object"
+      },
+      "ClientCapabilitiesResult": {
+        "additionalProperties": false,
+        "properties": {
+          "server_requests": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Server Requests",
+            "type": "array"
+          }
+        },
+        "required": [
+          "server_requests"
+        ],
+        "title": "ClientCapabilitiesResult",
+        "type": "object"
+      },
       "CliExecParams": {
         "additionalProperties": false,
         "properties": {
@@ -7165,35 +7496,6 @@
           "output"
         ],
         "title": "CliExecResult",
-        "type": "object"
-      },
-      "ClientCapabilitiesParams": {
-        "additionalProperties": false,
-        "properties": {
-          "server_requests": {
-            "default": false,
-            "title": "Server Requests",
-            "type": "boolean"
-          }
-        },
-        "title": "ClientCapabilitiesParams",
-        "type": "object"
-      },
-      "ClientCapabilitiesResult": {
-        "additionalProperties": false,
-        "properties": {
-          "server_requests": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Server Requests",
-            "type": "array"
-          }
-        },
-        "required": [
-          "server_requests"
-        ],
-        "title": "ClientCapabilitiesResult",
         "type": "object"
       },
       "ClipboardPasteParams": {
@@ -7805,6 +8107,47 @@
         "title": "CompressionSummary",
         "type": "object"
       },
+      "ComputerUseManifestSecurity": {
+        "additionalProperties": false,
+        "properties": {
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "readable": {
+            "title": "Readable",
+            "type": "boolean"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Version"
+          },
+          "mode_independent": {
+            "title": "Mode Independent",
+            "type": "boolean"
+          },
+          "required": {
+            "title": "Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "configured",
+          "readable",
+          "mode_independent",
+          "required"
+        ],
+        "title": "ComputerUseManifestSecurity",
+        "type": "object"
+      },
       "ConfigGetParams": {
         "additionalProperties": false,
         "description": "``key`` selects one getter from ``_CONFIG_GETTERS``; ``cwd`` feeds the ``project`` getter,\n``session_id`` lets ``reasoning`` / ``fast`` answer with the session's live pin.",
@@ -8019,6 +8362,141 @@
             ],
             "default": null,
             "title": "Mcp Rev"
+          },
+          "permission_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Permission Mode"
+          },
+          "telemetry_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Telemetry Enabled"
+          },
+          "manifest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ComputerUseManifestSecurity"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "shared_metrics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SharedMetricsSecuritySummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "coverage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Coverage"
+          },
+          "model_provider": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelProviderNetworkSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "mcp": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/McpNetworkSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "telemetry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SimpleNetworkSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "browser": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SimpleNetworkSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "computer_use": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SimpleNetworkSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "messaging": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SimpleNetworkSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "updates": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SimpleNetworkSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "title": "ConfigGetResult",
@@ -10441,6 +10919,76 @@
           "retryable"
         ],
         "title": "ErrorSurface",
+        "type": "object"
+      },
+      "EstopGetParams": {
+        "additionalProperties": false,
+        "properties": {},
+        "title": "EstopGetParams",
+        "type": "object"
+      },
+      "EstopSetParams": {
+        "additionalProperties": false,
+        "properties": {
+          "engaged": {
+            "title": "Engaged",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "engaged"
+        ],
+        "title": "EstopSetParams",
+        "type": "object"
+      },
+      "EstopState": {
+        "additionalProperties": false,
+        "properties": {
+          "engaged": {
+            "title": "Engaged",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reason"
+          },
+          "engaged_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Engaged At"
+          }
+        },
+        "required": [
+          "engaged"
+        ],
+        "title": "EstopState",
         "type": "object"
       },
       "FileAttachParams": {
@@ -13923,6 +14471,34 @@
         "title": "McpCatalogResult",
         "type": "object"
       },
+      "McpNetworkSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "configured": {
+            "title": "Configured",
+            "type": "integer"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "integer"
+          },
+          "classes": {
+            "$ref": "#/components/schemas/NetworkClassCounts"
+          },
+          "subprocess_may_egress": {
+            "title": "Subprocess May Egress",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "configured",
+          "enabled",
+          "classes",
+          "subprocess_may_egress"
+        ],
+        "title": "McpNetworkSummary",
+        "type": "object"
+      },
       "McpOauthCallbackParams": {
         "additionalProperties": false,
         "properties": {
@@ -14376,153 +14952,6 @@
         "title": "McpServerRuntimeRow",
         "type": "object"
       },
-      "McpServerStatus": {
-        "additionalProperties": true,
-        "properties": {
-          "name": {
-            "default": "",
-            "title": "Name",
-            "type": "string"
-          },
-          "status": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Status"
-          },
-          "tool_count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Tool Count"
-          },
-          "error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Error"
-          }
-        },
-        "title": "McpServerStatus",
-        "type": "object"
-      },
-      "McpServerSummary": {
-        "additionalProperties": false,
-        "description": "``tui_gateway/mcp_rpc_helpers.summarize_server`` — a server's config without secret values.",
-        "properties": {
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "transport": {
-            "title": "Transport",
-            "type": "string"
-          },
-          "url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Url"
-          },
-          "command": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Command"
-          },
-          "args": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Args",
-            "type": "array"
-          },
-          "env": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Env",
-            "type": "array"
-          },
-          "auth": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Auth"
-          },
-          "oauth_tokens_present": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Oauth Tokens Present"
-          },
-          "enabled": {
-            "title": "Enabled",
-            "type": "boolean"
-          },
-          "tools": {
-            "anyOf": [
-              {},
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Tools"
-          }
-        },
-        "required": [
-          "name",
-          "transport",
-          "args",
-          "env",
-          "enabled"
-        ],
-        "title": "McpServerSummary",
-        "type": "object"
-      },
       "McpServersAddParams": {
         "additionalProperties": false,
         "description": "``preset`` (catalog id) and/or ``config`` (url/command/args/env/headers/auth/tools); a\n``bearer_token`` is written to the profile's .env, only the header template persists.",
@@ -14739,6 +15168,54 @@
         "title": "McpServersStatusResult",
         "type": "object"
       },
+      "McpServerStatus": {
+        "additionalProperties": true,
+        "properties": {
+          "name": {
+            "default": "",
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "tool_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Tool Count"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Error"
+          }
+        },
+        "title": "McpServerStatus",
+        "type": "object"
+      },
       "McpServersTestResult": {
         "additionalProperties": false,
         "description": "``ok: false`` carries ``error``; ``prompts`` / ``resources`` are only counted on success.",
@@ -14813,6 +15290,105 @@
           "oauth_needed"
         ],
         "title": "McpServersTestResult",
+        "type": "object"
+      },
+      "McpServerSummary": {
+        "additionalProperties": false,
+        "description": "``tui_gateway/mcp_rpc_helpers.summarize_server`` — a server's config without secret values.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "transport": {
+            "title": "Transport",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "command": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Command"
+          },
+          "args": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Args",
+            "type": "array"
+          },
+          "env": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Env",
+            "type": "array"
+          },
+          "auth": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Auth"
+          },
+          "oauth_tokens_present": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Oauth Tokens Present"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "tools": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Tools"
+          }
+        },
+        "required": [
+          "name",
+          "transport",
+          "args",
+          "env",
+          "enabled"
+        ],
+        "title": "McpServerSummary",
         "type": "object"
       },
       "MessageCompletePayload": {
@@ -14993,6 +15569,78 @@
         "title": "MessageInterimPayload",
         "type": "object"
       },
+      "MessageReaction": {
+        "additionalProperties": true,
+        "description": "One persisted reaction row (``hermes_state_messages.set_message_reaction``); ``seen`` is\nstamped once announced.",
+        "properties": {
+          "emoji": {
+            "title": "Emoji",
+            "type": "string"
+          },
+          "author": {
+            "title": "Author",
+            "type": "string"
+          },
+          "at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "At"
+          },
+          "seen": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Seen"
+          }
+        },
+        "required": [
+          "emoji",
+          "author"
+        ],
+        "title": "MessageReaction",
+        "type": "object"
+      },
+      "MessageReactionPayload": {
+        "additionalProperties": false,
+        "description": "``tools/react_to_message_tool.py``.",
+        "properties": {
+          "row_id": {
+            "title": "Row Id",
+            "type": "integer"
+          },
+          "reactions": {
+            "items": {
+              "$ref": "#/components/schemas/MessageReaction"
+            },
+            "title": "Reactions",
+            "type": "array"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "row_id",
+          "reactions",
+          "role"
+        ],
+        "title": "MessageReactionPayload",
+        "type": "object"
+      },
       "MessageReactParams": {
         "additionalProperties": false,
         "description": "``row_id`` is ``messages.id``; a not-yet-persisted live message names ``newest_role`` instead.\n``emoji`` null clears; the same emoji again retracts.",
@@ -15087,78 +15735,6 @@
           "reactions"
         ],
         "title": "MessageReactResult",
-        "type": "object"
-      },
-      "MessageReaction": {
-        "additionalProperties": true,
-        "description": "One persisted reaction row (``hermes_state_messages.set_message_reaction``); ``seen`` is\nstamped once announced.",
-        "properties": {
-          "emoji": {
-            "title": "Emoji",
-            "type": "string"
-          },
-          "author": {
-            "title": "Author",
-            "type": "string"
-          },
-          "at": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "At"
-          },
-          "seen": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Seen"
-          }
-        },
-        "required": [
-          "emoji",
-          "author"
-        ],
-        "title": "MessageReaction",
-        "type": "object"
-      },
-      "MessageReactionPayload": {
-        "additionalProperties": false,
-        "description": "``tools/react_to_message_tool.py``.",
-        "properties": {
-          "row_id": {
-            "title": "Row Id",
-            "type": "integer"
-          },
-          "reactions": {
-            "items": {
-              "$ref": "#/components/schemas/MessageReaction"
-            },
-            "title": "Reactions",
-            "type": "array"
-          },
-          "role": {
-            "title": "Role",
-            "type": "string"
-          }
-        },
-        "required": [
-          "row_id",
-          "reactions",
-          "role"
-        ],
-        "title": "MessageReactionPayload",
         "type": "object"
       },
       "MoaAggregatingPayload": {
@@ -15779,6 +16355,40 @@
         "title": "ModelPricing",
         "type": "object"
       },
+      "ModelProviderNetworkSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "class": {
+            "title": "Class",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "model_configured": {
+            "title": "Model Configured",
+            "type": "boolean"
+          },
+          "coverage": {
+            "title": "Coverage",
+            "type": "string"
+          },
+          "subprocess_may_egress": {
+            "title": "Subprocess May Egress",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "class",
+          "provider",
+          "model_configured",
+          "coverage",
+          "subprocess_may_egress"
+        ],
+        "title": "ModelProviderNetworkSummary",
+        "type": "object"
+      },
       "ModelSaveKeyParams": {
         "additionalProperties": false,
         "properties": {
@@ -15821,6 +16431,40 @@
           "provider"
         ],
         "title": "ModelSaveKeyResult",
+        "type": "object"
+      },
+      "NetworkClassCounts": {
+        "additionalProperties": false,
+        "properties": {
+          "disabled": {
+            "title": "Disabled",
+            "type": "integer"
+          },
+          "external": {
+            "title": "External",
+            "type": "integer"
+          },
+          "loopback": {
+            "title": "Loopback",
+            "type": "integer"
+          },
+          "process": {
+            "title": "Process",
+            "type": "integer"
+          },
+          "unknown": {
+            "title": "Unknown",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "disabled",
+          "external",
+          "loopback",
+          "process",
+          "unknown"
+        ],
+        "title": "NetworkClassCounts",
         "type": "object"
       },
       "NoticePayload": {
@@ -16976,31 +17620,6 @@
         "title": "PetGalleryResult",
         "type": "object"
       },
-      "PetGenProvider": {
-        "additionalProperties": false,
-        "description": "``agent/pet/generate/imagegen.py::list_sprite_providers`` row.",
-        "properties": {
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "label": {
-            "title": "Label",
-            "type": "string"
-          },
-          "default": {
-            "type": "boolean",
-            "title": "Default"
-          }
-        },
-        "required": [
-          "name",
-          "label",
-          "default"
-        ],
-        "title": "PetGenProvider",
-        "type": "object"
-      },
       "PetGenerateParams": {
         "additionalProperties": false,
         "description": "``prompt`` or a ``referenceImage`` data URL is required (the handler answers 4004 without one).",
@@ -17172,6 +17791,31 @@
           "providers"
         ],
         "title": "PetGenerateStatusResult",
+        "type": "object"
+      },
+      "PetGenProvider": {
+        "additionalProperties": false,
+        "description": "``agent/pet/generate/imagegen.py::list_sprite_providers`` row.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "default": {
+            "type": "boolean",
+            "title": "Default"
+          }
+        },
+        "required": [
+          "name",
+          "label",
+          "default"
+        ],
+        "title": "PetGenProvider",
         "type": "object"
       },
       "PetHatchParams": {
@@ -19308,97 +19952,6 @@
         "title": "ProfileRow",
         "type": "object"
       },
-      "ProfileSessionPreview": {
-        "additionalProperties": false,
-        "description": "Newest human-facing session of a profile (``_latest_profile_session_rows``).",
-        "properties": {
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "title": {
-            "default": "",
-            "title": "Title",
-            "type": "string"
-          },
-          "preview": {
-            "default": "",
-            "title": "Preview",
-            "type": "string"
-          },
-          "started_at": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "integer"
-              }
-            ],
-            "default": 0,
-            "title": "Started At"
-          },
-          "last_active": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "integer"
-              }
-            ],
-            "default": 0,
-            "title": "Last Active"
-          },
-          "message_count": {
-            "default": 0,
-            "title": "Message Count",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "id"
-        ],
-        "title": "ProfileSessionPreview",
-        "type": "object"
-      },
-      "ProfileWorkerSession": {
-        "additionalProperties": false,
-        "description": "Newest kanban/tool worker row, so rosters can show a profile as working.",
-        "properties": {
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "source": {
-            "default": "",
-            "title": "Source",
-            "type": "string"
-          },
-          "title": {
-            "default": "",
-            "title": "Title",
-            "type": "string"
-          },
-          "last_active": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "integer"
-              }
-            ],
-            "default": 0,
-            "title": "Last Active"
-          }
-        },
-        "required": [
-          "id"
-        ],
-        "title": "ProfileWorkerSession",
-        "type": "object"
-      },
       "ProfilesConfigureApplied": {
         "additionalProperties": false,
         "description": "Per-section outcome; only the sections the request carried are present.",
@@ -20002,6 +20555,60 @@
         "title": "ProfilesDescribeResult",
         "type": "object"
       },
+      "ProfileSessionPreview": {
+        "additionalProperties": false,
+        "description": "Newest human-facing session of a profile (``_latest_profile_session_rows``).",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "preview": {
+            "default": "",
+            "title": "Preview",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "default": 0,
+            "title": "Started At"
+          },
+          "last_active": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "default": 0,
+            "title": "Last Active"
+          },
+          "message_count": {
+            "default": 0,
+            "title": "Message Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "ProfileSessionPreview",
+        "type": "object"
+      },
       "ProfilesGetAssetParams": {
         "additionalProperties": false,
         "properties": {
@@ -20307,6 +20914,43 @@
           "asset"
         ],
         "title": "ProfilesSetAssetResult",
+        "type": "object"
+      },
+      "ProfileWorkerSession": {
+        "additionalProperties": false,
+        "description": "Newest kanban/tool worker row, so rosters can show a profile as working.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "source": {
+            "default": "",
+            "title": "Source",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "last_active": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "default": 0,
+            "title": "Last Active"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "ProfileWorkerSession",
         "type": "object"
       },
       "ProjectFacts": {
@@ -20658,500 +21302,6 @@
           "project"
         ],
         "title": "ProjectResult",
-        "type": "object"
-      },
-      "ProjectTreeLane": {
-        "additionalProperties": false,
-        "description": "One branch / worktree / kanban lane inside a repo; ``sessions`` is empty unless hydrated.",
-        "properties": {
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "label": {
-            "title": "Label",
-            "type": "string"
-          },
-          "path": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Path"
-          },
-          "isMain": {
-            "default": false,
-            "title": "Ismain",
-            "type": "boolean"
-          },
-          "isKanban": {
-            "default": false,
-            "title": "Iskanban",
-            "type": "boolean"
-          },
-          "sessions": {
-            "items": {
-              "$ref": "#/components/schemas/ProjectTreeSession"
-            },
-            "title": "Sessions",
-            "type": "array"
-          }
-        },
-        "required": [
-          "id",
-          "label"
-        ],
-        "title": "ProjectTreeLane",
-        "type": "object"
-      },
-      "ProjectTreeNode": {
-        "additionalProperties": false,
-        "description": "``project_tree._project_node`` — explicit, auto (git root) or the synthetic Home bucket.",
-        "properties": {
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "label": {
-            "title": "Label",
-            "type": "string"
-          },
-          "path": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Path"
-          },
-          "color": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Color"
-          },
-          "icon": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Icon"
-          },
-          "isAuto": {
-            "default": false,
-            "title": "Isauto",
-            "type": "boolean"
-          },
-          "isNoProject": {
-            "default": false,
-            "title": "Isnoproject",
-            "type": "boolean"
-          },
-          "sessionCount": {
-            "default": 0,
-            "title": "Sessioncount",
-            "type": "integer"
-          },
-          "lastActive": {
-            "default": 0,
-            "title": "Lastactive",
-            "type": "number"
-          },
-          "totalTokens": {
-            "default": 0,
-            "title": "Totaltokens",
-            "type": "integer"
-          },
-          "totalCostUsd": {
-            "default": 0,
-            "title": "Totalcostusd",
-            "type": "number"
-          },
-          "repos": {
-            "items": {
-              "$ref": "#/components/schemas/ProjectTreeRepo"
-            },
-            "title": "Repos",
-            "type": "array"
-          },
-          "previewSessions": {
-            "items": {
-              "$ref": "#/components/schemas/ProjectTreeSession"
-            },
-            "title": "Previewsessions",
-            "type": "array"
-          },
-          "sessionIds": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Sessionids",
-            "type": "array"
-          }
-        },
-        "required": [
-          "id",
-          "label"
-        ],
-        "title": "ProjectTreeNode",
-        "type": "object"
-      },
-      "ProjectTreeRepo": {
-        "additionalProperties": false,
-        "properties": {
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "label": {
-            "title": "Label",
-            "type": "string"
-          },
-          "path": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Path"
-          },
-          "groups": {
-            "items": {
-              "$ref": "#/components/schemas/ProjectTreeLane"
-            },
-            "title": "Groups",
-            "type": "array"
-          },
-          "sessionCount": {
-            "default": 0,
-            "title": "Sessioncount",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "id",
-          "label"
-        ],
-        "title": "ProjectTreeRepo",
-        "type": "object"
-      },
-      "ProjectTreeSession": {
-        "additionalProperties": true,
-        "description": "``methods_projects._project_tree_row`` + ``project_tree.stamp_profile``: the minimal row the\nsidebar renders, stamped with the profile it belongs to.",
-        "properties": {
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "title": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Title"
-          },
-          "preview": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Preview"
-          },
-          "source": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Source"
-          },
-          "model": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Model"
-          },
-          "started_at": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Started At"
-          },
-          "ended_at": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Ended At"
-          },
-          "last_active": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Last Active"
-          },
-          "message_count": {
-            "default": 0,
-            "title": "Message Count",
-            "type": "integer"
-          },
-          "tool_call_count": {
-            "default": 0,
-            "title": "Tool Call Count",
-            "type": "integer"
-          },
-          "input_tokens": {
-            "default": 0,
-            "title": "Input Tokens",
-            "type": "integer"
-          },
-          "output_tokens": {
-            "default": 0,
-            "title": "Output Tokens",
-            "type": "integer"
-          },
-          "is_active": {
-            "default": false,
-            "title": "Is Active",
-            "type": "boolean"
-          },
-          "cwd": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Cwd"
-          },
-          "git_branch": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Git Branch"
-          },
-          "git_repo_root": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Git Repo Root"
-          },
-          "parent_session_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Parent Session Id"
-          },
-          "pinned": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Pinned"
-          },
-          "unread": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Unread"
-          },
-          "archived": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Archived"
-          },
-          "actual_cost_usd": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Actual Cost Usd"
-          },
-          "estimated_cost_usd": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Estimated Cost Usd"
-          },
-          "handoff_platform": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Handoff Platform"
-          },
-          "handoff_state": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Handoff State"
-          },
-          "_lineage_root_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Lineage Root Id"
-          },
-          "_lineage_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Lineage Ids"
-          },
-          "profile": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Profile"
-          }
-        },
-        "required": [
-          "id"
-        ],
-        "title": "ProjectTreeSession",
         "type": "object"
       },
       "ProjectsAddFolderParams": {
@@ -21835,6 +21985,500 @@
           "id"
         ],
         "title": "ProjectsUpdateParams",
+        "type": "object"
+      },
+      "ProjectTreeLane": {
+        "additionalProperties": false,
+        "description": "One branch / worktree / kanban lane inside a repo; ``sessions`` is empty unless hydrated.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Path"
+          },
+          "isMain": {
+            "default": false,
+            "title": "Ismain",
+            "type": "boolean"
+          },
+          "isKanban": {
+            "default": false,
+            "title": "Iskanban",
+            "type": "boolean"
+          },
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectTreeSession"
+            },
+            "title": "Sessions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "ProjectTreeLane",
+        "type": "object"
+      },
+      "ProjectTreeNode": {
+        "additionalProperties": false,
+        "description": "``project_tree._project_node`` — explicit, auto (git root) or the synthetic Home bucket.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Path"
+          },
+          "color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Color"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Icon"
+          },
+          "isAuto": {
+            "default": false,
+            "title": "Isauto",
+            "type": "boolean"
+          },
+          "isNoProject": {
+            "default": false,
+            "title": "Isnoproject",
+            "type": "boolean"
+          },
+          "sessionCount": {
+            "default": 0,
+            "title": "Sessioncount",
+            "type": "integer"
+          },
+          "lastActive": {
+            "default": 0,
+            "title": "Lastactive",
+            "type": "number"
+          },
+          "totalTokens": {
+            "default": 0,
+            "title": "Totaltokens",
+            "type": "integer"
+          },
+          "totalCostUsd": {
+            "default": 0,
+            "title": "Totalcostusd",
+            "type": "number"
+          },
+          "repos": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectTreeRepo"
+            },
+            "title": "Repos",
+            "type": "array"
+          },
+          "previewSessions": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectTreeSession"
+            },
+            "title": "Previewsessions",
+            "type": "array"
+          },
+          "sessionIds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sessionids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "ProjectTreeNode",
+        "type": "object"
+      },
+      "ProjectTreeRepo": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Path"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectTreeLane"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "sessionCount": {
+            "default": 0,
+            "title": "Sessioncount",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "ProjectTreeRepo",
+        "type": "object"
+      },
+      "ProjectTreeSession": {
+        "additionalProperties": true,
+        "description": "``methods_projects._project_tree_row`` + ``project_tree.stamp_profile``: the minimal row the\nsidebar renders, stamped with the profile it belongs to.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Title"
+          },
+          "preview": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Preview"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Source"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Model"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Started At"
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ended At"
+          },
+          "last_active": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Last Active"
+          },
+          "message_count": {
+            "default": 0,
+            "title": "Message Count",
+            "type": "integer"
+          },
+          "tool_call_count": {
+            "default": 0,
+            "title": "Tool Call Count",
+            "type": "integer"
+          },
+          "input_tokens": {
+            "default": 0,
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "output_tokens": {
+            "default": 0,
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "is_active": {
+            "default": false,
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "cwd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Cwd"
+          },
+          "git_branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Git Branch"
+          },
+          "git_repo_root": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Git Repo Root"
+          },
+          "parent_session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Parent Session Id"
+          },
+          "pinned": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Pinned"
+          },
+          "unread": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Unread"
+          },
+          "archived": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Archived"
+          },
+          "actual_cost_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Actual Cost Usd"
+          },
+          "estimated_cost_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Estimated Cost Usd"
+          },
+          "handoff_platform": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Handoff Platform"
+          },
+          "handoff_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Handoff State"
+          },
+          "_lineage_root_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Lineage Root Id"
+          },
+          "_lineage_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Lineage Ids"
+          },
+          "profile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Profile"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "ProjectTreeSession",
         "type": "object"
       },
       "PromptSubmitParams": {
@@ -27716,6 +28360,35 @@
         "title": "SetupStatusResult",
         "type": "object"
       },
+      "SharedMetricsSecuritySummary": {
+        "additionalProperties": false,
+        "properties": {
+          "collection_enabled": {
+            "title": "Collection Enabled",
+            "type": "boolean"
+          },
+          "transmission_requested": {
+            "title": "Transmission Requested",
+            "type": "boolean"
+          },
+          "transmission_enabled": {
+            "title": "Transmission Enabled",
+            "type": "boolean"
+          },
+          "destination": {
+            "title": "Destination",
+            "type": "string"
+          }
+        },
+        "required": [
+          "collection_enabled",
+          "transmission_requested",
+          "transmission_enabled",
+          "destination"
+        ],
+        "title": "SharedMetricsSecuritySummary",
+        "type": "object"
+      },
       "ShellExecParams": {
         "additionalProperties": false,
         "properties": {
@@ -27827,6 +28500,56 @@
           "text"
         ],
         "title": "SideAgentParams",
+        "type": "object"
+      },
+      "SimpleNetworkSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "class": {
+            "title": "Class",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reason"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Mode"
+          },
+          "transmission_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Transmission Enabled"
+          }
+        },
+        "required": [
+          "class"
+        ],
+        "title": "SimpleNetworkSummary",
         "type": "object"
       },
       "SkillBrowseItem": {
@@ -30668,116 +31391,6 @@
         "title": "ToolOutputRiskPayload",
         "type": "object"
       },
-      "ToolShowRow": {
-        "additionalProperties": false,
-        "properties": {
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "description": {
-            "title": "Description",
-            "type": "string"
-          }
-        },
-        "required": [
-          "name",
-          "description"
-        ],
-        "title": "ToolShowRow",
-        "type": "object"
-      },
-      "ToolShowSection": {
-        "additionalProperties": false,
-        "properties": {
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "tools": {
-            "items": {
-              "$ref": "#/components/schemas/ToolShowRow"
-            },
-            "title": "Tools",
-            "type": "array"
-          }
-        },
-        "required": [
-          "name",
-          "tools"
-        ],
-        "title": "ToolShowSection",
-        "type": "object"
-      },
-      "ToolStartPayload": {
-        "additionalProperties": false,
-        "description": "``tool_progress._on_tool_start`` (+ ``agent_callbacks._mirror_subagent_to_child`` rows with\n``preview`` and empty ``args``). ``todos``/``revision`` are NOT set by the emitter; kept optional\nbecause tool.start rows may pass through connector redaction unchanged.",
-        "properties": {
-          "tool_id": {
-            "title": "Tool Id",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "context": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Context"
-          },
-          "args": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Args"
-          },
-          "args_text": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Args Text"
-          },
-          "preview": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Preview"
-          }
-        },
-        "required": [
-          "tool_id",
-          "name"
-        ],
-        "title": "ToolStartPayload",
-        "type": "object"
-      },
       "ToolsAction": {
         "enum": [
           "enable",
@@ -30889,28 +31502,6 @@
         "title": "ToolsConfigureResult",
         "type": "object"
       },
-      "ToolsShowResult": {
-        "additionalProperties": false,
-        "properties": {
-          "sections": {
-            "items": {
-              "$ref": "#/components/schemas/ToolShowSection"
-            },
-            "title": "Sections",
-            "type": "array"
-          },
-          "total": {
-            "title": "Total",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "sections",
-          "total"
-        ],
-        "title": "ToolsShowResult",
-        "type": "object"
-      },
       "ToolsetEntry": {
         "additionalProperties": false,
         "properties": {
@@ -31005,6 +31596,138 @@
           "toolsets"
         ],
         "title": "ToolsetsListResult",
+        "type": "object"
+      },
+      "ToolShowRow": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "description"
+        ],
+        "title": "ToolShowRow",
+        "type": "object"
+      },
+      "ToolShowSection": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "tools": {
+            "items": {
+              "$ref": "#/components/schemas/ToolShowRow"
+            },
+            "title": "Tools",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "tools"
+        ],
+        "title": "ToolShowSection",
+        "type": "object"
+      },
+      "ToolsShowResult": {
+        "additionalProperties": false,
+        "properties": {
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/ToolShowSection"
+            },
+            "title": "Sections",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sections",
+          "total"
+        ],
+        "title": "ToolsShowResult",
+        "type": "object"
+      },
+      "ToolStartPayload": {
+        "additionalProperties": false,
+        "description": "``tool_progress._on_tool_start`` (+ ``agent_callbacks._mirror_subagent_to_child`` rows with\n``preview`` and empty ``args``). ``todos``/``revision`` are NOT set by the emitter; kept optional\nbecause tool.start rows may pass through connector redaction unchanged.",
+        "properties": {
+          "tool_id": {
+            "title": "Tool Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "context": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Context"
+          },
+          "args": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Args"
+          },
+          "args_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Args Text"
+          },
+          "preview": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Preview"
+          }
+        },
+        "required": [
+          "tool_id",
+          "name"
+        ],
+        "title": "ToolStartPayload",
         "type": "object"
       },
       "TourRequestParams": {
@@ -33615,272 +34338,6 @@
           "disabled_persisted"
         ],
         "title": "WakeStopResult",
-        "type": "object"
-      },
-      "_SessionScoped": {
-        "additionalProperties": false,
-        "description": "Handlers that look a live session up with ``_sessions.get(params.get(\"session_id\"))``: an\nabsent / unknown id falls back to the launch profile's config, so it is never required.",
-        "properties": {
-          "session_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Session Id"
-          }
-        },
-        "title": "_SessionScoped",
-        "type": "object"
-      },
-      "AuditListParams": {
-        "additionalProperties": false,
-        "properties": {
-          "profile": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Profile"
-          },
-          "limit": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Limit"
-          },
-          "before_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Before Id"
-          },
-          "session_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Session Id"
-          },
-          "task_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Task Id"
-          },
-          "run_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Run Id"
-          },
-          "project_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Project Id"
-          }
-        },
-        "title": "AuditListParams",
-        "type": "object"
-      },
-      "AuditEventRow": {
-        "additionalProperties": false,
-        "properties": {
-          "id": {
-            "title": "Id",
-            "type": "integer"
-          },
-          "event": {
-            "title": "Event",
-            "type": "string"
-          },
-          "category": {
-            "title": "Category",
-            "type": "string"
-          },
-          "session_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Session Id"
-          },
-          "request_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Request Id"
-          },
-          "subject": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Subject"
-          },
-          "outcome": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Outcome"
-          },
-          "task_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Task Id"
-          },
-          "run_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Run Id"
-          },
-          "project_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Project Id"
-          },
-          "created_at": {
-            "title": "Created At",
-            "type": "number"
-          }
-        },
-        "required": [
-          "id",
-          "event",
-          "category",
-          "created_at"
-        ],
-        "title": "AuditEventRow",
-        "type": "object"
-      },
-      "AuditListResult": {
-        "additionalProperties": false,
-        "properties": {
-          "events": {
-            "items": {
-              "$ref": "#/components/schemas/AuditEventRow"
-            },
-            "title": "Events",
-            "type": "array"
-          }
-        },
-        "required": [
-          "events"
-        ],
-        "title": "AuditListResult",
-        "type": "object"
-      },
-      "AuditChangedPayload": {
-        "additionalProperties": false,
-        "description": "Metadata-only invalidation emitted after a durable operator-audit append.",
-        "properties": {
-          "id": {
-            "title": "Id",
-            "type": "integer"
-          },
-          "event": {
-            "title": "Event",
-            "type": "string"
-          },
-          "subject": {
-            "title": "Subject",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "event",
-          "subject"
-        ],
-        "title": "AuditChangedPayload",
         "type": "object"
       }
     }
