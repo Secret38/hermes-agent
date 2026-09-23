@@ -8,7 +8,8 @@ import {
   createAgentOSMission,
   fetchAgentOSApprovals,
   fetchAgentOSMissions,
-  resolveAgentOSApproval
+  resolveAgentOSApproval,
+  resumeAgentOSMission
 } from './api'
 import type { AgentOSMissionJob, AgentOSPendingApproval } from './types'
 
@@ -17,16 +18,20 @@ const ACTIVE_MISSION_STATES = new Set(['QUEUED', 'PLANNING', 'RUNNING', 'WAITING
 function stateClass(state: string): string {
   if (state === 'COMPLETED') return 'text-[#3fa779]'
   if (state === 'FAILED' || state === 'BLOCKED') return 'text-destructive'
-  if (state === 'WAITING_APPROVAL') return 'text-[#d49b45]'
+  if (state === 'WAITING_APPROVAL' || state === 'INTERRUPTED') return 'text-[#d49b45]'
 
   return 'text-(--dt-primary)'
 }
 
 function MissionRow({
+  busy,
   job,
+  onResume,
   onSelectTask
 }: {
+  busy: boolean
   job: AgentOSMissionJob
+  onResume?: (job: AgentOSMissionJob) => void
   onSelectTask?: (taskId: string) => void
 }) {
   return (
@@ -40,6 +45,18 @@ function MissionRow({
         </div>
         {job.error && <div className="mt-1.5 line-clamp-3 text-[0.6rem] leading-relaxed text-destructive">{job.error}</div>}
       </div>
+      {job.state === 'INTERRUPTED' && onResume && (
+        <button
+          className="inline-flex h-7 shrink-0 items-center gap-1 rounded border border-[color-mix(in_srgb,#d49b45_40%,var(--ui-stroke-tertiary))] px-2 text-[0.6rem] font-medium text-[#d49b45] hover:bg-[color-mix(in_srgb,#d49b45_8%,transparent)] disabled:opacity-50"
+          disabled={busy}
+          onClick={() => onResume(job)}
+          title="Resume this interrupted durable mission"
+          type="button"
+        >
+          {busy ? <Codicon className="animate-spin" name="loading" size="0.62rem" /> : <Codicon name="debug-continue" size="0.62rem" />}
+          Resume
+        </button>
+      )}
       {job.task_id && onSelectTask && (
         <button
           className="grid size-7 shrink-0 place-items-center rounded border border-(--ui-stroke-tertiary) text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground"
@@ -119,6 +136,7 @@ export function MissionControlActions({
   const [workspace, setWorkspace] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [decisionId, setDecisionId] = useState<string>()
+  const [resumeId, setResumeId] = useState<string>()
   const [error, setError] = useState<string>()
 
   const { data: missionData } = useQuery({
@@ -165,6 +183,22 @@ export function MissionControlActions({
       setError(cause instanceof Error ? cause.message : String(cause))
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const resume = async (job: AgentOSMissionJob) => {
+    if (resumeId || submitting || active) return
+
+    setResumeId(job.id)
+    setError(undefined)
+    try {
+      await resumeAgentOSMission(job.id)
+      invalidateControl()
+      if (job.task_id && onSelectTask) onSelectTask(job.task_id)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      setResumeId(undefined)
     }
   }
 
@@ -291,8 +325,14 @@ export function MissionControlActions({
             {active && <span className={cn('text-[0.58rem] font-medium', stateClass(active.state))}>{active.state.replaceAll('_', ' ')}</span>}
           </div>
           <div className="grid gap-1.5 lg:grid-cols-2">
-            {(active ? [active, ...recent.filter(job => job.id !== active.id).slice(0, 1)] : recent.slice(0, 2)).map(job => (
-              <MissionRow job={job} key={job.id} onSelectTask={onSelectTask} />
+            {(active ? [active, ...recent.filter(job => job.id !== active.id).slice(0, 1)] : recent.slice(0, 4)).map(job => (
+              <MissionRow
+                busy={resumeId === job.id}
+                job={job}
+                key={job.id}
+                onResume={resume}
+                onSelectTask={onSelectTask}
+              />
             ))}
           </div>
         </div>
