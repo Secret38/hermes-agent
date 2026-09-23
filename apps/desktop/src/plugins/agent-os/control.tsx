@@ -11,6 +11,7 @@ import {
   resolveAgentOSApproval,
   resumeAgentOSMission
 } from './api'
+import { useAgentOSEstop } from './control-data'
 import { openHumanGateSession, resolveHumanGateApproval, useHumanGates, type HumanGate } from './human-gates'
 import type { AgentOSMissionJob, AgentOSPendingApproval } from './types'
 
@@ -219,6 +220,7 @@ export function MissionControlActions({
   const [humanDecisionId, setHumanDecisionId] = useState<string>()
   const [resumeId, setResumeId] = useState<string>()
   const [error, setError] = useState<string>()
+  const [changingEstop, setChangingEstop] = useState(false)
 
   const { data: missionData } = useQuery({
     queryFn: fetchAgentOSMissions,
@@ -232,6 +234,7 @@ export function MissionControlActions({
   })
 
   const humanGates = useHumanGates()
+  const estop = useAgentOSEstop()
   const jobs = missionData?.jobs ?? []
   const approvals = approvalData?.approvals ?? []
   const active = jobs.find(job => ACTIVE_MISSION_STATES.has(job.state))
@@ -303,6 +306,25 @@ export function MissionControlActions({
     }
   }
 
+  const setNewWorkPaused = async (engaged: boolean) => {
+    if (changingEstop) return
+
+    setChangingEstop(true)
+    setError(undefined)
+    try {
+      await estop.setEngaged(
+        engaged,
+        engaged ? 'Agent OS operator emergency stop' : undefined
+      )
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause)
+      setError(message)
+      host.notifyError(cause, engaged ? 'Could not pause new work' : 'Could not resume new work')
+    } finally {
+      setChangingEstop(false)
+    }
+  }
+
   const decide = async (approval: AgentOSPendingApproval, choice: 'allow_once' | 'deny') => {
     if (decisionId) return
 
@@ -333,7 +355,32 @@ export function MissionControlActions({
           </div>
         </div>
 
-        <button
+        <div className="flex items-center gap-1.5">
+          {estop.data?.engaged ? (
+            <button
+              className="inline-flex items-center gap-1.5 rounded-md border border-[color-mix(in_srgb,#d49b45_45%,var(--ui-stroke-tertiary))] px-2.5 py-1.5 text-[0.65rem] font-semibold text-[#d49b45] hover:bg-[color-mix(in_srgb,#d49b45_8%,transparent)] disabled:opacity-50"
+              disabled={changingEstop}
+              onClick={() => void setNewWorkPaused(false)}
+              title="Resume NEW work. Existing in-flight work is not affected."
+              type="button"
+            >
+              <Codicon name="play" size="0.68rem" />
+              Resume new work
+            </button>
+          ) : (
+            <button
+              className="inline-flex items-center gap-1.5 rounded-md border border-(--ui-stroke-tertiary) px-2.5 py-1.5 text-[0.65rem] font-medium text-(--ui-text-secondary) hover:bg-(--ui-control-hover-background) hover:text-foreground disabled:opacity-50"
+              disabled={changingEstop || estop.isError}
+              onClick={() => void setNewWorkPaused(true)}
+              title="Pause NEW gateway turns, scheduled fires and Kanban dispatch. Existing in-flight work continues."
+              type="button"
+            >
+              <Codicon name="debug-pause" size="0.68rem" />
+              Pause new work
+            </button>
+          )}
+
+          <button
           className={cn(
             'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[0.65rem] font-semibold transition-colors',
             coreReady && !active
@@ -347,8 +394,20 @@ export function MissionControlActions({
         >
           <Codicon name="add" size="0.7rem" />
           New mission
-        </button>
+          </button>
+        </div>
       </div>
+
+      {estop.data?.engaged && (
+        <div className="flex items-center gap-2 border-b border-(--ui-stroke-tertiary) bg-[color-mix(in_srgb,#d49b45_7%,transparent)] px-3 py-2 text-[0.62rem] text-(--ui-text-secondary)">
+          <Codicon name="debug-pause" size="0.7rem" />
+          <span className="font-semibold text-[#d49b45]">NEW WORK PAUSED</span>
+          <span className="truncate text-(--ui-text-tertiary)">
+            Gateway turns, scheduled fires and Kanban dispatch are gated. Existing in-flight work is intentionally not killed.
+            {estop.data.reason ? ` · ${estop.data.reason}` : ''}
+          </span>
+        </div>
+      )}
 
       {humanGates.length > 0 && (
         <div className="border-b border-(--ui-stroke-tertiary) bg-[color-mix(in_srgb,#d49b45_3%,transparent)] p-3">
