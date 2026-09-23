@@ -163,7 +163,7 @@ function Set-SigningSecrets {
 
     try {
         $flags = [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet
-        $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2((Resolve-Path -LiteralPath $PfxPath).Path, $plainPassword, $flags)
+        $cert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new((Resolve-Path -LiteralPath $PfxPath).Path, $plainPassword, $flags)
 
         if (-not $cert.HasPrivateKey) { throw "PFX has no private key." }
         $now = Get-Date
@@ -208,7 +208,7 @@ function Install-InteractiveRunner {
     $sessionId = (Get-Process -Id $PID).SessionId
     if ($sessionId -le 0) { throw "This process is in Session 0. Log in to the Windows desktop and rerun the script interactively." }
 
-    if ([string]::IsNullOrWhiteSpace($RunnerName)) { $script:RunnerName = "$env:COMPUTERNAME-agent-os-gui" }
+    if ([string]::IsNullOrWhiteSpace($RunnerName)) { $RunnerName = "$env:COMPUTERNAME-agent-os-gui" }
 
     Write-Step "Downloading verified GitHub Actions Runner"
 
@@ -237,6 +237,11 @@ function Install-InteractiveRunner {
             if ($LASTEXITCODE -ne 0) { throw "Existing runner registration could not be removed." }
         }
         finally { Pop-Location }
+
+        Get-CimInstance Win32_Process -Filter "Name = 'Runner.Listener.exe'" -ErrorAction SilentlyContinue |
+            Where-Object { $_.CommandLine -like "*$RunnerRoot*" } |
+            ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+        Start-Sleep -Seconds 1
     }
 
     Get-ChildItem -LiteralPath $RunnerRoot -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
@@ -260,13 +265,15 @@ function Install-InteractiveRunner {
     $shortcutPath = Join-Path $startup "Agent OS GUI Runner.lnk"
     $shell = New-Object -ComObject WScript.Shell
     $shortcut = $shell.CreateShortcut($shortcutPath)
-    $shortcut.TargetPath = (Join-Path $RunnerRoot "run.cmd")
+    $runCmd = Join-Path $RunnerRoot "run.cmd"
+    $shortcut.TargetPath = $env:ComSpec
+    $shortcut.Arguments = '/c "' + $runCmd + '"'
     $shortcut.WorkingDirectory = $RunnerRoot
     $shortcut.WindowStyle = 7
     $shortcut.Description = "Interactive GitHub Actions runner for Agent OS Windows GUI qualification"
     $shortcut.Save()
 
-    $runnerProcess = Start-Process -FilePath (Join-Path $RunnerRoot "run.cmd") -WorkingDirectory $RunnerRoot -WindowStyle Minimized -PassThru
+    $runnerProcess = Start-Process -FilePath $env:ComSpec -ArgumentList @('/c', ('"' + $runCmd + '"')) -WorkingDirectory $RunnerRoot -WindowStyle Minimized -PassThru
 
     Write-Step "Waiting for runner to become online"
 
