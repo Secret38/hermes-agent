@@ -650,8 +650,8 @@ _PRODUCTION_EXACT_APPROVAL_TOOLS = frozenset({
     # Host filesystem / processes / durable agent state.
     "write_file", "patch", "process_manage", "process", "cronjob_manage", "cronjob",
     "skill_manage", "memory",
-    # Desktop and broad browser automation.
-    "computer_use", "computer", "browser_exec",
+    # Broad browser automation. computer_use owns an action-aware exact gate.
+    "browser_exec",
     # Credential-bearing browser vault operations.
     "browser_vault_unlock", "browser_vault_fill", "browser_vault_save_login",
     "browser_vault_enter_code",
