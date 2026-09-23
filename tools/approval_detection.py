@@ -1245,7 +1245,7 @@ def _iter_shell_command_word_spans(command: str):
 
 
 _DYNAMIC_EXECUTABLE_RE = re.compile(
-    r"(?:\\$[A-Za-z_][A-Za-z0-9_]*|\\$\\{[^}]+\\}|\\$\\(|\x60)"
+    r"(?:\$[A-Za-z_][A-Za-z0-9_]*|\$\{[^}]+\}|\$\(|\x60)"
 )
 _SECRET_ENV_SOURCES = frozenset({"env", "printenv", "set", "export"})
 _STDIN_EGRESS_CLIENTS = frozenset({"curl", "wget", "nc", "ncat", "socat"})
@@ -1254,13 +1254,13 @@ _SENSITIVE_READERS = frozenset({
     "cp", "scp", "rsync", "tar", "base64", "xxd", "strings",
 })
 _CURL_STDIN_UPLOAD_RE = re.compile(
-    r"(?:^|\\s)(?:-d|--data(?:-ascii|-binary|-raw|-urlencode)?)"
-    r"(?:=|\\s+)@-(?=\\s|$)"
-    r"|(?:^|\\s)(?:-T|--upload-file)(?:=|\\s+)-(?=\\s|$)",
+    r"(?:^|\s)(?:-d|--data(?:-ascii|-binary|-raw|-urlencode)?)"
+    r"(?:=|\s+)@-(?=\s|$)"
+    r"|(?:^|\s)(?:-T|--upload-file)(?:=|\s+)-(?=\s|$)",
     re.IGNORECASE,
 )
 _WGET_STDIN_UPLOAD_RE = re.compile(
-    r"(?:^|\\s)(?:--post-file|--body-file)=-?(?=\\s|$)",
+    r"(?:^|\s)(?:--post-file|--body-file)=-?(?=\s|$)",
     re.IGNORECASE,
 )
 
