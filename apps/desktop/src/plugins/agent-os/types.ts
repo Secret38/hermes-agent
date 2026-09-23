@@ -262,7 +262,17 @@ export interface AgentOSMissionJob {
   goal: string
   workspace_id?: null | string
   session_id?: null | string
-  state: 'QUEUED' | 'PLANNING' | 'RUNNING' | 'WAITING_APPROVAL' | 'COMPLETED' | 'BLOCKED' | 'FAILED' | string
+  state:
+    | 'QUEUED'
+    | 'PLANNING'
+    | 'RUNNING'
+    | 'WAITING_APPROVAL'
+    | 'INTERRUPTED'
+    | 'COMPLETED'
+    | 'BLOCKED'
+    | 'FAILED'
+    | 'CANCELLED'
+    | string
   task_id?: null | string
   plan_id?: null | string
   error?: null | string
