@@ -436,6 +436,85 @@
   background: #d49b45;
 }
 
+
+.aos-knowledge-viewport {
+  position: relative;
+  min-height: 22rem;
+  max-height: 34rem;
+  overflow: auto;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--dt-primary) 3%, transparent), transparent 36%, transparent 64%, color-mix(in srgb, #3fa779 3%, transparent)),
+    radial-gradient(circle at center, color-mix(in srgb, var(--ui-text-tertiary) 15%, transparent) 1px, transparent 1px);
+  background-size: auto, 20px 20px;
+}
+
+.aos-knowledge-stage {
+  position: relative;
+}
+
+.aos-knowledge-axis {
+  position: absolute;
+  top: 0.65rem;
+  z-index: 3;
+  font-size: 0.54rem;
+  font-weight: 650;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--ui-text-quaternary);
+}
+
+.aos-knowledge-axis-memory {
+  left: 1.75rem;
+}
+
+.aos-knowledge-axis-skills {
+  right: 1.75rem;
+}
+
+.aos-knowledge-edge {
+  fill: none;
+  stroke: color-mix(in srgb, var(--dt-primary) 34%, var(--ui-text-tertiary));
+  stroke-width: 1.05;
+  opacity: 0.62;
+  vector-effect: non-scaling-stroke;
+}
+
+.aos-knowledge-node {
+  position: absolute;
+  z-index: 2;
+  overflow: hidden;
+  border: 1px solid var(--ui-stroke-tertiary);
+  border-radius: 0.58rem;
+  background: color-mix(in srgb, var(--ui-bg-secondary) 94%, transparent);
+  padding: 0.46rem 0.52rem;
+  color: inherit;
+  text-align: left;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease,
+    box-shadow 120ms ease,
+    transform 120ms ease;
+}
+
+.aos-knowledge-node:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--dt-primary) 38%, var(--ui-stroke-tertiary));
+  box-shadow: 0 8px 22px color-mix(in srgb, black 10%, transparent);
+}
+
+.aos-knowledge-node-memory {
+  background: color-mix(in srgb, var(--dt-primary) 5%, var(--ui-bg-secondary));
+}
+
+.aos-knowledge-node-skill {
+  background: color-mix(in srgb, #3fa779 5%, var(--ui-bg-secondary));
+}
+
+.aos-knowledge-node-selected {
+  border-color: color-mix(in srgb, var(--dt-primary) 62%, var(--ui-stroke-tertiary));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--dt-primary) 16%, transparent);
+}
+
 @media (max-width: 1050px) {
   .aos-overview-grid {
     grid-template-columns: minmax(14rem, 0.75fr) minmax(0, 1.25fr) !important;
@@ -462,7 +541,8 @@
   .aos-progress-value,
   .aos-graph-edge-active,
   .aos-graph-node,
-  .aos-graph-status-dot {
+  .aos-graph-status-dot,
+  .aos-knowledge-node {
     animation: none !important;
     transition: none !important;
   }
