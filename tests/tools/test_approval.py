@@ -1127,6 +1127,54 @@ class TestWebhookApprovalExclusion:
         assert result["approved"] is False
         assert "api_server" in result["message"]
 
+    def test_unknown_embedding_dangerous_command_fails_closed(self, monkeypatch):
+        """No platform/CLI/gateway markers is not implicit consent for a flagged host command."""
+        from tools.approval import check_all_command_guards
+
+        self._isolate(monkeypatch)
+        for key in (
+            "HERMES_CRON_SESSION",
+            "HERMES_GATEWAY_SESSION",
+            "HERMES_INTERACTIVE",
+            "HERMES_EXEC_ASK",
+            "HERMES_SESSION_PLATFORM",
+        ):
+            monkeypatch.delenv(key, raising=False)
+        monkeypatch.setenv("HERMES_SESSION_KEY", "test-embedded-session")
+        monkeypatch.setattr(
+            "tools.tirith_security.check_command_security",
+            lambda _command: {"action": "allow", "findings": [], "summary": ""},
+        )
+
+        result = check_all_command_guards("sudo cat /etc/shadow", "local")
+
+        assert result["approved"] is False
+        assert result["pattern_key"] == "sudo privilege escalation"
+        assert "no interactive user" in result["message"]
+
+    def test_unknown_embedding_safe_command_remains_usable(self, monkeypatch):
+        """Fail-closed applies to approval-worthy commands, not every headless command."""
+        from tools.approval import check_all_command_guards
+
+        self._isolate(monkeypatch)
+        for key in (
+            "HERMES_CRON_SESSION",
+            "HERMES_GATEWAY_SESSION",
+            "HERMES_INTERACTIVE",
+            "HERMES_EXEC_ASK",
+            "HERMES_SESSION_PLATFORM",
+        ):
+            monkeypatch.delenv(key, raising=False)
+        monkeypatch.setenv("HERMES_SESSION_KEY", "test-embedded-session")
+        monkeypatch.setattr(
+            "tools.tirith_security.check_command_security",
+            lambda _command: {"action": "allow", "findings": [], "summary": ""},
+        )
+
+        result = check_all_command_guards("ls -la /tmp", "local")
+
+        assert result["approved"] is True
+
     def test_execute_code_denied_on_unattended_platform(self, monkeypatch):
         """execute_code is denied instantly on unattended platforms (parity with cron)."""
         from tools.approval import check_execute_code_guard
