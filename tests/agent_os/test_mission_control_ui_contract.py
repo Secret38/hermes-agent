@@ -75,8 +75,11 @@ def test_mission_control_keeps_new_mission_and_approval_contract():
     assert "Deny" in control
     assert "L0/L1 execute automatically" in control
     assert "Plan & run" in control
+    assert "INTERRUPTED" in control
+    assert "Resume" in control
 
     assert "createAgentOSMission" in api
+    assert "resumeAgentOSMission" in api
     assert "resolveAgentOSApproval" in api
     assert "AGENT_OS_APPROVALS_KEY" in api
     assert "AGENT_OS_MISSIONS_KEY" in api
