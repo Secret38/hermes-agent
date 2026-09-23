@@ -86,7 +86,7 @@ def test_mission_control_keeps_execution_replay_and_forensics_contract():
     plugin = _source("plugin.tsx")
     replay = _source("forensics.tsx")
 
-    assert "/agent-os/forensics" in plugin
+    assert "/agent-os-replay" in plugin
     assert "Execution Replay" in plugin
     assert "AgentOSForensicsPage" in plugin
 
