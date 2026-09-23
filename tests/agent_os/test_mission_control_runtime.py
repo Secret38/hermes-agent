@@ -132,8 +132,6 @@ def test_mission_approval_deny_is_fail_closed(tmp_path):
     assert result["decision"].outcome is PermissionOutcome.DENY
 
 
-
-
 def _durable_interrupted_mission(store: AgentOSStore, *, job_id: str = "mission-restart-test"):
     task = store.create_task(
         TaskRecord.create(
