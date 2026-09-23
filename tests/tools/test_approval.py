@@ -13,7 +13,7 @@ import tools.approval as approval_module
 from tools import approval_context, approval_detection
 from tools import approval_smart
 from hermes_constants import get_hermes_home
-from tools.approval import approve_session, detect_dangerous_command, detect_hardline_command, is_approved, load_permanent, prompt_dangerous_approval
+from tools.approval import approve_session, check_all_command_guards, detect_dangerous_command, detect_hardline_command, is_approved, load_permanent, prompt_dangerous_approval
 from tools.approval_context import _get_approval_mode
 from tools.approval_context import _normalize_approval_mode
 from tools.approval_smart import _smart_approve
@@ -87,6 +87,55 @@ class TestStructuralApprovalBoundary:
     def test_structural_guards_do_not_trigger_on_inert_prose_or_env_wrappers(self, command):
         assert detect_hardline_command(command)[0] is False, command
         assert detect_dangerous_command(command) == (False, None, None), command
+
+
+
+
+class TestNoApprovalAuthorityFailsClosed:
+    def _no_human_context(self, monkeypatch):
+        monkeypatch.delenv("HERMES_INTERACTIVE", raising=False)
+        monkeypatch.delenv("HERMES_GATEWAY_SESSION", raising=False)
+        monkeypatch.delenv("HERMES_EXEC_ASK", raising=False)
+        monkeypatch.delenv("HERMES_CRON_SESSION", raising=False)
+        monkeypatch.delenv("HERMES_SINGLE_QUERY_SESSION", raising=False)
+        monkeypatch.setattr(approval_context, "_get_session_platform", lambda: "")
+        monkeypatch.setattr(approval_context, "_is_interactive_cli", lambda: False)
+        monkeypatch.setattr(approval_context, "_is_gateway_approval_context", lambda: False)
+        monkeypatch.setattr(approval_context, "_is_cron_approval_context", lambda: False)
+        monkeypatch.setattr(approval_context, "_is_single_query_approval_context", lambda: False)
+        monkeypatch.setattr(approval_context, "_is_unattended_platform_approval_context", lambda: False)
+        monkeypatch.setattr(approval_module, "_YOLO_MODE_FROZEN", False)
+        monkeypatch.setattr(approval_context, "_get_approval_mode", lambda: "manual")
+        monkeypatch.setattr(
+            "tools.tirith_security.check_command_security",
+            lambda _command: {"action": "allow", "findings": [], "summary": ""},
+        )
+
+    def test_flagged_command_blocks_without_consent_authority(self, monkeypatch):
+        self._no_human_context(monkeypatch)
+
+        result = check_all_command_guards("sudo cat /etc/shadow", "local")
+
+        assert result["approved"] is False
+        assert result["pattern_key"] == "sudo privilege escalation"
+        assert "no approval authority" in result["message"].lower()
+
+    def test_safe_command_remains_usable_without_consent_authority(self, monkeypatch):
+        self._no_human_context(monkeypatch)
+
+        result = check_all_command_guards("printf '%s\\n' hello", "local")
+
+        assert result["approved"] is True
+
+    def test_explicit_unattended_approve_policy_remains_authoritative(self, monkeypatch):
+        self._no_human_context(monkeypatch)
+        monkeypatch.setattr(approval_context, "_is_unattended_platform_approval_context", lambda: True)
+        monkeypatch.setattr(approval_context, "_get_session_platform", lambda: "webhook")
+        monkeypatch.setattr(approval_context, "_get_unattended_approval_mode", lambda: "approve")
+
+        result = check_all_command_guards("sudo cat /etc/shadow", "local")
+
+        assert result["approved"] is True
 
 
 class TestApprovalModeParsing:
