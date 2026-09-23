@@ -1,8 +1,9 @@
 """Agent OS Mission Control dashboard API.
 
-Mounted by Hermes under /api/plugins/agent-os/. Reads are fail-safe and
-side-effect free: the projection opens agent_os.db in SQLite mode=ro +
-query_only. The event socket only publishes the monotonic ledger sequence so
+Mounted by Hermes under /api/plugins/agent-os/. Snapshot reads are fail-safe
+and side-effect free: the projection opens agent_os.db in SQLite mode=ro +
+query_only. Explicit mission/approval endpoints are the only mutating control
+surface. The event socket only publishes the monotonic ledger sequence so
 clients can invalidate their cached snapshot without receiving sensitive event
 payloads over the socket.
 """
@@ -11,16 +12,35 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
-from functools import partial
+from functools import lru_cache, partial
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 from agent_os.dashboard import build_dashboard_snapshot, dashboard_event_sequence
+from agent_os.mission_control import MissionBusyError, MissionRuntimeService
 
 router = APIRouter()
+
+
+class MissionCreateRequest(BaseModel):
+    goal: str = Field(min_length=1, max_length=16_000)
+    workspace_id: str | None = Field(default=None, max_length=4096)
+    session_id: str | None = Field(default=None, max_length=512)
+
+
+class ApprovalDecisionRequest(BaseModel):
+    choice: Literal["allow_once", "deny"]
+
+
+@lru_cache(maxsize=1)
+def _mission_service() -> MissionRuntimeService:
+    return MissionRuntimeService()
+
 
 
 def _safe_learning_graph():
@@ -135,6 +155,56 @@ async def context_snapshot():
     """Slower semantic-memory and integration inventory for Mission Control."""
 
     return await run_in_threadpool(_mission_context_snapshot)
+
+
+@router.get("/missions")
+async def mission_jobs(limit: int = Query(20, ge=1, le=100)):
+    return {
+        "jobs": await run_in_threadpool(
+            partial(_mission_service().jobs, limit=limit)
+        )
+    }
+
+
+@router.post("/missions")
+async def create_mission(request: MissionCreateRequest):
+    service = _mission_service()
+    try:
+        job = service.submit(
+            request.goal,
+            workspace_id=request.workspace_id,
+            session_id=request.session_id,
+        )
+    except MissionBusyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True, "job": job}
+
+
+@router.get("/approvals")
+async def pending_approvals():
+    return {"approvals": _mission_service().approvals.pending()}
+
+
+@router.post("/approvals/{request_id}")
+async def resolve_approval(
+    request_id: str,
+    request: ApprovalDecisionRequest,
+):
+    try:
+        resolved = _mission_service().approvals.resolve(
+            request_id,
+            request.choice,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not resolved:
+        raise HTTPException(
+            status_code=404,
+            detail="Approval request is no longer pending.",
+        )
+    return {"ok": True, "request_id": request_id, "choice": request.choice}
 
 
 @router.websocket("/events")
