@@ -445,6 +445,25 @@ function PlanGraph({ plan }: { plan: AgentOSPlan | null | undefined }) {
   )
 }
 
+type TimelineFilter = 'all' | 'actions' | 'agents' | 'plan' | 'safety' | 'system'
+
+function eventGroup(type: string): Exclude<TimelineFilter, 'all'> {
+  if (type.startsWith('action.')) return 'actions'
+  if (type.startsWith('agent.')) return 'agents'
+  if (type.startsWith('plan')) return 'plan'
+  if (
+    type.startsWith('verification.') ||
+    type.startsWith('recovery.') ||
+    type.startsWith('approval.') ||
+    type.startsWith('risk.') ||
+    type.startsWith('checkpoint.')
+  ) {
+    return 'safety'
+  }
+
+  return 'system'
+}
+
 function eventIcon(type: string): string {
   if (type.startsWith('agent.')) return 'hubot'
   if (type.startsWith('plan')) return 'list-tree'
@@ -480,7 +499,9 @@ function eventDetail(event: AgentOSEvent): string {
 
 function Timeline({ events }: { events: AgentOSEvent[] }) {
   const [selectedEventId, setSelectedEventId] = useState<string>()
-  const rows = [...events].slice(-32).reverse()
+  const [filter, setFilter] = useState<TimelineFilter>('all')
+  const visibleEvents = filter === 'all' ? events : events.filter(event => eventGroup(event.type) === filter)
+  const rows = [...visibleEvents].slice(-32).reverse()
   const selectedEvent = selectedEventId ? events.find(event => event.id === selectedEventId) : undefined
 
   if (rows.length === 0) {
@@ -491,8 +512,40 @@ function Timeline({ events }: { events: AgentOSEvent[] }) {
     )
   }
 
+  const filters: Array<{ id: TimelineFilter; label: string }> = [
+    { id: 'all', label: 'All execution events' },
+    { id: 'actions', label: 'Actions' },
+    { id: 'agents', label: 'Agents' },
+    { id: 'plan', label: 'Plan' },
+    { id: 'safety', label: 'Safety' },
+    { id: 'system', label: 'System' }
+  ]
+
   return (
     <div className="aos-scrollbar max-h-[34rem] overflow-y-auto p-3">
+      <div className="mb-3 flex flex-wrap gap-1">
+        {filters.map(item => (
+          <button
+            className={cn(
+              'rounded border px-1.5 py-1 text-[0.56rem] font-medium transition-colors',
+              filter === item.id
+                ? 'border-[color-mix(in_srgb,var(--dt-primary)_45%,var(--ui-stroke-tertiary))] bg-[color-mix(in_srgb,var(--dt-primary)_9%,var(--ui-bg-secondary))] text-foreground'
+                : 'border-(--ui-stroke-tertiary) text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground'
+            )}
+            key={item.id}
+            onClick={() => setFilter(item.id)}
+            title={item.label}
+            type="button"
+          >
+            {item.id === 'all' ? 'All' : item.label}
+          </button>
+        ))}
+      </div>
+      {rows.length === 0 ? (
+        <div className="grid min-h-32 place-items-center text-center text-xs text-(--ui-text-tertiary)">
+          No {filter === 'all' ? '' : filter} events in this task.
+        </div>
+      ) : (
       <div className="aos-timeline space-y-3">
         {rows.map(event => (
           <div className="aos-timeline-row" key={event.id}>
@@ -521,6 +574,7 @@ function Timeline({ events }: { events: AgentOSEvent[] }) {
           </div>
         ))}
       </div>
+      )}
 
       {selectedEvent && (
         <div className="mt-3 rounded-md border border-(--ui-stroke-tertiary) bg-(--ui-bg-secondary) p-2.5">
@@ -766,6 +820,9 @@ function riskWeight(value: null | string | undefined): number {
 }
 
 function ActionControls({ actions }: { actions: AgentOSAction[] }) {
+  const [selectedActionId, setSelectedActionId] = useState<string>()
+  const selectedAction = selectedActionId ? actions.find(action => action.id === selectedActionId) : undefined
+
   if (actions.length === 0) {
     return <div className="p-4 text-xs text-(--ui-text-tertiary)">No execution actions recorded for this task.</div>
   }
@@ -800,7 +857,18 @@ function ActionControls({ actions }: { actions: AgentOSAction[] }) {
                   {action.execution_attempts > 1 && <span>execution ×{action.execution_attempts}</span>}
                 </div>
               </div>
-              <StateBadge compact state={action.state} />
+              <div className="flex shrink-0 items-center gap-1">
+                <StateBadge compact state={action.state} />
+                <button
+                  aria-label={`Inspect ${action.tool} ${action.operation}`}
+                  className="grid size-6 place-items-center rounded text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground"
+                  onClick={() => setSelectedActionId(action.id)}
+                  title="Inspect action"
+                  type="button"
+                >
+                  <Codicon name="inspect" size="0.68rem" />
+                </button>
+              </div>
             </div>
             {action.error && (
               <div className="mt-2 rounded bg-[color-mix(in_srgb,var(--dt-destructive)_8%,transparent)] px-2 py-1.5 text-[0.62rem] leading-relaxed text-destructive">
@@ -810,6 +878,90 @@ function ActionControls({ actions }: { actions: AgentOSAction[] }) {
           </div>
         ))}
       </div>
+
+      {selectedAction && (
+        <div className="mt-2 rounded-md border border-(--ui-stroke-tertiary) bg-(--ui-bg-primary) p-2.5">
+          <div className="flex min-w-0 items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="aos-kicker">Action inspector</div>
+              <div className="mt-1 truncate text-[0.7rem] font-medium text-foreground">
+                {selectedAction.tool} · {selectedAction.operation}
+              </div>
+            </div>
+            <button
+              aria-label="Close action inspector"
+              className="grid size-6 shrink-0 place-items-center rounded text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground"
+              onClick={() => setSelectedActionId(undefined)}
+              type="button"
+            >
+              <Codicon name="close" size="0.68rem" />
+            </button>
+          </div>
+
+          <div className="mt-2 grid gap-x-5 gap-y-2 text-[0.58rem] sm:grid-cols-2">
+            <div>
+              <div className="aos-kicker">Action id</div>
+              <div className="mt-1 truncate font-mono text-(--ui-text-secondary)" title={selectedAction.id}>
+                {compactId(selectedAction.id)}
+              </div>
+            </div>
+            <div>
+              <div className="aos-kicker">Agent</div>
+              <div className="mt-1 truncate font-mono text-(--ui-text-secondary)" title={selectedAction.agent_id ?? undefined}>
+                {compactId(selectedAction.agent_id)}
+              </div>
+            </div>
+            <div>
+              <div className="aos-kicker">Checkpoint</div>
+              <div className="mt-1 truncate font-mono text-(--ui-text-secondary)" title={selectedAction.checkpoint_id ?? undefined}>
+                {compactId(selectedAction.checkpoint_id)}
+              </div>
+            </div>
+            <div>
+              <div className="aos-kicker">Verification</div>
+              <div className="mt-1 truncate text-(--ui-text-secondary)">
+                {selectedAction.verification_method || (selectedAction.verification_required ? 'required' : 'not required')}
+              </div>
+            </div>
+            <div>
+              <div className="aos-kicker">Risk / policy</div>
+              <div className="mt-1 truncate text-(--ui-text-secondary)">
+                {selectedAction.risk_level || 'unclassified'} · {selectedAction.permission_policy || 'default'}
+              </div>
+            </div>
+            <div>
+              <div className="aos-kicker">Attempts</div>
+              <div className="mt-1 tabular-nums text-(--ui-text-secondary)">
+                execution {selectedAction.execution_attempts} · recovery {selectedAction.recovery_attempts}
+              </div>
+            </div>
+          </div>
+
+          {Object.entries(selectedAction.verification_result ?? {}).length > 0 && (
+            <div className="mt-3 rounded border border-(--ui-stroke-tertiary) bg-(--ui-bg-secondary) p-2">
+              <div className="aos-kicker">Verification evidence</div>
+              <div className="mt-2 grid gap-1">
+                {Object.entries(selectedAction.verification_result ?? {})
+                  .slice(0, 10)
+                  .map(([key, value]) => (
+                    <div className="flex min-w-0 justify-between gap-3 text-[0.58rem]" key={key}>
+                      <span className="shrink-0 text-(--ui-text-tertiary)">{key}</span>
+                      <span className="min-w-0 truncate text-right font-mono text-(--ui-text-secondary)" title={String(value)}>
+                        {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                      </span>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
+
+          {selectedAction.error && (
+            <div className="mt-2 rounded border border-[color-mix(in_srgb,var(--dt-destructive)_30%,var(--ui-stroke-tertiary))] bg-[color-mix(in_srgb,var(--dt-destructive)_6%,transparent)] p-2 text-[0.6rem] leading-relaxed text-destructive">
+              {selectedAction.error}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -842,6 +994,69 @@ function SafetyStrip({ task }: { task: AgentOSTask }) {
   )
 }
 
+function AttentionQueue({ task }: { task: AgentOSTask }) {
+  const items = [
+    ...task.actions
+      .filter(action => ['WAITING_PERMISSION', 'RECOVERING', 'BLOCKED', 'FAILED'].includes(action.state))
+      .map(action => ({
+        id: `action:${action.id}`,
+        icon: action.state === 'WAITING_PERMISSION' ? 'shield' : action.state === 'RECOVERING' ? 'debug-restart' : 'warning',
+        title: `${action.tool} · ${action.operation}`,
+        state: action.state,
+        detail:
+          action.state === 'WAITING_PERMISSION'
+            ? `approval required · ${action.risk_level || 'risk unclassified'}`
+            : action.error || (action.recovery_attempts ? `${action.recovery_attempts} recovery attempt(s)` : 'execution needs attention')
+      })),
+    ...task.agents
+      .filter(agent => ['ORPHANED', 'FAILED'].includes(agent.state))
+      .map(agent => ({
+        id: `agent:${agent.id}`,
+        icon: 'hubot',
+        title: agent.role || agent.runtime,
+        state: agent.state,
+        detail: agent.error || agent.diagnostic || agent.goal
+      }))
+  ].slice(0, 8)
+
+  if (!items.length && !['WAITING_FOR_APPROVAL', 'WAITING_FOR_USER', 'BLOCKED', 'RECOVERING', 'FAILED'].includes(task.state)) {
+    return null
+  }
+
+  return (
+    <section className="aos-panel overflow-hidden">
+      <SectionHeader icon="bell-dot" meta={items.length ? `${items.length} item(s)` : humanize(task.state)} title="Needs attention" />
+      <div className="grid gap-1.5 p-2.5 md:grid-cols-2 xl:grid-cols-4">
+        {items.length ? (
+          items.map(item => (
+            <div
+              className="rounded-md border border-[color-mix(in_srgb,#d49b45_28%,var(--ui-stroke-tertiary))] bg-[color-mix(in_srgb,#d49b45_5%,var(--ui-bg-secondary))] p-2.5"
+              key={item.id}
+            >
+              <div className="flex min-w-0 items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <Codicon className="shrink-0 text-[#d49b45]" name={item.icon} size="0.7rem" />
+                    <span className="truncate text-[0.68rem] font-medium text-foreground">{item.title}</span>
+                  </div>
+                  <div className="mt-1 line-clamp-2 text-[0.58rem] leading-relaxed text-(--ui-text-tertiary)">
+                    {item.detail}
+                  </div>
+                </div>
+                <StateBadge compact state={item.state} />
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="col-span-full p-2 text-xs text-(--ui-text-tertiary)">
+            Task state requires attention: {humanize(task.state)}
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
 function TaskHeader({ task }: { task: AgentOSTask }) {
   return (
     <div className="min-w-0">
@@ -855,10 +1070,20 @@ function TaskHeader({ task }: { task: AgentOSTask }) {
         )}
       </div>
       <h2 className="mt-2 max-w-4xl text-xl font-semibold leading-tight tracking-tight text-foreground">{task.goal}</h2>
-      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[0.65rem] text-(--ui-text-tertiary)">
+      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[0.65rem] text-(--ui-text-tertiary)">
         <span>created {formatDateTime(task.created_at)}</span>
         <span>updated {formatDateTime(task.updated_at)}</span>
-        {task.session_id && <span>session {compactId(task.session_id)}</span>}
+        {task.session_id && (
+          <button
+            className="inline-flex items-center gap-1 rounded border border-(--ui-stroke-tertiary) px-1.5 py-0.5 text-(--ui-text-secondary) hover:bg-(--ui-control-hover-background) hover:text-foreground"
+            onClick={() => host.navigate(`/${encodeURIComponent(task.session_id!)}`)}
+            title={task.session_id}
+            type="button"
+          >
+            <Codicon name="comment-discussion" size="0.62rem" />
+            Open originating session
+          </button>
+        )}
       </div>
     </div>
   )
@@ -871,6 +1096,7 @@ function TaskDetail({ task }: { task: AgentOSTask }) {
         <TaskHeader task={task} />
       </div>
 
+      <AttentionQueue task={task} />
       <SafetyStrip task={task} />
 
       <div className="grid min-h-0 gap-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)]">
@@ -1046,6 +1272,7 @@ function Overview({
       {selected && (
         <>
           <ProcessMap task={selected} />
+          <AttentionQueue task={selected} />
           <SafetyStrip task={selected} />
           <div className="grid gap-3 lg:grid-cols-2">
             <section className="aos-panel min-w-0 overflow-hidden">
