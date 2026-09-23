@@ -190,7 +190,7 @@ export function SemanticMemorySection() {
                             className="max-w-full truncate rounded border border-(--ui-stroke-tertiary) px-1.5 py-1 text-[0.58rem] text-(--ui-text-secondary) hover:bg-(--ui-control-hover-background)"
                             key={`${edge.source}->${edge.target}`}
                             onClick={() => setSelectedId(other)}
-                            title={node?.label || other}
+                            aria-label={node?.label || other}
                             type="button"
                           >
                             {node?.label || other}
