@@ -17,7 +17,7 @@ def _load_plugin_api():
 def test_mission_context_mcp_target_never_exposes_url_credentials(monkeypatch):
     api = _load_plugin_api()
 
-    from hermes_cli import mcp_config, web_server_mcp
+    from hermes_cli import mcp_config
 
     monkeypatch.setattr(
         mcp_config,
