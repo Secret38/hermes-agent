@@ -1902,6 +1902,22 @@ export {
   goToProject,
   refreshProjectTree
 } from '@/store/projects'
+export {
+  $approvalRequestQueues,
+  $secretRequests,
+  $sudoRequests,
+  $vaultCodeRequests,
+  $vaultSaveLoginRequests,
+  $vaultUnlockRequests,
+  type ApprovalChoice,
+  type ApprovalRequest,
+  resolveApprovalRequest,
+  type SecretRequest,
+  type SudoRequest,
+  type VaultCodeRequest,
+  type VaultSaveLoginRequest,
+  type VaultUnlockRequest
+} from '@/store/prompts'
 export { revealReview } from '@/store/review'
 export {
   $resumeFailedSessionId,
