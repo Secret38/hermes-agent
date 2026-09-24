@@ -993,6 +993,8 @@ export function RuntimeTopologyCanvas({
 }) {
   const model = useMemo(() => buildRuntimeTopologyCanvasModel(nodes, edges), [edges, nodes])
   const [selectedId, setSelectedId] = useState<string>()
+  const [zoom, setZoom] = useState(1)
+  const viewportRef = useRef<HTMLDivElement>(null)
   const counts = new Map<number, number>()
   for (const node of model.nodes) {
     counts.set(node.column, (counts.get(node.column) ?? 0) + 1)
@@ -1019,6 +1021,24 @@ export function RuntimeTopologyCanvas({
   )
   const selected = selectedId ? model.nodes.find(node => node.id === selectedId) : undefined
 
+  const fitAll = () => {
+    const viewport = viewportRef.current
+    if (!viewport) return
+    setZoom(fitCanvasZoom(viewport.clientWidth, viewport.clientHeight, width, height, 0.55, 1.2))
+    viewport.scrollTo({ left: 0, top: 0, behavior: 'smooth' })
+  }
+
+  const selectNode = (id: string) => {
+    setSelectedId(id)
+    const viewport = viewportRef.current
+    const position = positions.get(id)
+    if (!viewport || !position) return
+
+    const left = Math.max(0, position.x * zoom - viewport.clientWidth / 2 + (TOPOLOGY_NODE_WIDTH * zoom) / 2)
+    const top = Math.max(0, position.y * zoom - viewport.clientHeight / 2 + (TOPOLOGY_NODE_HEIGHT * zoom) / 2)
+    viewport.scrollTo({ left, top, behavior: 'smooth' })
+  }
+
   if (!model.nodes.length) {
     return (
       <div className="grid min-h-64 place-items-center text-xs text-(--ui-text-tertiary)">
@@ -1029,8 +1049,28 @@ export function RuntimeTopologyCanvas({
 
   return (
     <>
-      <div className="aos-runtime-topology-viewport aos-scrollbar">
-        <div className="aos-runtime-topology-stage" style={{ height, width }}>
+      <div className="flex items-center justify-end gap-1 border-b border-(--ui-stroke-tertiary) px-3 py-2">
+        <button
+          aria-label="Fit runtime topology"
+          className="inline-flex h-7 items-center gap-1 rounded border border-(--ui-stroke-tertiary) px-2 text-[0.56rem] font-medium text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground"
+          onClick={fitAll}
+          type="button"
+        >
+          <Codicon name="screen-full" size="0.66rem" />
+          Fit
+        </button>
+        <button
+          aria-label="Reset runtime topology zoom"
+          className="h-7 min-w-12 rounded border border-(--ui-stroke-tertiary) px-1.5 text-[0.56rem] tabular-nums text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background)"
+          onClick={() => setZoom(1)}
+          type="button"
+        >
+          {Math.round(zoom * 100)}%
+        </button>
+      </div>
+      <div className="aos-runtime-topology-viewport aos-scrollbar" ref={viewportRef}>
+        <div className="aos-runtime-topology-stage" style={{ height: height * zoom, width: width * zoom }}>
+          <div style={{ height, transform: `scale(${zoom})`, transformOrigin: 'top left', width }}>
           <svg aria-hidden="true" className="aos-graph-edges" height={height} width={width}>
             {model.edges.map((edge, index) => {
               const source = positions.get(edge.source)
@@ -1061,7 +1101,7 @@ export function RuntimeTopologyCanvas({
                 )}
                 data-status={node.status}
                 key={node.id}
-                onClick={() => setSelectedId(node.id)}
+                onClick={() => selectNode(node.id)}
                 style={{
                   height: TOPOLOGY_NODE_HEIGHT,
                   left: position.x,
@@ -1083,6 +1123,7 @@ export function RuntimeTopologyCanvas({
               </button>
             )
           })}
+          </div>
         </div>
       </div>
 
