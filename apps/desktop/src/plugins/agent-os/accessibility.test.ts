@@ -23,3 +23,20 @@ describe('Agent OS accessibility CSS contract', () => {
     expect(css).toContain('@media (prefers-reduced-motion: reduce)')
   })
 })
+
+
+describe('Agent OS Mission Control responsive accessibility contract', () => {
+  const pagePath = path.join(process.cwd(), 'src/plugins/agent-os/page.tsx')
+  const page = fs.readFileSync(pagePath, 'utf8')
+
+  it('keeps the section navigation horizontally scrollable at high DPI', () => {
+    expect(page).toContain('aria-label="Agent OS sections"')
+    expect(page).toContain('overflow-x-auto')
+    expect(page).toContain('shrink-0 items-center')
+  })
+
+  it('publishes active tab state and an accessible task filter label', () => {
+    expect(page).toContain('aria-pressed={tab === item.id}')
+    expect(page).toContain('aria-label="Filter Agent OS tasks"')
+  })
+})
