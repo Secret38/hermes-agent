@@ -12,7 +12,7 @@ import {
   resumeAgentOSMission
 } from './api'
 import { useAgentOSEstop } from './control-data'
-import { openHumanGateSession, resolveHumanGateApproval, useHumanGates, type HumanGate } from './human-gates'
+import { type HumanGate, openHumanGateSession, resolveHumanGateApproval, useHumanGates } from './human-gates'
 import type { AgentOSMissionJob, AgentOSPendingApproval } from './types'
 
 const ACTIVE_MISSION_STATES = new Set(['QUEUED', 'PLANNING', 'RUNNING', 'WAITING_APPROVAL'])
