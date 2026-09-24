@@ -789,3 +789,36 @@
     max-width: 58%;
   }
 }
+
+
+.aos-knowledge-node-dimmed {
+  opacity: 0.24;
+  filter: saturate(0.55);
+}
+
+.aos-knowledge-edge-dimmed {
+  opacity: 0.1;
+}
+
+.aos-knowledge-node-dimmed,
+.aos-knowledge-edge-dimmed {
+  transition: opacity 140ms ease, filter 140ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aos-knowledge-node-dimmed,
+  .aos-knowledge-edge-dimmed {
+    transition: none !important;
+  }
+}
+
+@media (forced-colors: active) {
+  .aos-knowledge-node-dimmed {
+    opacity: 0.55;
+    filter: none;
+  }
+
+  .aos-knowledge-edge-dimmed {
+    opacity: 0.35;
+  }
+}
