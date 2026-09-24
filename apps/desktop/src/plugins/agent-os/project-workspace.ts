@@ -16,9 +16,7 @@ const WORKSPACE_READY_TIMEOUT_MS = 20_000
 
 function targetStoredId(sessionId: string): string {
   const storedId = storedHermesSessionId(sessionId)
-  if (!storedId) {
-    throw new Error('Project workspace session id is unavailable.')
-  }
+  if (!storedId) throw new Error('Project workspace session id is unavailable.')
   return storedId
 }
 
@@ -36,13 +34,9 @@ function resumeFailed(target: string): boolean {
 }
 
 function waitForCondition<T>(target: string, read: () => T | null, timeoutMessage: string): Promise<T> {
-  if (resumeFailed(target)) {
-    return Promise.reject(new Error(`Could not resume project session ${target}.`))
-  }
+  if (resumeFailed(target)) return Promise.reject(new Error(`Could not resume project session ${target}.`))
   const immediate = read()
-  if (immediate !== null) {
-    return Promise.resolve(immediate)
-  }
+  if (immediate !== null) return Promise.resolve(immediate)
 
   return new Promise<T>((resolve, reject) => {
     let settled = false
@@ -50,20 +44,12 @@ function waitForCondition<T>(target: string, read: () => T | null, timeoutMessag
     const unsubs: Array<() => void> = []
 
     const finish = (value?: T, error?: Error) => {
-      if (settled) {
-        return
-      }
+      if (settled) return
       settled = true
-      if (timeout !== undefined) {
-        window.clearTimeout(timeout)
-      }
+      if (timeout !== undefined) window.clearTimeout(timeout)
       unsubs.forEach(unsub => unsub())
-      if (error) {
-        reject(error)
-      }
-      else {
-        resolve(value as T)
-      }
+      if (error) reject(error)
+      else resolve(value as T)
     }
 
     const check = () => {
@@ -72,9 +58,7 @@ function waitForCondition<T>(target: string, read: () => T | null, timeoutMessag
         return
       }
       const value = read()
-      if (value !== null) {
-        finish(value)
-      }
+      if (value !== null) finish(value)
     }
 
     unsubs.push(
@@ -96,9 +80,7 @@ export async function launchProjectWorkspaceSurface(
   const target = targetStoredId(sessionId)
   openHermesWorkspaceSession(target, ownerRoute)
 
-  if (surface === 'chat') {
-    return
-  }
+  if (surface === 'chat') return
   if (surface === 'browser') {
     await waitForCondition(target, () => (selectedPrimarySession(target) ? target : null), `Timed out opening project session ${target}.`)
     openBrowserTab()
@@ -112,9 +94,7 @@ export async function launchProjectWorkspaceSurface(
   )
 
   if (surface === 'files') {
-    if (!revealDesktopPane('files')) {
-      throw new Error('Hermes Files pane is unavailable.')
-    }
+    if (!revealDesktopPane('files')) throw new Error('Hermes Files pane is unavailable.')
     return
   }
   if (surface === 'changes') {
@@ -122,9 +102,7 @@ export async function launchProjectWorkspaceSurface(
     return
   }
   if (surface === 'terminal') {
-    if (!revealDesktopPane('terminal')) {
-      throw new Error('Hermes Terminal pane is unavailable.')
-    }
+    if (!revealDesktopPane('terminal')) throw new Error('Hermes Terminal pane is unavailable.')
     return
   }
   throw new Error(`Unsupported project workspace surface: ${surface}`)
