@@ -11,6 +11,7 @@ from agent_os.adapters.hermes_computer import (
 )
 from agent_os.contracts import ActionRecord, TaskRecord
 from agent_os.execution_context import authorized_execution
+from agent_os.live_frames import live_frame_broker
 from agent_os.permissions import PermissionDecision, PermissionOutcome
 from agent_os.risk import RiskAssessment, RiskLevel
 from agent_os.verification.gate import VerificationVerdict
@@ -103,3 +104,54 @@ def test_computer_use_availability_requires_healthy_driver(monkeypatch):
         lambda: {"installed": True, "ready": True},
     )
     assert computer_use_available() is True
+
+
+
+def test_executor_publishes_ephemeral_multimodal_frame(monkeypatch):
+    broker = live_frame_broker()
+    broker.clear_all()
+    seen = {}
+
+    def fake_handle(args, **kwargs):
+        seen["persist_capture"] = kwargs.get("persist_capture")
+        kwargs["capture_callback"](
+            {
+                "data_url": "data:image/png;base64,AAAA",
+                "height": 480,
+                "width": 640,
+            }
+        )
+        return {
+            "_multimodal": True,
+            "content": [{"type": "text", "text": "capture"}],
+            "text_summary": "capture",
+            "meta": {"width": 640, "height": 480},
+        }
+
+    monkeypatch.setattr(
+        "agent_os.adapters.hermes_computer.handle_computer_use",
+        fake_handle,
+    )
+    monkeypatch.setattr(
+        "agent_os.adapters.hermes_computer.release_computer_use_session",
+        lambda task_id: False,
+    )
+    current = action("capture", {"action": "capture", "mode": "vision"})
+    assert broker.begin_watch(current.task_id) is True
+
+    result = HermesComputerUseExecutor().execute(current)
+
+    frame = broker.latest(current.task_id)
+    assert seen["persist_capture"] is False
+    assert frame is not None
+    assert frame.action_id == current.id
+    assert frame.width == 640
+    assert frame.height == 480
+    assert frame.data_url == "data:image/png;base64,AAAA"
+    assert result.actual_state["multimodal"] is True
+    assert "content" not in result.actual_state
+    assert "data:image" not in json.dumps(result.actual_state)
+
+    HermesComputerUseExecutor.cleanup(current.task_id)
+    assert broker.latest(current.task_id) is None
+    broker.end_watch(current.task_id)

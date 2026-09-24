@@ -1,11 +1,13 @@
 import { cn, Codicon } from '@hermes/plugin-sdk'
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { subscribeAgentOSLiveFrame } from './api'
 import type {
   AgentOSAction,
   AgentOSAgent,
   AgentOSLearningGraph,
   AgentOSLearningNode,
+  AgentOSLiveFrame,
   AgentOSPlan,
   AgentOSPlanStep,
   AgentOSTask,
@@ -1036,6 +1038,106 @@ function ObservatoryLane({
   )
 }
 
+function LiveComputerViewport({ taskId }: { taskId: string }) {
+  const [open, setOpen] = useState(false)
+  const [frame, setFrame] = useState<AgentOSLiveFrame | null>(null)
+  const visibleFrame = frame?.task_id === taskId ? frame : null
+
+  useEffect(() => {
+    setFrame(null)
+    if (!open) {
+      return
+    }
+
+    return subscribeAgentOSLiveFrame(taskId, setFrame)
+  }, [open, taskId])
+
+  if (!open) {
+    return (
+      <div className="border-t border-(--ui-stroke-tertiary) px-3.5 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="aos-kicker">Live Computer Use viewport</div>
+            <div className="mt-1 max-w-2xl text-[0.58rem] leading-relaxed text-(--ui-text-tertiary)">
+              Off by default. Opening it subscribes only to this task&apos;s short-lived CUA frames.
+            </div>
+          </div>
+          <button
+            aria-label="Open ephemeral Computer Use live viewport"
+            className="inline-flex h-7 shrink-0 items-center gap-1 rounded border border-(--ui-stroke-tertiary) px-2.5 text-[0.58rem] font-medium text-(--ui-text-secondary) hover:bg-(--ui-control-hover-background) hover:text-foreground"
+            onClick={() => {
+              setFrame(null)
+              setOpen(true)
+            }}
+            type="button"
+          >
+            <Codicon name="eye" size="0.66rem" />
+            Open live viewport
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="border-t border-(--ui-stroke-tertiary) p-3.5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="text-[0.68rem] font-semibold text-foreground">Live Computer Use viewport</div>
+            <span className="rounded border border-(--ui-stroke-tertiary) px-1.5 py-0.5 text-[0.5rem] font-semibold uppercase tracking-[0.08em] text-(--ui-text-tertiary)">
+              Ephemeral · RAM only
+            </span>
+          </div>
+          <div className="mt-1 text-[0.56rem] text-(--ui-text-quaternary)">
+            Task-scoped frames expire automatically and are not written to the Agent OS ledger or screenshot cache.
+          </div>
+        </div>
+        <button
+          aria-label="Close ephemeral Computer Use live viewport"
+          className="inline-flex h-7 shrink-0 items-center gap-1 rounded border border-(--ui-stroke-tertiary) px-2 text-[0.56rem] text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground"
+          onClick={() => {
+            setFrame(null)
+            setOpen(false)
+          }}
+          type="button"
+        >
+          <Codicon name="close" size="0.62rem" />
+          Close
+        </button>
+      </div>
+
+      <div className="mt-3 grid min-h-56 place-items-center overflow-hidden rounded-lg border border-(--ui-stroke-tertiary) bg-(--ui-bg-primary)">
+        {visibleFrame ? (
+          <img
+            alt="Ephemeral Computer Use runtime frame"
+            className="max-h-[34rem] w-full object-contain"
+            draggable={false}
+            src={visibleFrame.data_url}
+          />
+        ) : (
+          <div className="max-w-md px-6 py-10 text-center">
+            <Codicon className="text-(--ui-text-quaternary)" name="device-desktop" size="1.1rem" />
+            <div className="mt-2 text-[0.68rem] font-medium text-foreground">Waiting for next Computer Use frame</div>
+            <div className="mt-1 text-[0.56rem] leading-relaxed text-(--ui-text-tertiary)">
+              The viewport does not trigger screenshots. It shows only frames already produced by this task&apos;s CUA runtime.
+            </div>
+          </div>
+        )}
+      </div>
+
+      {visibleFrame ? (
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[0.52rem] text-(--ui-text-quaternary)">
+          <span>
+            frame {visibleFrame.sequence} · {visibleFrame.width ?? '?'}×{visibleFrame.height ?? '?'}
+          </span>
+          <span>expires {new Date(visibleFrame.expires_at).toLocaleTimeString()}</span>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 export function RuntimeObservatory({ task }: { task: AgentOSTask }) {
   const browser = latestActionForTool(task, ['browser'])
   const computer = latestActionForTool(task, ['computer_use', 'computer-use'])
@@ -1065,9 +1167,10 @@ export function RuntimeObservatory({ task }: { task: AgentOSTask }) {
           action={computer}
           icon="device-desktop"
           label="Computer use"
-          pixelNote="CUA captures are runtime-ephemeral. A future opt-in live viewport should stream them directly rather than storing desktop pixels in the Agent OS ledger."
+          pixelNote="CUA pixel captures stay outside durable Agent OS state. The opt-in viewport below receives only short-lived task-scoped frames already produced by the runtime."
         />
       </div>
+      <LiveComputerViewport taskId={task.id} />
     </section>
   )
 }

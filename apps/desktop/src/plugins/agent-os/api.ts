@@ -1,11 +1,18 @@
 import { type PluginRestOptions, queryClient } from '@hermes/plugin-sdk'
 
-import type { AgentOSContextSnapshot, AgentOSMissionJob, AgentOSPendingApproval, AgentOSSnapshot } from './types'
+import type {
+  AgentOSContextSnapshot,
+  AgentOSLiveFrame,
+  AgentOSMissionJob,
+  AgentOSPendingApproval,
+  AgentOSSnapshot
+} from './types'
 
 type Rest = <T>(path: string, opts?: PluginRestOptions) => Promise<T>
 type Socket = (path: string, onMessage: (data: unknown) => void) => () => void
 
 let rest: null | Rest = null
+let socketClient: null | Socket = null
 
 export const AGENT_OS_SNAPSHOT_KEY = ['agent-os', 'mission-control'] as const
 export const AGENT_OS_CONTEXT_KEY = ['agent-os', 'mission-context'] as const
@@ -14,6 +21,7 @@ export const AGENT_OS_APPROVALS_KEY = ['agent-os', 'approvals'] as const
 
 export function bindAgentOSApi(nextRest: Rest, socket: Socket): () => void {
   rest = nextRest
+  socketClient = socket
 
   const close = socket('/events', data => {
     const frame = data as { type?: string } | null
@@ -26,7 +34,49 @@ export function bindAgentOSApi(nextRest: Rest, socket: Socket): () => void {
   return () => {
     close()
     rest = null
+    if (socketClient === socket) {
+      socketClient = null
+    }
   }
+}
+
+export function subscribeAgentOSLiveFrame(
+  taskId: string,
+  onFrame: (frame: AgentOSLiveFrame | null) => void
+): () => void {
+  const client = socketClient
+  const expectedTaskId = taskId.trim()
+
+  if (!client || !expectedTaskId) {
+    onFrame(null)
+
+    return () => undefined
+  }
+
+  return client(`/live-frames?task_id=${encodeURIComponent(expectedTaskId)}`, data => {
+    const message = data as {
+      frame?: AgentOSLiveFrame
+      task_id?: string
+      type?: string
+    } | null
+
+    if (message?.type === 'live_frame') {
+      const frame = message.frame
+      if (
+        frame?.task_id === expectedTaskId &&
+        typeof frame.data_url === 'string' &&
+        frame.data_url.startsWith('data:image/')
+      ) {
+        onFrame(frame)
+      }
+
+      return
+    }
+
+    if (message?.type === 'live_frame.expired' && message.task_id === expectedTaskId) {
+      onFrame(null)
+    }
+  })
 }
 
 export function fetchAgentOSSnapshot(): Promise<AgentOSSnapshot> {
