@@ -1102,6 +1102,21 @@ const TOPOLOGY_COLUMN_GAP = 86
 const TOPOLOGY_ROW_GAP = 22
 const TOPOLOGY_PADDING = 30
 
+export function connectedRuntimeTopologyNodeIds(
+  model: RuntimeTopologyCanvasModel,
+  selectedId: string | undefined
+): Set<string> {
+  if (!selectedId || !model.nodes.some(node => node.id === selectedId)) return new Set()
+
+  const connected = new Set<string>([selectedId])
+  for (const edge of model.edges) {
+    if (edge.source === selectedId) connected.add(edge.target)
+    if (edge.target === selectedId) connected.add(edge.source)
+  }
+
+  return connected
+}
+
 export function RuntimeTopologyCanvas({
   edges,
   nodes
@@ -1112,6 +1127,7 @@ export function RuntimeTopologyCanvas({
   const model = useMemo(() => buildRuntimeTopologyCanvasModel(nodes, edges), [edges, nodes])
   const [selectedId, setSelectedId] = useState<string>()
   const [zoom, setZoom] = useState(1)
+  const [focusPath, setFocusPath] = useState(false)
   const viewportRef = useRef<HTMLDivElement>(null)
   const counts = new Map<number, number>()
   for (const node of model.nodes) {
@@ -1138,6 +1154,10 @@ export function RuntimeTopologyCanvas({
     })
   )
   const selected = selectedId ? model.nodes.find(node => node.id === selectedId) : undefined
+  const focusedNodeIds = useMemo(
+    () => connectedRuntimeTopologyNodeIds(model, focusPath ? selectedId : undefined),
+    [focusPath, model, selectedId]
+  )
 
   const fitAll = () => {
     const viewport = viewportRef.current
@@ -1167,24 +1187,60 @@ export function RuntimeTopologyCanvas({
 
   return (
     <>
-      <div className="flex items-center justify-end gap-1 border-b border-(--ui-stroke-tertiary) px-3 py-2">
-        <button
-          aria-label="Fit runtime topology"
-          className="inline-flex h-7 items-center gap-1 rounded border border-(--ui-stroke-tertiary) px-2 text-[0.56rem] font-medium text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground"
-          onClick={fitAll}
-          type="button"
-        >
-          <Codicon name="screen-full" size="0.66rem" />
-          Fit
-        </button>
-        <button
-          aria-label="Reset runtime topology zoom"
-          className="h-7 min-w-12 rounded border border-(--ui-stroke-tertiary) px-1.5 text-[0.56rem] tabular-nums text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background)"
-          onClick={() => setZoom(1)}
-          type="button"
-        >
-          {Math.round(zoom * 100)}%
-        </button>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-(--ui-stroke-tertiary) px-3 py-2">
+        <div className="text-[0.56rem] text-(--ui-text-quaternary)">
+          Runtime graph · {model.nodes.length} nodes · {model.edges.length} links
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            aria-label="Fit runtime topology"
+            className="inline-flex h-7 items-center gap-1 rounded border border-(--ui-stroke-tertiary) px-2 text-[0.56rem] font-medium text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground"
+            onClick={fitAll}
+            type="button"
+          >
+            <Codicon name="screen-full" size="0.66rem" />
+            Fit
+          </button>
+          <button
+            aria-pressed={focusPath}
+            className={cn(
+              'inline-flex h-7 items-center gap-1 rounded border border-(--ui-stroke-tertiary) px-2 text-[0.56rem] font-medium text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground',
+              focusPath && 'bg-(--ui-control-active-background) text-foreground'
+            )}
+            disabled={!selectedId}
+            onClick={() => setFocusPath(value => !value)}
+            type="button"
+          >
+            <Codicon name="target" size="0.66rem" />
+            Focus
+          </button>
+          <button
+            aria-label="Zoom out runtime topology"
+            className="grid size-7 place-items-center rounded border border-(--ui-stroke-tertiary) text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground disabled:opacity-40"
+            disabled={zoom <= 0.55}
+            onClick={() => setZoom(value => Math.max(0.55, Math.round((value - 0.1) * 100) / 100))}
+            type="button"
+          >
+            <Codicon name="zoom-out" size="0.72rem" />
+          </button>
+          <button
+            aria-label="Reset runtime topology zoom"
+            className="h-7 min-w-12 rounded border border-(--ui-stroke-tertiary) px-1.5 text-[0.56rem] tabular-nums text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background)"
+            onClick={() => setZoom(1)}
+            type="button"
+          >
+            {Math.round(zoom * 100)}%
+          </button>
+          <button
+            aria-label="Zoom in runtime topology"
+            className="grid size-7 place-items-center rounded border border-(--ui-stroke-tertiary) text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground disabled:opacity-40"
+            disabled={zoom >= 1.2}
+            onClick={() => setZoom(value => Math.min(1.2, Math.round((value + 0.1) * 100) / 100))}
+            type="button"
+          >
+            <Codicon name="zoom-in" size="0.72rem" />
+          </button>
+        </div>
       </div>
       <div className="aos-runtime-topology-viewport aos-scrollbar" ref={viewportRef}>
         <div className="aos-runtime-topology-stage" style={{ height: height * zoom, width: width * zoom }}>
@@ -1201,7 +1257,14 @@ export function RuntimeTopologyCanvas({
               const dx = Math.max(42, (x2 - x1) * 0.43)
               return (
                 <path
-                  className="aos-runtime-topology-edge"
+                  className={cn(
+                    'aos-runtime-topology-edge',
+                    focusPath &&
+                      selectedId &&
+                      edge.source !== selectedId &&
+                      edge.target !== selectedId &&
+                      'aos-runtime-topology-edge-dimmed'
+                  )}
                   d={`M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`}
                   key={`${edge.source}->${edge.target}:${index}`}
                 />
@@ -1215,7 +1278,8 @@ export function RuntimeTopologyCanvas({
               <button
                 className={cn(
                   'aos-runtime-topology-node',
-                  selectedId === node.id && 'aos-runtime-topology-node-selected'
+                  selectedId === node.id && 'aos-runtime-topology-node-selected',
+                  focusPath && selectedId && !focusedNodeIds.has(node.id) && 'aos-runtime-topology-node-dimmed'
                 )}
                 data-status={node.status}
                 key={node.id}
@@ -1226,6 +1290,7 @@ export function RuntimeTopologyCanvas({
                   top: position.y,
                   width: TOPOLOGY_NODE_WIDTH
                 }}
+                aria-label={`${node.label}: ${node.status}`}
                 type="button"
               >
                 <span className="flex items-start justify-between gap-2">
