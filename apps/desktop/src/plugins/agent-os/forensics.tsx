@@ -1,7 +1,7 @@
+import './agent-os.css'
+
 import { cn, Codicon, useQuery } from '@hermes/plugin-sdk'
 import { useEffect, useMemo, useState } from 'react'
-
-import './agent-os.css'
 import { AGENT_OS_SNAPSHOT_KEY, fetchAgentOSSnapshot } from './api'
 import type { AgentOSEvent, AgentOSTask } from './types'
 
@@ -368,9 +368,9 @@ export function AgentOSForensicsPage() {
             </p>
           </div>
           <button
+            aria-label="Refresh ledger"
             className="grid size-7 shrink-0 place-items-center rounded-md border border-(--ui-stroke-tertiary) text-(--ui-text-secondary) hover:bg-(--ui-control-hover-background)"
             onClick={() => void refetch()}
-            aria-label="Refresh ledger"
             type="button"
           >
             <Codicon name="refresh" size="0.78rem" />
