@@ -122,7 +122,7 @@ async function gotoMissionControl(): Promise<void> {
 }
 
 test(`Mission Control renders without clipping at ${scaleLabel}% DPI`, async () => {
-  const { page, app } = fixture!
+  const { page } = fixture!
 
   await setWindowSize(1220, 800)
   await gotoMissionControl()
@@ -255,7 +255,9 @@ test(`Mission Control honors reduced motion at ${scaleLabel}% DPI`, async () => 
   const reduced = await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches)
   expect(reduced).toBe(true)
 
-  const animationMs = await page.locator('.aos-state-dot').first().evaluate(element => {
+  const runningDot = page.locator(".aos-state[data-state='RUNNING'] .aos-state-dot").first()
+  await expect(runningDot).toBeVisible()
+  const animationMs = await runningDot.evaluate(element => {
     const value = getComputedStyle(element).animationDuration.trim()
     if (value.endsWith('ms')) return Number.parseFloat(value)
     if (value.endsWith('s')) return Number.parseFloat(value) * 1000
