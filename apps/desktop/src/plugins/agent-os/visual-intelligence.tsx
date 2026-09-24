@@ -44,9 +44,7 @@ const TERMINAL_STATES = new Set(['CANCELLED', 'COMPLETED', 'FAILED', 'SUCCEEDED'
 const ACTIVE_STATES = new Set(['ACTIVE', 'EXECUTING', 'RECOVERING', 'RUNNING', 'STARTING', 'VERIFYING'])
 
 function compactId(value: null | string | undefined): string {
-  if (!value) {
-    return '—'
-  }
+  if (!value) return '—'
   return value.length <= 18 ? value : `${value.slice(0, 9)}…${value.slice(-6)}`
 }
 
@@ -55,9 +53,7 @@ function stepLevels(steps: AgentOSPlanStep[], dependencies: AgentOSPlan['depende
   const parents = new Map<string, string[]>()
 
   for (const edge of dependencies ?? []) {
-    if (!known.has(edge.step_id) || !known.has(edge.dependency_step_id)) {
-      continue
-    }
+    if (!known.has(edge.step_id) || !known.has(edge.dependency_step_id)) continue
     parents.set(edge.step_id, [...(parents.get(edge.step_id) ?? []), edge.dependency_step_id])
   }
 
@@ -69,23 +65,17 @@ function stepLevels(steps: AgentOSPlanStep[], dependencies: AgentOSPlan['depende
 
     for (const id of [...pending]) {
       const deps = parents.get(id) ?? []
-      if (!deps.every(parent => levels.has(parent))) {
-        continue
-      }
+      if (!deps.every(parent => levels.has(parent))) continue
       levels.set(id, deps.length ? Math.max(...deps.map(parent => levels.get(parent) ?? 0)) + 1 : 0)
       pending.delete(id)
       changed = true
     }
 
-    if (!changed) {
-      break
-    }
+    if (!changed) break
   }
 
   const fallback = Math.max(-1, ...levels.values()) + 1
-  for (const id of pending) {
-    levels.set(id, fallback)
-  }
+  for (const id of pending) levels.set(id, fallback)
 
   return levels
 }
@@ -212,13 +202,9 @@ export function buildExecutionCanvasModel(task: AgentOSTask): ExecutionCanvasMod
   const nodeIds = new Set(nodes.map(node => node.id))
   const linkedTargets = new Set<string>()
   const addEdge = (source: string, target: string, kind: ExecutionEdgeKind, label: string) => {
-    if (!nodeIds.has(source) || !nodeIds.has(target) || source === target) {
-      return
-    }
+    if (!nodeIds.has(source) || !nodeIds.has(target) || source === target) return
     const id = `${kind}:${source}->${target}`
-    if (edges.some(edge => edge.id === id)) {
-      return
-    }
+    if (edges.some(edge => edge.id === id)) return
     edges.push({ id, source, target, kind, label })
     linkedTargets.add(target)
   }
@@ -237,9 +223,7 @@ export function buildExecutionCanvasModel(task: AgentOSTask): ExecutionCanvasMod
   for (const step of plan?.steps ?? []) {
     const nodeId = `step:${step.id}`
     const hasDependency = (plan?.dependencies ?? []).some(edge => edge.step_id === step.id)
-    if (!hasDependency) {
-      addEdge(goalId, nodeId, 'membership', 'planned from goal')
-    }
+    if (!hasDependency) addEdge(goalId, nodeId, 'membership', 'planned from goal')
 
     if (step.execution_id) {
       const target = task.agents.some(agent => agent.id === step.execution_id)
@@ -247,9 +231,7 @@ export function buildExecutionCanvasModel(task: AgentOSTask): ExecutionCanvasMod
         : task.actions.some(action => action.id === step.execution_id)
           ? `action:${step.execution_id}`
           : null
-      if (target) {
-        addEdge(nodeId, target, 'execution', 'executes as')
-      }
+      if (target) addEdge(nodeId, target, 'execution', 'executes as')
     }
   }
 
@@ -300,21 +282,11 @@ export function buildExecutionCanvasModel(task: AgentOSTask): ExecutionCanvasMod
 }
 
 function nodeIcon(kind: ExecutionNodeKind): string {
-  if (kind === 'goal') {
-    return 'target'
-  }
-  if (kind === 'plan') {
-    return 'list-tree'
-  }
-  if (kind === 'agent') {
-    return 'hubot'
-  }
-  if (kind === 'action') {
-    return 'tools'
-  }
-  if (kind === 'verify') {
-    return 'verified'
-  }
+  if (kind === 'goal') return 'target'
+  if (kind === 'plan') return 'list-tree'
+  if (kind === 'agent') return 'hubot'
+  if (kind === 'action') return 'tools'
+  if (kind === 'verify') return 'verified'
   return 'database'
 }
 
@@ -364,18 +336,12 @@ export function connectedExecutionNodeIds(
   model: ExecutionCanvasModel,
   selectedId: string | undefined
 ): Set<string> {
-  if (!selectedId) {
-    return new Set()
-  }
+  if (!selectedId) return new Set()
 
   const connected = new Set<string>([selectedId])
   for (const edge of model.edges) {
-    if (edge.source === selectedId) {
-      connected.add(edge.target)
-    }
-    if (edge.target === selectedId) {
-      connected.add(edge.source)
-    }
+    if (edge.source === selectedId) connected.add(edge.target)
+    if (edge.target === selectedId) connected.add(edge.source)
   }
 
   return connected
@@ -414,9 +380,7 @@ export function ExecutionCanvas({ task }: { task: AgentOSTask }) {
 
   const fitAll = () => {
     const viewport = viewportRef.current
-    if (!viewport) {
-      return
-    }
+    if (!viewport) return
     setZoom(fitCanvasZoom(viewport.clientWidth, viewport.clientHeight, width, height))
     viewport.scrollTo({ left: 0, top: 0, behavior: 'smooth' })
   }
@@ -425,9 +389,7 @@ export function ExecutionCanvas({ task }: { task: AgentOSTask }) {
     setSelectedId(id)
     const viewport = viewportRef.current
     const position = positioned.get(id)
-    if (!viewport || !position) {
-      return
-    }
+    if (!viewport || !position) return
 
     const left = Math.max(0, position.x * zoom - viewport.clientWidth / 2 + (NODE_WIDTH * zoom) / 2)
     const top = Math.max(0, position.y * zoom - viewport.clientHeight / 2 + (NODE_HEIGHT * zoom) / 2)
@@ -479,9 +441,9 @@ export function ExecutionCanvas({ task }: { task: AgentOSTask }) {
             <Codicon name="zoom-out" size="0.72rem" />
           </button>
           <button
-            aria-label="Reset execution canvas zoom"
             className="h-7 min-w-12 rounded border border-(--ui-stroke-tertiary) px-1.5 text-[0.58rem] tabular-nums text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background)"
             onClick={() => setZoom(1)}
+            aria-label="Reset execution canvas zoom"
             type="button"
           >
             {Math.round(zoom * 100)}%
@@ -524,9 +486,7 @@ export function ExecutionCanvas({ task }: { task: AgentOSTask }) {
               {model.edges.map(edge => {
                 const source = positioned.get(edge.source)
                 const target = positioned.get(edge.target)
-                if (!source || !target) {
-                  return null
-                }
+                if (!source || !target) return null
 
                 const x1 = source.x + NODE_WIDTH
                 const y1 = source.y + NODE_HEIGHT / 2
@@ -560,7 +520,6 @@ export function ExecutionCanvas({ task }: { task: AgentOSTask }) {
               const position = positioned.get(node.id)!
               return (
                 <button
-                  aria-label={`${node.title}: ${node.detail}`}
                   className={cn(
                     'aos-graph-node',
                     selectedId === node.id && 'aos-graph-node-selected',
@@ -576,6 +535,7 @@ export function ExecutionCanvas({ task }: { task: AgentOSTask }) {
                     top: position.y,
                     width: NODE_WIDTH
                   }}
+                  aria-label={`${node.title}: ${node.detail}`}
                   type="button"
                 >
                   <span className="flex min-w-0 items-start justify-between gap-2">
@@ -705,18 +665,12 @@ export function connectedKnowledgeNodeIds(
   model: KnowledgeCanvasModel,
   selectedId: string | undefined
 ): Set<string> {
-  if (!selectedId || !model.nodes.some(node => node.id === selectedId)) {
-    return new Set()
-  }
+  if (!selectedId || !model.nodes.some(node => node.id === selectedId)) return new Set()
 
   const connected = new Set<string>([selectedId])
   for (const edge of model.edges) {
-    if (edge.source === selectedId) {
-      connected.add(edge.target)
-    }
-    if (edge.target === selectedId) {
-      connected.add(edge.source)
-    }
+    if (edge.source === selectedId) connected.add(edge.target)
+    if (edge.target === selectedId) connected.add(edge.source)
   }
 
   return connected
@@ -768,9 +722,7 @@ export function SemanticKnowledgeCanvas({
 
   const fitAll = () => {
     const viewport = viewportRef.current
-    if (!viewport) {
-      return
-    }
+    if (!viewport) return
     setZoom(fitCanvasZoom(viewport.clientWidth, viewport.clientHeight, width, height, 0.55, 1.3))
     viewport.scrollTo({ left: 0, top: 0, behavior: 'smooth' })
   }
@@ -779,9 +731,7 @@ export function SemanticKnowledgeCanvas({
     onSelect(id)
     const viewport = viewportRef.current
     const position = positions.get(id)
-    if (!viewport || !position) {
-      return
-    }
+    if (!viewport || !position) return
 
     const left = Math.max(
       0,
@@ -876,9 +826,7 @@ export function SemanticKnowledgeCanvas({
                 const targetNode = model.nodes.find(node => node.id === edge.target)
                 const source = positions.get(edge.source)
                 const target = positions.get(edge.target)
-                if (!sourceNode || !targetNode || !source || !target) {
-                  return null
-                }
+                if (!sourceNode || !targetNode || !source || !target) return null
 
                 const from = sourceNode.column <= targetNode.column ? source : target
                 const to = sourceNode.column <= targetNode.column ? target : source
@@ -909,7 +857,6 @@ export function SemanticKnowledgeCanvas({
               const position = positions.get(node.id)!
               return (
                 <button
-                  aria-label={node.label}
                   className={cn(
                     'aos-knowledge-node',
                     node.kind === 'memory' ? 'aos-knowledge-node-memory' : 'aos-knowledge-node-skill',
@@ -927,6 +874,7 @@ export function SemanticKnowledgeCanvas({
                     top: position.y,
                     width: KNOWLEDGE_NODE_WIDTH
                   }}
+                  aria-label={node.label}
                   type="button"
                 >
                   <span className="flex items-center justify-between gap-2">
@@ -958,12 +906,8 @@ function safeVerificationLabel(action: AgentOSAction): string {
   const result = action.verification_result ?? {}
   for (const key of ['verdict', 'status', 'result']) {
     const value = result[key]
-    if (typeof value === 'string' && value.trim()) {
-      return value
-    }
-    if (typeof value === 'boolean') {
-      return value ? 'PASS' : 'FAIL'
-    }
+    if (typeof value === 'string' && value.trim()) return value
+    if (typeof value === 'boolean') return value ? 'PASS' : 'FAIL'
   }
   return action.verification_required ? 'PENDING' : 'NOT REQUIRED'
 }
@@ -1094,9 +1038,7 @@ export function buildRuntimeTopologyCanvasModel(
   nodes: AgentOSTopologyNode[],
   edges: Array<{ source: string; target: string; relation: string }>
 ): RuntimeTopologyCanvasModel {
-  if (!nodes.length) {
-    return { nodes: [], edges: [], columns: 0 }
-  }
+  if (!nodes.length) return { nodes: [], edges: [], columns: 0 }
 
   const known = new Set(nodes.map(node => node.id))
   const validEdges = edges.filter(edge => known.has(edge.source) && known.has(edge.target))
@@ -1115,12 +1057,8 @@ export function buildRuntimeTopologyCanvasModel(
   while (queue.length) {
     const current = queue.shift()!
     const level = levels.get(current) ?? 0
-    for (const target of outgoing.get(current) {
-      ?? []) {
-    }
-      if (levels.has(target)) {
-        continue
-      }
+    for (const target of outgoing.get(current) ?? []) {
+      if (levels.has(target)) continue
       levels.set(target, level + 1)
       queue.push(target)
     }
@@ -1128,9 +1066,7 @@ export function buildRuntimeTopologyCanvasModel(
 
   const fallback = Math.max(0, ...levels.values()) + 1
   for (const node of nodes) {
-    if (!levels.has(node.id)) {
-      levels.set(node.id, fallback)
-    }
+    if (!levels.has(node.id)) levels.set(node.id, fallback)
   }
 
   const rows = new Map<number, number>()
@@ -1170,18 +1106,12 @@ export function connectedRuntimeTopologyNodeIds(
   model: RuntimeTopologyCanvasModel,
   selectedId: string | undefined
 ): Set<string> {
-  if (!selectedId || !model.nodes.some(node => node.id === selectedId)) {
-    return new Set()
-  }
+  if (!selectedId || !model.nodes.some(node => node.id === selectedId)) return new Set()
 
   const connected = new Set<string>([selectedId])
   for (const edge of model.edges) {
-    if (edge.source === selectedId) {
-      connected.add(edge.target)
-    }
-    if (edge.target === selectedId) {
-      connected.add(edge.source)
-    }
+    if (edge.source === selectedId) connected.add(edge.target)
+    if (edge.target === selectedId) connected.add(edge.source)
   }
 
   return connected
@@ -1231,9 +1161,7 @@ export function RuntimeTopologyCanvas({
 
   const fitAll = () => {
     const viewport = viewportRef.current
-    if (!viewport) {
-      return
-    }
+    if (!viewport) return
     setZoom(fitCanvasZoom(viewport.clientWidth, viewport.clientHeight, width, height, 0.55, 1.2))
     viewport.scrollTo({ left: 0, top: 0, behavior: 'smooth' })
   }
@@ -1242,9 +1170,7 @@ export function RuntimeTopologyCanvas({
     setSelectedId(id)
     const viewport = viewportRef.current
     const position = positions.get(id)
-    if (!viewport || !position) {
-      return
-    }
+    if (!viewport || !position) return
 
     const left = Math.max(0, position.x * zoom - viewport.clientWidth / 2 + (TOPOLOGY_NODE_WIDTH * zoom) / 2)
     const top = Math.max(0, position.y * zoom - viewport.clientHeight / 2 + (TOPOLOGY_NODE_HEIGHT * zoom) / 2)
@@ -1323,9 +1249,7 @@ export function RuntimeTopologyCanvas({
             {model.edges.map((edge, index) => {
               const source = positions.get(edge.source)
               const target = positions.get(edge.target)
-              if (!source || !target) {
-                return null
-              }
+              if (!source || !target) return null
               const x1 = source.x + TOPOLOGY_NODE_WIDTH
               const y1 = source.y + TOPOLOGY_NODE_HEIGHT / 2
               const x2 = target.x
@@ -1352,7 +1276,6 @@ export function RuntimeTopologyCanvas({
             const position = positions.get(node.id)!
             return (
               <button
-                aria-label={`${node.label}: ${node.status}`}
                 className={cn(
                   'aos-runtime-topology-node',
                   selectedId === node.id && 'aos-runtime-topology-node-selected',
@@ -1367,6 +1290,7 @@ export function RuntimeTopologyCanvas({
                   top: position.y,
                   width: TOPOLOGY_NODE_WIDTH
                 }}
+                aria-label={`${node.label}: ${node.status}`}
                 type="button"
               >
                 <span className="flex items-start justify-between gap-2">
