@@ -460,9 +460,15 @@ function PlanGraph({ plan }: { plan: AgentOSPlan | null | undefined }) {
 type TimelineFilter = 'all' | 'actions' | 'agents' | 'plan' | 'safety' | 'system'
 
 function eventGroup(type: string): Exclude<TimelineFilter, 'all'> {
-  if (type.startsWith('action.')) return 'actions'
-  if (type.startsWith('agent.')) return 'agents'
-  if (type.startsWith('plan')) return 'plan'
+  if (type.startsWith('action.')) {
+    return 'actions'
+  }
+  if (type.startsWith('agent.')) {
+    return 'agents'
+  }
+  if (type.startsWith('plan')) {
+    return 'plan'
+  }
   if (
     type.startsWith('verification.') ||
     type.startsWith('recovery.') ||
@@ -477,14 +483,30 @@ function eventGroup(type: string): Exclude<TimelineFilter, 'all'> {
 }
 
 function eventIcon(type: string): string {
-  if (type.startsWith('agent.')) return 'hubot'
-  if (type.startsWith('plan')) return 'list-tree'
-  if (type.startsWith('action.')) return 'tools'
-  if (type.startsWith('verification.')) return 'verified'
-  if (type.startsWith('recovery.')) return 'debug-restart'
-  if (type.startsWith('approval.') || type.startsWith('risk.')) return 'shield'
-  if (type.startsWith('checkpoint.')) return 'save'
-  if (type.startsWith('artifact.')) return 'files'
+  if (type.startsWith('agent.')) {
+    return 'hubot'
+  }
+  if (type.startsWith('plan')) {
+    return 'list-tree'
+  }
+  if (type.startsWith('action.')) {
+    return 'tools'
+  }
+  if (type.startsWith('verification.')) {
+    return 'verified'
+  }
+  if (type.startsWith('recovery.')) {
+    return 'debug-restart'
+  }
+  if (type.startsWith('approval.') || type.startsWith('risk.')) {
+    return 'shield'
+  }
+  if (type.startsWith('checkpoint.')) {
+    return 'save'
+  }
+  if (type.startsWith('artifact.')) {
+    return 'files'
+  }
 
   return 'circle-large-outline'
 }
