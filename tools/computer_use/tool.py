@@ -294,6 +294,8 @@ def handle_computer_use(args: Dict[str, Any], **kwargs) -> Any:
         return json.dumps({"error": "missing `action`"})
     session_id = str(kwargs.get("session_id") or "")  # approval-state / daemon-mode isolation key
     approval_callback = kwargs.get("approval_callback", _approval_callback)
+    capture_callback = kwargs.get("capture_callback")
+    persist_capture = bool(kwargs.get("persist_capture", True))
     if (err := _reject_unsafe(action, args)) is not None:
         return err
     scopes = ([action] if action in _ACTIONS and _ACTIONS[action].destructive else []) + (
@@ -311,7 +313,14 @@ def handle_computer_use(args: Dict[str, Any], **kwargs) -> Any:
         with _backend_lock:
             call_lock = _backend_call_locks.setdefault(session_id, threading.RLock())
         with call_lock:
-            return _dispatch(backend, action, args, session_id=session_id or None)
+            return _dispatch(
+                backend,
+                action,
+                args,
+                capture_callback=capture_callback,
+                session_id=session_id or None,
+                persist_capture=persist_capture,
+            )
     except Exception as e:
         logger.exception("computer_use %s failed", action)
         return json.dumps({"error": f"{action} failed: {e}"})
@@ -385,13 +394,13 @@ def _do_scroll(backend, action, args, **delivery):
     return backend.scroll(direction=args.get("direction", "down"), amount=int(args.get("amount", 3)),
                           element=args.get("element"), **_scroll_xy(args), modifiers=args.get("modifiers"), **delivery)
 
-def _do_capture(backend, action, args, session_id=None, **_):
+def _do_capture(backend, action, args, capture_callback=None, session_id=None, persist_capture=True, **_):
     if (mode := str(args.get("mode", "som"))) not in {"som", "vision", "ax"}:
         return json.dumps({"error": f"bad mode {mode!r}; use som|vision|ax"})
     # pid/window_id forwarded only when given so older backends keep their defaults.
     return _capture_response(backend.capture(mode=mode, app=args.get("app"),
                                              **{k: args[k] for k in ("pid", "window_id") if args.get(k) is not None}),
-                             session_id=session_id)
+                             capture_callback=capture_callback, session_id=session_id, persist_capture=persist_capture)
 
 def _do_listing(backend, action, args, key, **_):
     return json.dumps({key: (items := getattr(backend, action)()), "count": len(items)})
@@ -441,7 +450,8 @@ _ACTION_SUGGESTIONS = {
     "input_text": "type", "screenshot": "capture", "get_window_state": "capture", "left_click": "click", "mouse_click": "click",
 }
 
-def _dispatch(backend: ComputerUseBackend, action: str, args: Dict[str, Any], session_id: Optional[str] = None) -> Any:
+def _dispatch(backend: ComputerUseBackend, action: str, args: Dict[str, Any], capture_callback=None,
+              session_id: Optional[str] = None, persist_capture: bool = True) -> Any:
     spec = _ACTIONS.get(action)
     if spec is None:
         return json.dumps({"error": f"unknown action {action!r}" + (f" — did you mean {hint!r}? See the action enum in the tool schema."
@@ -456,10 +466,30 @@ def _dispatch(backend: ComputerUseBackend, action: str, args: Dict[str, Any], se
             f"Call capture(app={requested_app.strip()!r}) or focus_app first, then retry.")})
     # delivery_mode / bring_to_front thread through every input action (background → foreground ladder); input
     # handlers forward their kwargs to the backend verbatim, so the dedup session key rides only on read handlers.
-    res = spec.handler(backend, action, args, delivery_mode=args.get("delivery_mode"),
-                       bring_to_front=bool(args.get("bring_to_front")), **({} if spec.input else {"session_id": session_id}))
-    return res if isinstance(res, (str, dict)) else _maybe_follow_capture(backend, res, bool(args.get("capture_after")),
-                                                                         session_id=session_id)
+    res = spec.handler(
+        backend,
+        action,
+        args,
+        delivery_mode=args.get("delivery_mode"),
+        bring_to_front=bool(args.get("bring_to_front")),
+        **(
+            {}
+            if spec.input
+            else {
+                "capture_callback": capture_callback,
+                "session_id": session_id,
+                "persist_capture": persist_capture,
+            }
+        ),
+    )
+    return res if isinstance(res, (str, dict)) else _maybe_follow_capture(
+        backend,
+        res,
+        bool(args.get("capture_after")),
+        capture_callback=capture_callback,
+        session_id=session_id,
+        persist_capture=persist_capture,
+    )
 
 # ── Response shaping ────────────────────────────────────────────────────────
 def _classify_action_result(res: ActionResult) -> Dict[str, Any]:
@@ -552,7 +582,7 @@ def _bounds_hints(elements: List[UIElement], image_width: int, image_height: int
 _bounds_scale = lambda elements, image_width, image_height: _bounds_hints(elements, image_width, image_height)[0]  # noqa: E731
 _bounds_space_note = lambda elements, image_width, image_height: _bounds_hints(elements, image_width, image_height)[1]  # noqa: E731
 
-def _capture_view(cap: CaptureResult, max_elements: int) -> SimpleNamespace:
+def _capture_view(cap: CaptureResult, max_elements: int, *, persist_capture: bool = True) -> SimpleNamespace:
     """One capture's derived facts, computed once for every response branch: ``visible`` is the capped element list,
     ``dims_omitted`` an image below the provider minimum."""
     visible, dims = cap.elements[:max_elements], None
@@ -567,7 +597,7 @@ def _capture_view(cap: CaptureResult, max_elements: int) -> SimpleNamespace:
     return SimpleNamespace(cap=cap, visible=visible, total=len(cap.elements), width=width, height=height,
                            truncated=len(cap.elements) - len(visible), bounds_scale=scale, bounds_note=note,
                            elements_file=_spill_elements_to_file(cap) if lost_detail else None,
-                           screenshot_path=_persist_capture_image(cap) if has_image else None,
+                           screenshot_path=_persist_capture_image(cap) if has_image and persist_capture else None,
                            dims_omitted=dims if too_small else None, has_image=has_image)
 
 def _capture_summary_lines(v: SimpleNamespace) -> List[str]:
@@ -607,8 +637,18 @@ def _capture_digest(cap: CaptureResult) -> str:
                           + (cap.png_b64 or "").encode("ascii", "ignore")).hexdigest()
 
 def _capture_response(cap: CaptureResult, max_elements: int = _DEFAULT_MAX_ELEMENTS,
-                      session_id: Optional[str] = None) -> Any:
-    v = _capture_view(cap, max_elements)
+                      capture_callback=None, session_id: Optional[str] = None,
+                      persist_capture: bool = True) -> Any:
+    v = _capture_view(cap, max_elements, persist_capture=persist_capture)
+    if v.has_image and callable(capture_callback):
+        try:
+            capture_callback({
+                "data_url": f"data:{_capture_image_format(cap)[0]};base64,{cap.png_b64}",
+                "height": v.height,
+                "width": v.width,
+            })
+        except Exception as exc:
+            logger.debug("computer_use: ephemeral capture callback failed: %s", exc)
     lines = _capture_summary_lines(v)
     summary, extra = "\n".join(lines), None  # multimodal/aux paths use this; text paths append notes and rebuild
     if v.has_image and session_id and _screenshot_dedup_check(
@@ -622,7 +662,9 @@ def _capture_response(cap: CaptureResult, max_elements: int = _DEFAULT_MAX_ELEME
     elif v.has_image:
         # Hand the screenshot to auxiliary.vision (text-only result) when the main model may not consume images
         # natively; returning the multimodal envelope unconditionally tripped HTTP 404/400 at the provider.
-        if not _should_route_through_aux_vision():  # envelope carrying the screenshot (not the elements array, so no truncation note)
+        # Ephemeral callers must remain RAM-only: auxiliary vision materializes
+        # a temporary image file, so skip that route when capture persistence is disabled.
+        if not persist_capture or not _should_route_through_aux_vision():  # envelope carrying the screenshot
             return {
                 "_multimodal": True,
                 "content": [{"type": "text", "text": summary},
@@ -651,7 +693,8 @@ def _capture_response(cap: CaptureResult, max_elements: int = _DEFAULT_MAX_ELEME
     return _text_capture_payload(v, "\n".join(lines), extra)
 
 def _maybe_follow_capture(backend: ComputerUseBackend, res: ActionResult, do_capture: bool,
-                          session_id: Optional[str] = None) -> Any:
+                          capture_callback=None, session_id: Optional[str] = None,
+                          persist_capture: bool = True) -> Any:
     # No follow-up capture after a failed action: a normal-looking screenshot would suggest success.
     if not do_capture or not res.ok:
         return _text_response(res)
@@ -664,7 +707,12 @@ def _maybe_follow_capture(backend: ComputerUseBackend, res: ActionResult, do_cap
     except Exception as e:
         logger.warning("follow-up capture failed: %s", e)
         return _text_response(res)
-    resp, payload = _capture_response(cap, session_id=session_id), _action_payload(res)
+    resp, payload = _capture_response(
+        cap,
+        capture_callback=capture_callback,
+        session_id=session_id,
+        persist_capture=persist_capture,
+    ), _action_payload(res)
     if isinstance(resp, dict) and resp.get("_multimodal"):
         # Keep the evidence/verdict contract visible alongside the image — it governs whether input may repeat.
         resp["content"][0]["text"] = resp["text_summary"] = json.dumps(payload) + "\n\n" + resp["text_summary"]

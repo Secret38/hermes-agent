@@ -183,3 +183,23 @@ def test_mission_control_keeps_global_new_work_emergency_stop_contract():
     assert "system.estop.get" in control_data
     assert "system.estop.set" in control_data
     assert "audit.changed" in control_data
+
+
+
+def test_mission_control_keeps_ephemeral_live_viewport_contract():
+    api = _source("api.ts")
+    visual = _source("visual-intelligence.tsx")
+
+    for marker in (
+        "Open live viewport",
+        "Live Computer Use viewport",
+        "Ephemeral · RAM only",
+        "Waiting for next Computer Use frame",
+        "does not trigger screenshots",
+    ):
+        assert marker in visual
+
+    assert "subscribeAgentOSLiveFrame" in visual
+    assert "subscribeAgentOSLiveFrame" in api
+    assert "/live-frames?task_id=" in api
+    assert "data:image/" in api

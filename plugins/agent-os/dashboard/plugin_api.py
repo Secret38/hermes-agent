@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 from agent_os.dashboard import build_dashboard_snapshot, dashboard_event_sequence
+from agent_os.live_frames import live_frame_broker
 from agent_os.mission_control import MissionBusyError, MissionPausedError, MissionRuntimeService
 
 router = APIRouter()
@@ -243,3 +244,50 @@ async def events(ws: WebSocket):
             await asyncio.sleep(0.75)
     except WebSocketDisconnect:
         return
+
+
+@router.websocket("/live-frames")
+async def live_frames(ws: WebSocket):
+    """Stream the newest task-scoped CUA frame without durable persistence."""
+
+    if not _ws_upgrade_authorized(ws):
+        await ws.close(code=4401)
+        return
+
+    task_id = str(ws.query_params.get("task_id") or "").strip()
+    if not task_id or len(task_id) > 256:
+        await ws.close(code=4400)
+        return
+
+    task = await run_in_threadpool(_mission_service().store.get_task, task_id)
+    if task is None:
+        await ws.close(code=4404)
+        return
+
+    await ws.accept()
+    broker = live_frame_broker()
+    broker.begin_watch(task_id)
+    last_sequence = -1
+    had_frame = False
+
+    try:
+        while True:
+            frame = await run_in_threadpool(broker.latest, task_id)
+            if frame is not None and frame.sequence != last_sequence:
+                last_sequence = frame.sequence
+                had_frame = True
+                await ws.send_json({"type": "live_frame", "frame": frame.to_dict()})
+            elif frame is None and had_frame:
+                had_frame = False
+                await ws.send_json(
+                    {
+                        "type": "live_frame.expired",
+                        "task_id": task_id,
+                        "sequence": last_sequence,
+                    }
+                )
+            await asyncio.sleep(0.25)
+    except WebSocketDisconnect:
+        pass
+    finally:
+        broker.end_watch(task_id)

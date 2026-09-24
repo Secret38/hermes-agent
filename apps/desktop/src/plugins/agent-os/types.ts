@@ -129,6 +129,18 @@ export interface AgentOSTask {
   }
 }
 
+export interface AgentOSLiveFrame {
+  sequence: number
+  task_id: string
+  action_id: string
+  mime_type: string
+  data_url: string
+  width?: null | number
+  height?: null | number
+  captured_at: string
+  expires_at: string
+}
+
 export interface AgentOSTopologyNode {
   id: string
   kind: 'agent_runtime' | 'capability' | 'core' | 'tool' | string

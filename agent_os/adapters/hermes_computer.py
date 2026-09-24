@@ -14,6 +14,7 @@ from tools.computer_use.tool import (
 from agent_os.contracts import ActionRecord
 from agent_os.execution_context import current_authorized_execution
 from agent_os.kernel import ExecutionResult
+from agent_os.live_frames import live_frame_broker
 from agent_os.verification.gate import VerificationResult, VerificationVerdict
 
 
@@ -51,11 +52,26 @@ class HermesComputerUseExecutor:
                 return "once"
             return "deny"
 
+        def publish_capture(frame):
+            try:
+                live_frame_broker().publish(
+                    task_id=action.task_id,
+                    action_id=action.id,
+                    data_url=str(frame.get("data_url") or ""),
+                    width=frame.get("width"),
+                    height=frame.get("height"),
+                )
+            except Exception:
+                # Live observability is best-effort and must never affect execution.
+                pass
+
         raw = handle_computer_use(
             payload,
             task_id=action.task_id,
             session_id=action.task_id,
             approval_callback=bridge_approval,
+            capture_callback=publish_capture,
+            persist_capture=False,
         )
         result = self._normalize(raw)
         if result.get("error") or result.get("ok") is False:
@@ -89,7 +105,10 @@ class HermesComputerUseExecutor:
 
     @staticmethod
     def cleanup(task_id: str) -> bool:
-        return bool(release_computer_use_session(task_id))
+        try:
+            return bool(release_computer_use_session(task_id))
+        finally:
+            live_frame_broker().clear_task(task_id)
 
 
 class HermesComputerUseVerifier:
