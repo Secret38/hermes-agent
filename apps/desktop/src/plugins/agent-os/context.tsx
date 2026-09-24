@@ -1,19 +1,123 @@
-import {
-' ')}
-          </div>
-        </div>
-        <span className={cn('shrink-0 rounded border px-1.5 py-0.5 text-[0.54rem] font-medium tracking-[0.06em]',
-' ')}
+import { cn, Codicon, host, useQuery } from '@hermes/plugin-sdk'
+import { useState } from 'react'
+
+import { AGENT_OS_CONTEXT_KEY, fetchAgentOSContext } from './api'
+import { SemanticKnowledgeCanvas } from './visual-intelligence'
+import type {
+  AgentOSLearningNode,
+  AgentOSMcpConnection,
+  AgentOSMemoryProviderConnection
+} from './types'
+
+function LoadingPanel({ label }: { label: string }) {
+  return (
+    <section className="aos-panel grid min-h-40 place-items-center p-6 text-center">
+      <div className="flex items-center gap-2 text-xs text-(--ui-text-tertiary)">
+        <Codicon className="animate-spin" name="loading" size="0.8rem" />
+        {label}
       </div>
+    </section>
+  )
+}
+
+function ErrorPanel({ message }: { message: string }) {
+  return (
+    <section className="aos-panel p-4">
+      <div className="flex items-start gap-2">
+        <Codicon className="mt-0.5 shrink-0 text-destructive" name="warning" size="0.8rem" />
+        <div>
+          <div className="text-xs font-medium text-foreground">Context unavailable</div>
+          <div className="mt-1 text-[0.65rem] leading-relaxed text-(--ui-text-tertiary)">{message}</div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function Stat({
+  icon,
+  label,
+  value
+}: {
+  icon: string
+  label: string
+  value: number | string
+}) {
+  return (
+    <div className="rounded-md border border-(--ui-stroke-tertiary) bg-(--ui-bg-secondary) p-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="aos-kicker">{label}</span>
+        <Codicon className="text-(--ui-text-tertiary)" name={icon} size="0.72rem" />
+      </div>
+      <div className="mt-1.5 text-base font-semibold tabular-nums text-foreground">{value}</div>
     </div>
   )
 }
 
-export function ExternalConnectionsSection() {
-  const { data,
-(edgeCountByNode.get(edge.source) ?? 0) + 1)
-    edgeCountByNode.set(edge.target,
-(edgeCountByNode.get(edge.target) ?? 0) + 1)
+function formatMemoryTimestamp(value: null | number | undefined): string {
+  if (!value) {
+    return 'unknown'
+  }
+
+  const milliseconds = value < 10_000_000_000 ? value * 1000 : value
+  const date = new Date(milliseconds)
+  if (Number.isNaN(date.getTime())) {
+    return 'unknown'
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  }).format(date)
+}
+
+function memoryCardForNode(
+  node: AgentOSLearningNode | undefined,
+  cards: Array<{ source: string; title: string; body: string }>
+) {
+  if (!node || node.kind !== 'memory') {
+    return undefined
+  }
+
+  const match = node.id.match(/^memory:[^:]+:(\d+)$/)
+
+  if (!match) {
+    return undefined
+  }
+
+  return cards[Number(match[1])]
+}
+
+export function SemanticMemorySection() {
+  const { data, error } = useQuery({
+    queryFn: fetchAgentOSContext,
+    queryKey: AGENT_OS_CONTEXT_KEY,
+    refetchInterval: 60_000
+  })
+  const [selectedId, setSelectedId] = useState<string>()
+
+  if (error) {
+    return <ErrorPanel message={error instanceof Error ? error.message : String(error)} />
+  }
+
+  if (!data) {
+    return <LoadingPanel label="Reading semantic memory and learned skills…" />
+  }
+
+  const graph = data.learning
+  const orderedNodes = [...graph.nodes].sort(
+    (a, b) =>
+      Number(b.kind === 'memory') - Number(a.kind === 'memory') ||
+      (b.useCount ?? 0) - (a.useCount ?? 0) ||
+      a.label.localeCompare(b.label)
+  )
+  const selected = selectedId ? graph.nodes.find(node => node.id === selectedId) : orderedNodes[0]
+  const selectedCard = memoryCardForNode(selected, graph.memory)
+  const edgeCountByNode = new Map<string, number>()
+
+  for (const edge of graph.edges) {
+    edgeCountByNode.set(edge.source, (edgeCountByNode.get(edge.source) ?? 0) + 1)
+    edgeCountByNode.set(edge.target, (edgeCountByNode.get(edge.target) ?? 0) + 1)
   }
 
   return (
@@ -39,11 +143,7 @@ export function ExternalConnectionsSection() {
           {graph.error && <span className="text-[0.6rem] text-destructive">{graph.error}</span>}
         </div>
 
-        <div className="grid gap-3 p-3 xl:grid-cols-[minmax(0,
-{
-    dateStyle: 'medium',
-#3fa779_40%,
-0.55fr)]">
+        <div className="grid gap-3 p-3 xl:grid-cols-[minmax(0,1.45fr)_minmax(17rem,0.55fr)]">
           <div className="min-h-64 overflow-hidden rounded-lg border border-(--ui-stroke-tertiary) bg-(--ui-bg-primary)">
             <SemanticKnowledgeCanvas
               graph={graph}
@@ -116,19 +216,17 @@ export function ExternalConnectionsSection() {
                   <div className="mt-2 flex flex-wrap gap-1">
                     {graph.edges
                       .filter(edge => edge.source === selected.id || edge.target === selected.id)
-                      .slice(0,
-1.45fr)_minmax(17rem,
-12)
+                      .slice(0, 12)
                       .map(edge => {
                         const other = edge.source === selected.id ? edge.target : edge.source
                         const node = graph.nodes.find(item => item.id === other)
 
                         return (
                           <button
-                            aria-label={node?.label || other}
                             className="max-w-full truncate rounded border border-(--ui-stroke-tertiary) px-1.5 py-1 text-[0.58rem] text-(--ui-text-secondary) hover:bg-(--ui-control-hover-background)"
                             key={`${edge.source}->${edge.target}`}
                             onClick={() => setSelectedId(other)}
+                            aria-label={node?.label || other}
                             type="button"
                           >
                             {node?.label || other}
@@ -146,8 +244,7 @@ export function ExternalConnectionsSection() {
 
         {graph.clusters.length > 0 && (
           <div className="flex flex-wrap gap-1.5 border-t border-(--ui-stroke-tertiary) px-3 py-2.5">
-            {graph.clusters.slice(0,
-12).map(cluster => (
+            {graph.clusters.slice(0, 12).map(cluster => (
               <span
                 className="rounded border border-(--ui-stroke-tertiary) bg-(--ui-bg-secondary) px-2 py-1 text-[0.6rem] text-(--ui-text-tertiary)"
                 key={cluster.category}
@@ -162,91 +259,17 @@ export function ExternalConnectionsSection() {
   )
 }
 
-function connectionBadge(enabled: boolean,
-active = false): { label: string; className: string } {
+function connectionBadge(enabled: boolean, active = false): { label: string; className: string } {
   if (active) {
     return {
       label: 'ACTIVE',
-AgentOSMcpConnection,
-AgentOSMemoryProviderConnection,
-} from './types'
-
-function LoadingPanel({ label }: { label: string }) {
-  return (
-    <section className="aos-panel grid min-h-40 place-items-center p-6 text-center">
-      <div className="flex items-center gap-2 text-xs text-(--ui-text-tertiary)">
-        <Codicon className="animate-spin" name="loading" size="0.8rem" />
-        {label}
-      </div>
-    </section>
-  )
-}
-
-function ErrorPanel({ message }: { message: string }) {
-  return (
-    <section className="aos-panel p-4">
-      <div className="flex items-start gap-2">
-        <Codicon className="mt-0.5 shrink-0 text-destructive" name="warning" size="0.8rem" />
-        <div>
-          <div className="text-xs font-medium text-foreground">Context unavailable</div>
-          <div className="mt-1 text-[0.65rem] leading-relaxed text-(--ui-text-tertiary)">{message}</div>
-        </div>
-      </div>
-    </section>
-  )
-}
-
-function Stat({
-  icon,
-b) =>
-      Number(b.kind === 'memory') - Number(a.kind === 'memory') ||
-      (b.useCount ?? 0) - (a.useCount ?? 0) ||
-      a.label.localeCompare(b.label)
-  )
-  const selected = selectedId ? graph.nodes.find(node => node.id === selectedId) : orderedNodes[0]
-  const selectedCard = memoryCardForNode(selected,
-badge.className)}>
-          {badge.label}
-        </span>
-      </div>
-      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[0.58rem] text-(--ui-text-tertiary)">
-        <span>auth {connection.auth || 'none'}</span>
-        {connection.tool_count != null && <span>{connection.tool_count} selected tools</span>}
-        {connection.error && <span className="text-destructive">{connection.error}</span>}
-      </div>
-    </div>
-  )
-}
-
-function MemoryProviderCard({ provider }: { provider: AgentOSMemoryProviderConnection }) {
-  const enabled = provider.available && provider.configured
-  const badge = connectionBadge(enabled,
-badge.className)}>
-          {badge.label}
-        </span>
-      </div>
-      <div className="mt-2 text-[0.58rem] text-(--ui-text-tertiary)">
-        status {provider.status.replaceAll('_',
-cards: Array<{ source: string; title: string; body: string }>
-) {
-  if (!node || node.kind !== 'memory') {
-    return undefined
+      className: 'border-[color-mix(in_srgb,#3fa779_40%,var(--ui-stroke-tertiary))] text-[#3fa779]'
+    }
   }
 
-  const match = node.id.match(/^memory:[^:]+:(\d+)$/)
-
-  if (!match) {
-    return undefined
-  }
-
-  return cards[Number(match[1])]
-}
-
-export function SemanticMemorySection() {
-  const { data,
-className: 'border-(--ui-stroke-tertiary) text-(--ui-text-secondary)' }
-    : { label: 'DISABLED',
-className: 'border-(--ui-stroke-tertiary) text-(--ui-text-tertiary)' }
+  return enabled
+    ? { label: 'CONFIGURED', className: 'border-(--ui-stroke-tertiary) text-(--ui-text-secondary)' }
+    : { label: 'DISABLED', className: 'border-(--ui-stroke-tertiary) text-(--ui-text-tertiary)' }
 }
 
 function McpCard({ connection }: { connection: AgentOSMcpConnection }) {
@@ -262,27 +285,22 @@ function McpCard({ connection }: { connection: AgentOSMcpConnection }) {
             {connection.target ? ` · ${connection.target}` : ''}
           </div>
         </div>
-        <span className={cn('shrink-0 rounded border px-1.5 py-0.5 text-[0.54rem] font-medium tracking-[0.06em]',
-className: 'border-[color-mix(in_srgb,
-cn,
-Codicon,
-error } = useQuery({
-    queryFn: fetchAgentOSContext,
-error } = useQuery({
-    queryFn: fetchAgentOSContext,
-fetchAgentOSContext } from './api'
-import { SemanticKnowledgeCanvas } from './visual-intelligence'
-import type {
-  AgentOSLearningNode,
-graph.memory)
-  const edgeCountByNode = new Map<string,
-host,
-label,
-number>()
+        <span className={cn('shrink-0 rounded border px-1.5 py-0.5 text-[0.54rem] font-medium tracking-[0.06em]', badge.className)}>
+          {badge.label}
+        </span>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[0.58rem] text-(--ui-text-tertiary)">
+        <span>auth {connection.auth || 'none'}</span>
+        {connection.tool_count != null && <span>{connection.tool_count} selected tools</span>}
+        {connection.error && <span className="text-destructive">{connection.error}</span>}
+      </div>
+    </div>
+  )
+}
 
-  for (const edge of graph.edges) {
-    edgeCountByNode.set(edge.source,
-provider.active)
+function MemoryProviderCard({ provider }: { provider: AgentOSMemoryProviderConnection }) {
+  const enabled = provider.available && provider.configured
+  const badge = connectionBadge(enabled, provider.active)
 
   return (
     <div className="rounded-md border border-(--ui-stroke-tertiary) bg-(--ui-bg-secondary) p-2.5">
@@ -290,10 +308,25 @@ provider.active)
         <div className="min-w-0">
           <div className="truncate text-xs font-medium text-foreground">{provider.name}</div>
           <div className="mt-0.5 line-clamp-2 text-[0.6rem] leading-relaxed text-(--ui-text-tertiary)">
-            {provider.description || provider.status.replaceAll('_',
-queryKey: AGENT_OS_CONTEXT_KEY,
-queryKey: AGENT_OS_CONTEXT_KEY,
-refetchInterval: 60_000
+            {provider.description || provider.status.replaceAll('_', ' ')}
+          </div>
+        </div>
+        <span className={cn('shrink-0 rounded border px-1.5 py-0.5 text-[0.54rem] font-medium tracking-[0.06em]', badge.className)}>
+          {badge.label}
+        </span>
+      </div>
+      <div className="mt-2 text-[0.58rem] text-(--ui-text-tertiary)">
+        status {provider.status.replaceAll('_', ' ')}
+      </div>
+    </div>
+  )
+}
+
+export function ExternalConnectionsSection() {
+  const { data, error } = useQuery({
+    queryFn: fetchAgentOSContext,
+    queryKey: AGENT_OS_CONTEXT_KEY,
+    refetchInterval: 60_000
   })
 
   if (error) {
@@ -366,66 +399,5 @@ refetchInterval: 60_000
         </div>
       </div>
     </section>
-  ),
-refetchInterval: 60_000
-  })
-  const [selectedId,
-setSelectedId] = useState<string>()
-
-  if (error) {
-    return <ErrorPanel message={error instanceof Error ? error.message : String(error)} />
-  }
-
-  if (!data) {
-    return <LoadingPanel label="Reading semantic memory and learned skills…" />
-  }
-
-  const graph = data.learning
-  const orderedNodes = [...graph.nodes].sort(
-    (a,
-timeStyle: 'short'
-  }).format(date)
-}
-
-function memoryCardForNode(
-  node: AgentOSLearningNode | undefined,
-useQuery } from '@hermes/plugin-sdk'
-import { useState } from 'react'
-
-import { AGENT_OS_CONTEXT_KEY,
-value
-}: {
-  icon: string
-  label: string
-  value: number | string
-}) {
-  return (
-    <div className="rounded-md border border-(--ui-stroke-tertiary) bg-(--ui-bg-secondary) p-2.5">
-      <div className="flex items-center justify-between gap-2">
-        <span className="aos-kicker">{label}</span>
-        <Codicon className="text-(--ui-text-tertiary)" name={icon} size="0.72rem" />
-      </div>
-      <div className="mt-1.5 text-base font-semibold tabular-nums text-foreground">{value}</div>
-    </div>
   )
-}
-
-function formatMemoryTimestamp(value: null | number | undefined): string {
-  if (!value) {
-    return 'unknown'
-  }
-
-  const milliseconds = value < 10_000_000_000 ? value * 1000 : value
-  const date = new Date(milliseconds)
-  if (Number.isNaN(date.getTime())) {
-    return 'unknown'
-  }
-
-  return new Intl.DateTimeFormat(undefined,
-var(--ui-stroke-tertiary))] text-[#3fa779]'
-    }
-  }
-
-  return enabled
-    ? { label: 'CONFIGURED',
 }
