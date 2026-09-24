@@ -443,7 +443,7 @@ export function ExecutionCanvas({ task }: { task: AgentOSTask }) {
           <button
             className="h-7 min-w-12 rounded border border-(--ui-stroke-tertiary) px-1.5 text-[0.58rem] tabular-nums text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background)"
             onClick={() => setZoom(1)}
-            title="Reset zoom"
+            aria-label="Reset execution canvas zoom"
             type="button"
           >
             {Math.round(zoom * 100)}%
@@ -535,7 +535,7 @@ export function ExecutionCanvas({ task }: { task: AgentOSTask }) {
                     top: position.y,
                     width: NODE_WIDTH
                   }}
-                  title={node.detail}
+                  aria-label={`${node.title}: ${node.detail}`}
                   type="button"
                 >
                   <span className="flex min-w-0 items-start justify-between gap-2">
@@ -758,7 +758,7 @@ export function SemanticKnowledgeCanvas({
                 top: position.y,
                 width: KNOWLEDGE_NODE_WIDTH
               }}
-              title={node.label}
+              aria-label={node.label}
               type="button"
             >
               <span className="flex items-center justify-between gap-2">
