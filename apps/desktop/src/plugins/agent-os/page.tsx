@@ -1976,7 +1976,7 @@ export function AgentOSMissionControl() {
 
   return (
     <section className="agent-os-page flex min-h-0 flex-col">
-      <header className="shrink-0 border-b border-(--ui-stroke-tertiary) bg-[color-mix(in_srgb,var(--ui-bg-primary)_92%,transparent)] px-4 pb-3 pt-4 backdrop-blur">
+      <header className="aos-mission-header shrink-0 border-b border-(--ui-stroke-tertiary) bg-[color-mix(in_srgb,var(--ui-bg-primary)_92%,transparent)] px-4 pb-3 pt-4 backdrop-blur">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -2018,13 +2018,14 @@ export function AgentOSMissionControl() {
         </div>
 
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-          <nav className="flex min-w-0 gap-0.5 rounded-md border border-(--ui-stroke-tertiary) bg-(--ui-bg-secondary) p-0.5">
+          <nav aria-label="Agent OS sections" className="aos-primary-nav aos-scrollbar flex min-w-0 max-w-full gap-0.5 overflow-x-auto rounded-md border border-(--ui-stroke-tertiary) bg-(--ui-bg-secondary) p-0.5">
             {tabs.map(item => (
               <button
                 className={cn(
-                  'inline-flex h-7 items-center gap-1.5 rounded px-2.5 text-[0.68rem] font-medium text-(--ui-text-tertiary) transition-colors',
+                  'inline-flex h-7 shrink-0 items-center gap-1.5 rounded px-2.5 text-[0.68rem] font-medium text-(--ui-text-tertiary) transition-colors',
                   tab === item.id && 'bg-(--ui-control-active-background) text-foreground'
                 )}
+                aria-pressed={tab === item.id}
                 key={item.id}
                 onClick={() => setTab(item.id)}
                 type="button"
@@ -2039,6 +2040,7 @@ export function AgentOSMissionControl() {
             <div className="relative w-64 max-w-full">
               <Codicon className="absolute left-2 top-1/2 -translate-y-1/2 text-(--ui-text-tertiary)" name="search" size="0.7rem" />
               <input
+                aria-label="Filter Agent OS tasks"
                 className="h-7 w-full rounded-md border border-(--ui-stroke-tertiary) bg-(--ui-bg-secondary) pl-7 pr-2 text-[0.68rem] text-foreground outline-none placeholder:text-(--ui-text-quaternary) focus:border-[color-mix(in_srgb,var(--dt-primary)_45%,var(--ui-stroke-tertiary))]"
                 onChange={event => setQuery(event.target.value)}
                 placeholder="Filter tasks, states, workspaces…"
