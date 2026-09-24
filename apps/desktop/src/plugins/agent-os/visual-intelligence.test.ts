@@ -6,6 +6,7 @@ import {
   buildKnowledgeCanvasModel,
   buildRuntimeTopologyCanvasModel,
   connectedExecutionNodeIds,
+  connectedKnowledgeNodeIds,
   fitCanvasZoom
 } from './visual-intelligence'
 
@@ -234,6 +235,34 @@ describe('Agent OS semantic knowledge canvas', () => {
     expect(model.edges).toEqual([{ source: 'memory:a:0', target: 'skill:release' }])
   })
 
+  it('returns only the selected knowledge node and its direct semantic neighbors', () => {
+    const model = buildKnowledgeCanvasModel({
+      nodes: [
+        { id: 'memory:1', label: 'One', kind: 'memory' },
+        { id: 'memory:2', label: 'Two', kind: 'memory' },
+        { id: 'skill:1', label: 'Skill one', kind: 'skill' },
+        { id: 'skill:2', label: 'Skill two', kind: 'skill' }
+      ],
+      edges: [
+        { source: 'memory:1', target: 'skill:1' },
+        { source: 'memory:2', target: 'skill:2' }
+      ],
+      clusters: [],
+      memory: [],
+      stats: {
+        memory_nodes: 2,
+        memory_skill_edges: 2,
+        learned_skills: 2
+      }
+    })
+
+    const focused = connectedKnowledgeNodeIds(model, 'memory:1')
+
+    expect(focused).toEqual(new Set(['memory:1', 'skill:1']))
+    expect(focused.has('memory:2')).toBe(false)
+    expect(focused.has('skill:2')).toBe(false)
+  })
+
   it('prioritizes highly connected knowledge without inventing edges when bounded', () => {
     const graph = {
       nodes: [
@@ -293,7 +322,7 @@ describe('Agent OS runtime topology canvas', () => {
 
 describe('Agent OS execution viewport helpers', () => {
   it('fits the canvas within the viewport while respecting zoom bounds', () => {
-    expect(fitCanvasZoom(1000, 600, 2000, 1200)).toBe(0.49 < 0.55 ? 0.55 : 0.55)
+    expect(fitCanvasZoom(1000, 600, 2000, 1200)).toBe(0.55)
     expect(fitCanvasZoom(1200, 800, 600, 300)).toBe(1.4)
     expect(fitCanvasZoom(0, 800, 600, 300)).toBe(1)
   })
