@@ -55,11 +55,15 @@ function Stat({
 }
 
 function formatMemoryTimestamp(value: null | number | undefined): string {
-  if (!value) return 'unknown'
+  if (!value) {
+    return 'unknown'
+  }
 
   const milliseconds = value < 10_000_000_000 ? value * 1000 : value
   const date = new Date(milliseconds)
-  if (Number.isNaN(date.getTime())) return 'unknown'
+  if (Number.isNaN(date.getTime())) {
+    return 'unknown'
+  }
 
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: 'medium',
