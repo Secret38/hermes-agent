@@ -18,9 +18,15 @@ import type { AgentOSMissionJob, AgentOSPendingApproval } from './types'
 const ACTIVE_MISSION_STATES = new Set(['QUEUED', 'PLANNING', 'RUNNING', 'WAITING_APPROVAL'])
 
 function stateClass(state: string): string {
-  if (state === 'COMPLETED') return 'text-[#3fa779]'
-  if (state === 'FAILED' || state === 'BLOCKED') return 'text-destructive'
-  if (state === 'WAITING_APPROVAL' || state === 'INTERRUPTED') return 'text-[#d49b45]'
+  if (state === 'COMPLETED') {
+    return 'text-[#3fa779]'
+  }
+  if (state === 'FAILED' || state === 'BLOCKED') {
+    return 'text-destructive'
+  }
+  if (state === 'WAITING_APPROVAL' || state === 'INTERRUPTED') {
+    return 'text-[#d49b45]'
+  }
 
   return 'text-(--dt-primary)'
 }
@@ -127,11 +133,21 @@ function ApprovalCard({
 }
 
 function gateIcon(kind: HumanGate['kind']): string {
-  if (kind === 'approval') return 'shield'
-  if (kind === 'clarify') return 'question'
-  if (kind === 'sudo') return 'key'
-  if (kind === 'secret') return 'lock'
-  if (kind === 'vault-code') return 'verified'
+  if (kind === 'approval') {
+    return 'shield'
+  }
+  if (kind === 'clarify') {
+    return 'question'
+  }
+  if (kind === 'sudo') {
+    return 'key'
+  }
+  if (kind === 'secret') {
+    return 'lock'
+  }
+  if (kind === 'vault-code') {
+    return 'verified'
+  }
 
   return 'archive'
 }
@@ -249,7 +265,9 @@ export function MissionControlActions({
   const submit = async () => {
     const trimmed = goal.trim()
 
-    if (!trimmed || submitting || active || estop.data?.engaged) return
+    if (!trimmed || submitting || active || estop.data?.engaged) {
+      return
+    }
 
     setSubmitting(true)
     setError(undefined)
@@ -263,7 +281,9 @@ export function MissionControlActions({
       setWorkspace('')
       setComposerOpen(false)
       invalidateControl()
-      if (response.job.task_id && onSelectTask) onSelectTask(response.job.task_id)
+      if (response.job.task_id && onSelectTask) {
+        onSelectTask(response.job.task_id)
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
     } finally {
@@ -272,14 +292,18 @@ export function MissionControlActions({
   }
 
   const resume = async (job: AgentOSMissionJob) => {
-    if (resumeId || submitting || active || estop.data?.engaged) return
+    if (resumeId || submitting || active || estop.data?.engaged) {
+      return
+    }
 
     setResumeId(job.id)
     setError(undefined)
     try {
       await resumeAgentOSMission(job.id)
       invalidateControl()
-      if (job.task_id && onSelectTask) onSelectTask(job.task_id)
+      if (job.task_id && onSelectTask) {
+        onSelectTask(job.task_id)
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
     } finally {
@@ -288,7 +312,9 @@ export function MissionControlActions({
   }
 
   const decideHumanGate = async (gate: HumanGate, choice: 'deny' | 'once') => {
-    if (humanDecisionId) return
+    if (humanDecisionId) {
+      return
+    }
 
     setHumanDecisionId(gate.id)
     setError(undefined)
@@ -307,7 +333,9 @@ export function MissionControlActions({
   }
 
   const setNewWorkPaused = async (engaged: boolean) => {
-    if (changingEstop) return
+    if (changingEstop) {
+      return
+    }
 
     setChangingEstop(true)
     setError(undefined)
@@ -326,7 +354,9 @@ export function MissionControlActions({
   }
 
   const decide = async (approval: AgentOSPendingApproval, choice: 'allow_once' | 'deny') => {
-    if (decisionId) return
+    if (decisionId) {
+      return
+    }
 
     setDecisionId(approval.id)
     setError(undefined)
