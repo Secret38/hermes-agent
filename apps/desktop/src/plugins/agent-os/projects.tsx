@@ -22,7 +22,9 @@ import { exactOperationsRoute } from './selectors'
 import { openHermesSession } from './session-navigation'
 
 function compactNumber(value: null | number | undefined): string {
-  if (value == null || !Number.isFinite(value)) return '—'
+  if (value == null || !Number.isFinite(value)) {
+    return '—'
+  }
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: value < 10 ? 2 : 0 }).format(value)
 }
 
@@ -38,7 +40,9 @@ function sessionOwner(
 ): { allowed: boolean; route?: PluginProfileRoute } {
   const profile = session.profile || activeProfile || 'default'
   if (session.connection_id) {
-    if (session.connection_id === activeConnectionId && profile === activeProfile) return { allowed: true }
+    if (session.connection_id === activeConnectionId && profile === activeProfile) {
+      return { allowed: true }
+    }
     const route = exactOperationsRoute(session.connection_id, profile, routes)
     return route ? { allowed: true, route } : { allowed: false }
   }
@@ -114,7 +118,9 @@ export function ProjectsView() {
     : { allowed: false as const }
 
   const launch = async (surface: ProjectWorkspaceSurface) => {
-    if (!workspaceSession || !workspaceOwner.allowed || openingSurface) return
+    if (!workspaceSession || !workspaceOwner.allowed || openingSurface) {
+      return
+    }
     setOpeningSurface(surface)
     try {
       await launchProjectWorkspaceSurface(workspaceSession.id, workspaceOwner.route, surface)
