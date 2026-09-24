@@ -10,6 +10,19 @@
     var(--ui-bg-primary);
 }
 
+
+.agent-os-page :is(
+  button,
+  a[href],
+  input,
+  select,
+  textarea,
+  [tabindex]:not([tabindex='-1'])
+):focus-visible {
+  outline: 2px solid var(--dt-ring, var(--dt-primary));
+  outline-offset: 2px;
+}
+
 .aos-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--ui-text-tertiary) 28%, transparent) transparent;
@@ -662,5 +675,90 @@
   .aos-graph-node-dimmed,
   .aos-graph-edge-dimmed {
     transition: none !important;
+  }
+}
+
+
+/* Windows High Contrast / forced-colors: keep every control, selected graph
+   node and active execution path visible without relying on theme mixing,
+   shadows or background gradients. */
+@media (forced-colors: active) {
+  .agent-os-page {
+    background: Canvas;
+    color: CanvasText;
+  }
+
+  .agent-os-page :is(
+    button,
+    a[href],
+    input,
+    select,
+    textarea,
+    [tabindex]:not([tabindex='-1'])
+  ):focus-visible {
+    outline-color: Highlight;
+  }
+
+  .aos-panel,
+  .aos-step,
+  .aos-timeline-glyph,
+  .aos-topology-node,
+  .aos-task-row,
+  .aos-graph-node,
+  .aos-knowledge-node,
+  .aos-runtime-topology-node {
+    border-color: CanvasText;
+    background: Canvas;
+    box-shadow: none;
+  }
+
+  .aos-graph-viewport,
+  .aos-knowledge-viewport,
+  .aos-runtime-topology-viewport {
+    background: Canvas;
+  }
+
+  .aos-graph-node-selected,
+  .aos-knowledge-node-selected,
+  .aos-runtime-topology-node-selected,
+  .aos-task-row[data-selected='true'] {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+    border-color: Highlight;
+  }
+
+  .aos-graph-edge,
+  .aos-knowledge-edge,
+  .aos-runtime-topology-edge,
+  .aos-plan-layer:not(:last-child)::after,
+  .aos-timeline::before,
+  .aos-topology-core::after,
+  .aos-topology-grid::before,
+  .aos-topology-node::before,
+  .aos-memory-column::before {
+    stroke: CanvasText;
+    background: CanvasText;
+  }
+
+  .aos-graph-edge-active {
+    stroke: Highlight;
+  }
+
+  .aos-state-dot,
+  .aos-graph-status-dot,
+  .aos-memory-node::before {
+    background: CanvasText;
+    box-shadow: none;
+  }
+
+  .aos-state[data-state='RUNNING'] .aos-state-dot,
+  .aos-state[data-state='EXECUTING'] .aos-state-dot,
+  .aos-state[data-state='VERIFYING'] .aos-state-dot,
+  .aos-state[data-state='ACTIVE'] .aos-state-dot,
+  .aos-graph-node[data-state='RUNNING'] .aos-graph-status-dot,
+  .aos-graph-node[data-state='EXECUTING'] .aos-graph-status-dot,
+  .aos-graph-node[data-state='VERIFYING'] .aos-graph-status-dot,
+  .aos-graph-node[data-state='ACTIVE'] .aos-graph-status-dot {
+    background: Highlight;
   }
 }
