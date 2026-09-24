@@ -1,7 +1,7 @@
+import './agent-os.css'
+
 import { cn, Codicon, host, queryClient, useQuery } from '@hermes/plugin-sdk'
 import { useMemo, useState } from 'react'
-
-import './agent-os.css'
 import {
   AGENT_OS_APPROVALS_KEY,
   AGENT_OS_CONTEXT_KEY,
@@ -15,9 +15,8 @@ import { MissionControlActions } from './control'
 import { useHermesOperations, useLiveFleet } from './operations-data'
 import { ProjectsView } from './projects'
 import { useComputerUseSecurity, useNetworkSecurity, useTelemetrySecurity } from './security-data'
-import { openHermesSession } from './session-navigation'
 import { exactOperationsRoute, exactWorkerRoute } from './selectors'
-import { ExecutionCanvas, RuntimeObservatory, RuntimeTopologyCanvas } from './visual-intelligence'
+import { openHermesSession } from './session-navigation'
 import type {
   AgentOSAction,
   AgentOSAgent,
@@ -27,6 +26,7 @@ import type {
   AgentOSSnapshot,
   AgentOSTask
 } from './types'
+import { ExecutionCanvas, RuntimeObservatory, RuntimeTopologyCanvas } from './visual-intelligence'
 
 type MissionTab = 'overview' | 'tasks' | 'operations' | 'projects' | 'fleet' | 'memory' | 'connections' | 'security'
 
@@ -412,10 +412,10 @@ function PlanGraph({ plan }: { plan: AgentOSPlan | null | undefined }) {
                 {(depsByStep.get(selectedStep.id) ?? []).length ? (
                   (depsByStep.get(selectedStep.id) ?? []).map(id => (
                     <button
+                      aria-label={titleById.get(id) ?? id}
                       className="max-w-full truncate rounded border border-(--ui-stroke-tertiary) px-1.5 py-1 text-[0.58rem] text-(--ui-text-secondary) hover:bg-(--ui-control-hover-background)"
                       key={id}
                       onClick={() => setSelectedStepId(id)}
-                      aria-label={titleById.get(id) ?? id}
                       type="button"
                     >
                       {titleById.get(id) ?? compactId(id)}
@@ -560,6 +560,7 @@ function Timeline({ events }: { events: AgentOSEvent[] }) {
       <div className="mb-3 flex flex-wrap gap-1">
         {filters.map(item => (
           <button
+            aria-label={item.label}
             className={cn(
               'rounded border px-1.5 py-1 text-[0.56rem] font-medium transition-colors',
               filter === item.id
@@ -568,7 +569,6 @@ function Timeline({ events }: { events: AgentOSEvent[] }) {
             )}
             key={item.id}
             onClick={() => setFilter(item.id)}
-            aria-label={item.label}
             type="button"
           >
             {item.id === 'all' ? 'All' : item.label}
@@ -1105,9 +1105,9 @@ function TaskHeader({ task }: { task: AgentOSTask }) {
         <span>updated {formatDateTime(task.updated_at)}</span>
         {task.session_id && (
           <button
+            aria-label={`Open originating session ${task.session_id}`}
             className="inline-flex items-center gap-1 rounded border border-(--ui-stroke-tertiary) px-1.5 py-0.5 text-(--ui-text-secondary) hover:bg-(--ui-control-hover-background) hover:text-foreground"
             onClick={() => host.navigate(`/${encodeURIComponent(task.session_id!)}`)}
-            aria-label={`Open originating session ${task.session_id}`}
             type="button"
           >
             <Codicon name="comment-discussion" size="0.62rem" />
@@ -1649,9 +1649,9 @@ function OperationsView() {
                       )}
                       {task.workerSessionId && workerRoute && (
                         <button
+                          aria-label="Open the exact worker session bound to this run"
                           className="rounded border border-[color-mix(in_srgb,var(--dt-primary)_40%,var(--ui-stroke-tertiary))] px-2 py-1 text-[0.58rem] font-medium text-foreground hover:bg-(--ui-control-hover-background)"
                           onClick={() => openHermesSession(task.workerSessionId!, workerRoute)}
-                          aria-label="Open the exact worker session bound to this run"
                           type="button"
                         >
                           Worker
@@ -1753,9 +1753,9 @@ function FleetView() {
               >
                 <div className="flex min-w-0 items-start justify-between gap-3">
                   <button
+                    aria-label="Open Hermes session"
                     className="min-w-0 flex-1 text-left"
                     onClick={() => openHermesSession(session.id)}
-                    aria-label="Open Hermes session"
                     type="button"
                   >
                     <div className="truncate text-xs font-medium text-foreground">
@@ -2043,11 +2043,11 @@ export function AgentOSMissionControl() {
           <nav aria-label="Agent OS sections" className="aos-primary-nav aos-scrollbar flex min-w-0 max-w-full gap-0.5 overflow-x-auto rounded-md border border-(--ui-stroke-tertiary) bg-(--ui-bg-secondary) p-0.5">
             {tabs.map(item => (
               <button
+                aria-pressed={tab === item.id}
                 className={cn(
                   'inline-flex h-7 shrink-0 items-center gap-1.5 rounded px-2.5 text-[0.68rem] font-medium text-(--ui-text-tertiary) transition-colors',
                   tab === item.id && 'bg-(--ui-control-active-background) text-foreground'
                 )}
-                aria-pressed={tab === item.id}
                 key={item.id}
                 onClick={() => setTab(item.id)}
                 type="button"
@@ -2168,10 +2168,10 @@ export function AgentOSStatusChip() {
 
   return (
     <button
+      aria-label={`Agent OS · ${data.summary.active_tasks} active tasks · ${data.summary.active_agents} active agents`}
       className="aos-state inline-flex h-full items-center gap-1.5 rounded-none px-1.5 text-[0.6875rem] text-(--ui-text-tertiary) transition-colors hover:bg-(--chrome-action-hover) hover:text-foreground"
       data-state={state}
       onClick={() => host.navigate('/agent-os')}
-      aria-label={`Agent OS · ${data.summary.active_tasks} active tasks · ${data.summary.active_agents} active agents`}
       type="button"
     >
       <span className="aos-state-dot" />
