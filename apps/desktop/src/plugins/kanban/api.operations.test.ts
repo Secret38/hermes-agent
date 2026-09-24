@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import type { KanbanTaskDetail } from './types'
 import {
+  toMissionCaptureTaskBody,
   toOperationsRunInspection,
   toOperationsSnapshot,
   toOperationsTaskExecution,
-  toMissionCaptureTaskBody,
   toOperationsTaskLog
 } from './api'
+import type { KanbanTaskDetail } from './types'
 
 describe('Kanban operations execution projection', () => {
   it('preserves the board scope used to produce an operations snapshot', () => {

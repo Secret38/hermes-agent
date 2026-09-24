@@ -1889,6 +1889,7 @@ export { cn } from '@/lib/utils'
  *  the user opens the session, `forgetSessionUnread` drops it when the session
  *  is gone. Pass the owning profile — a hidden session has no row to read it
  *  from, and the persisted half is bucketed per profile. */
+export type { SidebarProjectTree } from '@/app/chat/sidebar/projects/workspace-groups'
 export { $approvalModes, type ApprovalMode } from '@/store/approval-mode'
 export { $clarifyRequests, type ClarifyRequest } from '@/store/clarify'
 export { $goalsBySession, type SessionGoal } from '@/store/goals'
@@ -1906,7 +1907,6 @@ export {
   goToProject,
   refreshProjectTree
 } from '@/store/projects'
-export type { SidebarProjectTree } from '@/app/chat/sidebar/projects/workspace-groups'
 export {
   $approvalRequestQueues,
   $secretRequests,

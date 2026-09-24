@@ -11,13 +11,13 @@
 
 import {
   atom,
-  type PluginOs,
-  type PluginRestOptions,
   type OperationsCaptureInput,
   type OperationsRunInspection,
   type OperationsTaskExecution,
   type OperationsTaskLog,
   type OperationsTaskSnapshot,
+  type PluginOs,
+  type PluginRestOptions,
   type PluginStorage,
   type PluginTranslate,
   queryClient
