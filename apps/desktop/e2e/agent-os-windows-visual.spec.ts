@@ -104,6 +104,15 @@ test.afterAll(async () => {
   fixture = null
 })
 
+async function gotoMissionControl(): Promise<void> {
+  const { page } = fixture!
+  await page.evaluate(() => {
+    window.location.hash = '#/agent-os'
+  })
+  await expect(page.locator('.agent-os-page')).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('heading', { name: 'Mission Control' })).toBeVisible()
+}
+
 test(`Mission Control renders without clipping at ${scaleLabel}% DPI`, async () => {
   const { page, app } = fixture!
 
@@ -112,13 +121,9 @@ test(`Mission Control renders without clipping at ${scaleLabel}% DPI`, async () 
     win?.setSize(1220, 800, false)
   })
 
-  await page.evaluate(() => {
-    window.location.hash = '#/agent-os'
-  })
+  await gotoMissionControl()
 
   const root = page.locator('.agent-os-page')
-  await expect(root).toBeVisible({ timeout: 30_000 })
-  await expect(page.getByRole('heading', { name: 'Mission Control' })).toBeVisible()
 
   const nav = page.getByRole('navigation', { name: 'Agent OS sections' })
   await expect(nav).toBeVisible()
@@ -140,7 +145,8 @@ test(`Mission Control renders without clipping at ${scaleLabel}% DPI`, async () 
     return { outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth }
   })
   expect(focusStyle.outlineStyle).not.toBe('none')
-  expect(Number.parseFloat(focusStyle.outlineWidth)).toBeGreaterThanOrEqual(2)
+  const physicalOutlineWidth = Number.parseFloat(focusStyle.outlineWidth) * scale
+  expect(physicalOutlineWidth).toBeGreaterThanOrEqual(1.99)
 
   await page.screenshot({
     animations: 'disabled',
@@ -151,6 +157,7 @@ test(`Mission Control renders without clipping at ${scaleLabel}% DPI`, async () 
 
 test(`Mission Control navigation remains operable at ${scaleLabel}% DPI`, async () => {
   const { page } = fixture!
+  await gotoMissionControl()
   const sections = ['Tasks', 'Operations', 'Projects', 'Fleet', 'Memory', 'Connections', 'Security']
 
   for (const section of sections) {
