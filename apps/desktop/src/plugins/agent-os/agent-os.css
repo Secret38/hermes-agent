@@ -643,3 +643,24 @@
     transition: none !important;
   }
 }
+
+.aos-graph-node-dimmed {
+  opacity: 0.24;
+  filter: saturate(0.55);
+}
+
+.aos-graph-edge-dimmed {
+  opacity: 0.1;
+}
+
+.aos-graph-node-dimmed,
+.aos-graph-edge-dimmed {
+  transition: opacity 140ms ease, filter 140ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aos-graph-node-dimmed,
+  .aos-graph-edge-dimmed {
+    transition: none !important;
+  }
+}
