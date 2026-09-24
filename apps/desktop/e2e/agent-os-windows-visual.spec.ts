@@ -104,6 +104,14 @@ test.afterAll(async () => {
   fixture = null
 })
 
+async function setWindowSize(width: number, height: number): Promise<void> {
+  await fixture!.app.evaluate(({ BrowserWindow }, bounds) => {
+    const win = BrowserWindow.getAllWindows()[0]
+    win?.setSize(bounds.width, bounds.height, false)
+  }, { width, height })
+  await fixture!.page.waitForTimeout(250)
+}
+
 async function gotoMissionControl(): Promise<void> {
   const { page } = fixture!
   await page.evaluate(() => {
@@ -116,11 +124,7 @@ async function gotoMissionControl(): Promise<void> {
 test(`Mission Control renders without clipping at ${scaleLabel}% DPI`, async () => {
   const { page, app } = fixture!
 
-  await app.evaluate(({ BrowserWindow }) => {
-    const win = BrowserWindow.getAllWindows()[0]
-    win?.setSize(1220, 800, false)
-  })
-
+  await setWindowSize(1220, 800)
   await gotoMissionControl()
 
   const root = page.locator('.agent-os-page')
@@ -175,4 +179,87 @@ test(`Mission Control navigation remains operable at ${scaleLabel}% DPI`, async 
   }))
   expect(['auto', 'scroll']).toContain(overflow.overflowX)
   expect(overflow.scrollWidth).toBeGreaterThanOrEqual(overflow.clientWidth)
+})
+
+
+test(`Mission Control keyboard-only navigation works in a compact window at ${scaleLabel}% DPI`, async () => {
+  const { page } = fixture!
+  await page.emulateMedia({ forcedColors: 'none', reducedMotion: 'reduce' })
+  await setWindowSize(820, 640)
+  await gotoMissionControl()
+
+  const mission = page.getByRole('button', { name: 'Mission Control', exact: true })
+  const tasks = page.getByRole('button', { name: 'Tasks', exact: true })
+
+  await mission.focus()
+  await expect(mission).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(tasks).toBeFocused()
+  await page.keyboard.press('Enter')
+  await expect(tasks).toHaveAttribute('aria-pressed', 'true')
+
+  const nav = page.getByRole('navigation', { name: 'Agent OS sections' })
+  const compact = await nav.evaluate(element => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+    overflowX: getComputedStyle(element).overflowX,
+  }))
+  expect(['auto', 'scroll']).toContain(compact.overflowX)
+  expect(compact.scrollWidth).toBeGreaterThan(compact.clientWidth)
+
+  await page.screenshot({
+    animations: 'disabled',
+    caret: 'hide',
+    path: test.info().outputPath(`agent-os-windows-${scaleLabel}-compact-keyboard-actual.png`),
+  })
+})
+
+test(`Mission Control respects Windows High Contrast at ${scaleLabel}% DPI`, async () => {
+  const { page } = fixture!
+  await setWindowSize(1220, 800)
+  await page.emulateMedia({ forcedColors: 'active', reducedMotion: 'reduce' })
+  await gotoMissionControl()
+
+  const forcedColors = await page.evaluate(() => matchMedia('(forced-colors: active)').matches)
+  expect(forcedColors).toBe(true)
+
+  const root = page.locator('.agent-os-page')
+  const surface = await root.evaluate(element => {
+    const style = getComputedStyle(element)
+    return { backgroundImage: style.backgroundImage, color: style.color }
+  })
+  expect(surface.backgroundImage).toBe('none')
+  expect(surface.color).not.toBe('rgba(0, 0, 0, 0)')
+
+  const mission = page.getByRole('button', { name: 'Mission Control', exact: true })
+  await mission.focus()
+  const focus = await mission.evaluate(element => {
+    const style = getComputedStyle(element)
+    return { outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth }
+  })
+  expect(focus.outlineStyle).not.toBe('none')
+  expect(Number.parseFloat(focus.outlineWidth) * scale).toBeGreaterThanOrEqual(1.99)
+
+  await page.screenshot({
+    animations: 'disabled',
+    caret: 'hide',
+    path: test.info().outputPath(`agent-os-windows-${scaleLabel}-high-contrast-actual.png`),
+  })
+})
+
+test(`Mission Control honors reduced motion at ${scaleLabel}% DPI`, async () => {
+  const { page } = fixture!
+  await page.emulateMedia({ forcedColors: 'none', reducedMotion: 'reduce' })
+  await gotoMissionControl()
+
+  const reduced = await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches)
+  expect(reduced).toBe(true)
+
+  const animationMs = await page.locator('.aos-state-dot').first().evaluate(element => {
+    const value = getComputedStyle(element).animationDuration.trim()
+    if (value.endsWith('ms')) return Number.parseFloat(value)
+    if (value.endsWith('s')) return Number.parseFloat(value) * 1000
+    return Number.POSITIVE_INFINITY
+  })
+  expect(animationMs).toBeLessThanOrEqual(0.011)
 })
