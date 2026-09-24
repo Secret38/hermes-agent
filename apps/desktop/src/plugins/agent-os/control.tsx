@@ -55,10 +55,10 @@ function MissionRow({
       </div>
       {job.state === 'INTERRUPTED' && onResume && (
         <button
+          aria-label="Resume this interrupted durable mission"
           className="inline-flex h-7 shrink-0 items-center gap-1 rounded border border-[color-mix(in_srgb,#d49b45_40%,var(--ui-stroke-tertiary))] px-2 text-[0.6rem] font-medium text-[#d49b45] hover:bg-[color-mix(in_srgb,#d49b45_8%,transparent)] disabled:opacity-50"
           disabled={busy}
           onClick={() => onResume(job)}
-          aria-label="Resume this interrupted durable mission"
           type="button"
         >
           {busy ? <Codicon className="animate-spin" name="loading" size="0.62rem" /> : <Codicon name="debug-continue" size="0.62rem" />}
@@ -67,9 +67,9 @@ function MissionRow({
       )}
       {job.task_id && onSelectTask && (
         <button
+          aria-label="Inspect durable task"
           className="grid size-7 shrink-0 place-items-center rounded border border-(--ui-stroke-tertiary) text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground"
           onClick={() => onSelectTask(job.task_id!)}
-          aria-label="Inspect durable task"
           type="button"
         >
           <Codicon name="arrow-right" size="0.7rem" />
@@ -175,9 +175,9 @@ function HumanGateCard({
     <div className="rounded-lg border border-(--ui-stroke-tertiary) bg-(--ui-bg-secondary) p-2.5">
       <div className="flex min-w-0 items-start gap-2.5">
         <button
+          aria-label="Open owning Hermes session"
           className="flex min-w-0 flex-1 items-start gap-2.5 text-left"
           onClick={() => openHumanGateSession(gate)}
-          aria-label="Open owning Hermes session"
           type="button"
         >
           <Codicon className="mt-0.5 shrink-0 text-[#d49b45]" name={gateIcon(gate.kind)} size="0.75rem" />
@@ -388,10 +388,10 @@ export function MissionControlActions({
         <div className="flex items-center gap-1.5">
           {estop.data?.engaged ? (
             <button
+              aria-label="Resume new work. Existing in-flight work is not affected."
               className="inline-flex items-center gap-1.5 rounded-md border border-[color-mix(in_srgb,#d49b45_45%,var(--ui-stroke-tertiary))] px-2.5 py-1.5 text-[0.65rem] font-semibold text-[#d49b45] hover:bg-[color-mix(in_srgb,#d49b45_8%,transparent)] disabled:opacity-50"
               disabled={changingEstop}
               onClick={() => void setNewWorkPaused(false)}
-              aria-label="Resume new work. Existing in-flight work is not affected."
               type="button"
             >
               <Codicon name="play" size="0.68rem" />
@@ -399,10 +399,10 @@ export function MissionControlActions({
             </button>
           ) : (
             <button
+              aria-label="Pause new gateway turns, scheduled fires and Kanban dispatch. Existing in-flight work continues."
               className="inline-flex items-center gap-1.5 rounded-md border border-(--ui-stroke-tertiary) px-2.5 py-1.5 text-[0.65rem] font-medium text-(--ui-text-secondary) hover:bg-(--ui-control-hover-background) hover:text-foreground disabled:opacity-50"
               disabled={changingEstop || estop.isError}
               onClick={() => void setNewWorkPaused(true)}
-              aria-label="Pause new gateway turns, scheduled fires and Kanban dispatch. Existing in-flight work continues."
               type="button"
             >
               <Codicon name="debug-pause" size="0.68rem" />
@@ -411,6 +411,7 @@ export function MissionControlActions({
           )}
 
           <button
+          aria-label={!coreReady ? 'Agent OS core is not ready' : estop.data?.engaged ? 'New work is paused by the global emergency stop' : active ? 'An interactive mission is already running' : 'Start a new Agent OS mission'}
           className={cn(
             'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[0.65rem] font-semibold transition-colors',
             coreReady && !active && !estop.data?.engaged
@@ -419,7 +420,6 @@ export function MissionControlActions({
           )}
           disabled={!coreReady || Boolean(active) || Boolean(estop.data?.engaged)}
           onClick={() => setComposerOpen(value => !value)}
-          aria-label={!coreReady ? 'Agent OS core is not ready' : estop.data?.engaged ? 'New work is paused by the global emergency stop' : active ? 'An interactive mission is already running' : 'Start a new Agent OS mission'}
           type="button"
         >
           <Codicon name="add" size="0.7rem" />
