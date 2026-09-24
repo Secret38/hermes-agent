@@ -7,6 +7,7 @@ import pytest
 _REPO = Path(__file__).resolve().parents[2]
 _WORKFLOW = _REPO / ".github" / "workflows" / "agent-os-release.yml"
 _PREFLIGHT = _REPO / ".github" / "workflows" / "agent-os-release-preflight.yml"
+_VISUAL_QA = _REPO / ".github" / "workflows" / "agent-os-windows-visual-qa.yml"
 
 
 def _yaml(path: Path) -> dict:
@@ -154,3 +155,21 @@ def test_release_preflight_requires_protected_source_gui_runner_and_signing_iden
     assert smoke.count("finally {") == 1
     assert "} } |" not in smoke
     assert smoke.rstrip().endswith("}")
+
+def test_windows_visual_qa_covers_all_release_dpi_scales():
+    workflow = _yaml(_VISUAL_QA)
+    visual = workflow["jobs"]["visual"]
+
+    matrix = visual["strategy"]["matrix"]["include"]
+    assert {(str(item["scale"]), item["scale_label"]) for item in matrix} == {
+        ("1", "100%"),
+        ("1.25", "125%"),
+        ("1.5", "150%"),
+        ("2", "200%"),
+    }
+    assert visual["runs-on"] == "windows-latest"
+
+    names = {step.get("name") for step in visual.get("steps", [])}
+    assert "Build desktop" in names
+    assert "Run Agent OS Windows visual QA" in names
+    assert "Upload Windows visual evidence" in names
