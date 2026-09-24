@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
+
+import { describe, expect, it } from 'vitest'
 
 const cssPath = path.join(process.cwd(), 'src/plugins/agent-os/agent-os.css')
 const css = fs.readFileSync(cssPath, 'utf8')
