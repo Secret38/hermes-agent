@@ -822,3 +822,36 @@
     opacity: 0.35;
   }
 }
+
+
+.aos-runtime-topology-node-dimmed {
+  opacity: 0.24;
+  filter: saturate(0.55);
+}
+
+.aos-runtime-topology-edge-dimmed {
+  opacity: 0.1;
+}
+
+.aos-runtime-topology-node-dimmed,
+.aos-runtime-topology-edge-dimmed {
+  transition: opacity 140ms ease, filter 140ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aos-runtime-topology-node-dimmed,
+  .aos-runtime-topology-edge-dimmed {
+    transition: none !important;
+  }
+}
+
+@media (forced-colors: active) {
+  .aos-runtime-topology-node-dimmed {
+    opacity: 0.55;
+    filter: none;
+  }
+
+  .aos-runtime-topology-edge-dimmed {
+    opacity: 0.35;
+  }
+}
