@@ -299,7 +299,7 @@ export function AgentOSForensicsPage() {
     refetchInterval: 5_000
   })
 
-  const tasks = snapshot?.tasks ?? []
+  const tasks = useMemo(() => snapshot?.tasks ?? [], [snapshot?.tasks])
   const [taskId, setTaskId] = useState('')
   const [filter, setFilter] = useState<EventFilter>('all')
   const [cursor, setCursor] = useState(0)
@@ -318,12 +318,15 @@ export function AgentOSForensicsPage() {
   }, [taskId, tasks])
 
   const task = tasks.find(item => item.id === taskId)
-  const allEvents = task?.events ?? []
+  const allEvents = useMemo(() => task?.events ?? [], [task])
   const eventCount = allEvents.length
   const lastSequence = allEvents.at(-1)?.sequence
   const filteredEvents = useMemo(() => allEvents.filter(event => eventMatches(event, filter)), [allEvents, filter])
   const safeCursor = Math.min(Math.max(cursor, 0), Math.max(eventCount - 1, 0))
-  const replayEvents = allEvents.length ? allEvents.slice(0, safeCursor + 1) : []
+  const replayEvents = useMemo(
+    () => (allEvents.length ? allEvents.slice(0, safeCursor + 1) : []),
+    [allEvents, safeCursor]
+  )
   const state = useMemo(() => replayState(replayEvents), [replayEvents])
 
   const selectedEvent =
