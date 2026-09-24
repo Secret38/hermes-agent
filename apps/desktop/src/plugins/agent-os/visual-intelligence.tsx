@@ -661,6 +661,21 @@ const KNOWLEDGE_COLUMN_GAP = 240
 const KNOWLEDGE_ROW_GAP = 16
 const KNOWLEDGE_PADDING = 28
 
+export function connectedKnowledgeNodeIds(
+  model: KnowledgeCanvasModel,
+  selectedId: string | undefined
+): Set<string> {
+  if (!selectedId || !model.nodes.some(node => node.id === selectedId)) return new Set()
+
+  const connected = new Set<string>([selectedId])
+  for (const edge of model.edges) {
+    if (edge.source === selectedId) connected.add(edge.target)
+    if (edge.target === selectedId) connected.add(edge.source)
+  }
+
+  return connected
+}
+
 export function SemanticKnowledgeCanvas({
   graph,
   onSelect,
@@ -671,6 +686,9 @@ export function SemanticKnowledgeCanvas({
   selectedId?: string
 }) {
   const model = useMemo(() => buildKnowledgeCanvasModel(graph), [graph])
+  const [zoom, setZoom] = useState(1)
+  const [focusPath, setFocusPath] = useState(false)
+  const viewportRef = useRef<HTMLDivElement>(null)
   const memoryCount = model.nodes.filter(node => node.column === 0).length
   const skillCount = model.nodes.filter(node => node.column === 1).length
   const rows = Math.max(memoryCount, skillCount, 1)
@@ -696,6 +714,35 @@ export function SemanticKnowledgeCanvas({
       return [node.id, { x, y }] as const
     })
   )
+  const selectedIsVisible = Boolean(selectedId && positions.has(selectedId))
+  const focusedNodeIds = useMemo(
+    () => connectedKnowledgeNodeIds(model, focusPath && selectedIsVisible ? selectedId : undefined),
+    [focusPath, model, selectedId, selectedIsVisible]
+  )
+
+  const fitAll = () => {
+    const viewport = viewportRef.current
+    if (!viewport) return
+    setZoom(fitCanvasZoom(viewport.clientWidth, viewport.clientHeight, width, height, 0.55, 1.3))
+    viewport.scrollTo({ left: 0, top: 0, behavior: 'smooth' })
+  }
+
+  const selectNode = (id: string) => {
+    onSelect(id)
+    const viewport = viewportRef.current
+    const position = positions.get(id)
+    if (!viewport || !position) return
+
+    const left = Math.max(
+      0,
+      position.x * zoom - viewport.clientWidth / 2 + (KNOWLEDGE_NODE_WIDTH * zoom) / 2
+    )
+    const top = Math.max(
+      0,
+      position.y * zoom - viewport.clientHeight / 2 + (KNOWLEDGE_NODE_HEIGHT * zoom) / 2
+    )
+    viewport.scrollTo({ left, top, behavior: 'smooth' })
+  }
 
   if (!model.nodes.length) {
     return (
@@ -706,79 +753,150 @@ export function SemanticKnowledgeCanvas({
   }
 
   return (
-    <div className="aos-knowledge-viewport aos-scrollbar">
-      <div className="aos-knowledge-stage" style={{ height, width }}>
-        <div className="aos-knowledge-axis aos-knowledge-axis-memory">
-          <span>Memory</span>
+    <div>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-(--ui-stroke-tertiary) px-3 py-2">
+        <div className="text-[0.56rem] text-(--ui-text-quaternary)">
+          Semantic graph · {model.nodes.length} nodes · {model.edges.length} links
         </div>
-        <div className="aos-knowledge-axis aos-knowledge-axis-skills">
-          <span>Skills</span>
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            aria-label="Fit semantic knowledge canvas"
+            className="inline-flex h-7 items-center gap-1 rounded border border-(--ui-stroke-tertiary) px-2 text-[0.56rem] font-medium text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground"
+            onClick={fitAll}
+            type="button"
+          >
+            <Codicon name="screen-full" size="0.66rem" />
+            Fit
+          </button>
+          <button
+            aria-pressed={focusPath}
+            className={cn(
+              'inline-flex h-7 items-center gap-1 rounded border border-(--ui-stroke-tertiary) px-2 text-[0.56rem] font-medium text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground',
+              focusPath && 'bg-(--ui-control-active-background) text-foreground'
+            )}
+            disabled={!selectedIsVisible}
+            onClick={() => setFocusPath(value => !value)}
+            type="button"
+          >
+            <Codicon name="target" size="0.66rem" />
+            Focus
+          </button>
+          <button
+            aria-label="Zoom out semantic knowledge canvas"
+            className="grid size-7 place-items-center rounded border border-(--ui-stroke-tertiary) text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground disabled:opacity-40"
+            disabled={zoom <= 0.55}
+            onClick={() => setZoom(value => Math.max(0.55, Math.round((value - 0.1) * 100) / 100))}
+            type="button"
+          >
+            <Codicon name="zoom-out" size="0.72rem" />
+          </button>
+          <button
+            aria-label="Reset semantic knowledge canvas zoom"
+            className="h-7 min-w-12 rounded border border-(--ui-stroke-tertiary) px-1.5 text-[0.56rem] tabular-nums text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background)"
+            onClick={() => setZoom(1)}
+            type="button"
+          >
+            {Math.round(zoom * 100)}%
+          </button>
+          <button
+            aria-label="Zoom in semantic knowledge canvas"
+            className="grid size-7 place-items-center rounded border border-(--ui-stroke-tertiary) text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground disabled:opacity-40"
+            disabled={zoom >= 1.3}
+            onClick={() => setZoom(value => Math.min(1.3, Math.round((value + 0.1) * 100) / 100))}
+            type="button"
+          >
+            <Codicon name="zoom-in" size="0.72rem" />
+          </button>
         </div>
+      </div>
 
-        <svg aria-hidden="true" className="aos-graph-edges" height={height} width={width}>
-          {model.edges.map((edge, index) => {
-            const sourceNode = model.nodes.find(node => node.id === edge.source)
-            const targetNode = model.nodes.find(node => node.id === edge.target)
-            const source = positions.get(edge.source)
-            const target = positions.get(edge.target)
-            if (!sourceNode || !targetNode || !source || !target) return null
+      <div className="aos-knowledge-viewport aos-scrollbar" ref={viewportRef}>
+        <div className="aos-knowledge-stage" style={{ height: height * zoom, width: width * zoom }}>
+          <div style={{ height, transform: `scale(${zoom})`, transformOrigin: 'top left', width }}>
+            <div className="aos-knowledge-axis aos-knowledge-axis-memory">
+              <span>Memory</span>
+            </div>
+            <div className="aos-knowledge-axis aos-knowledge-axis-skills">
+              <span>Skills</span>
+            </div>
 
-            const from = sourceNode.column <= targetNode.column ? source : target
-            const to = sourceNode.column <= targetNode.column ? target : source
-            const x1 = from.x + KNOWLEDGE_NODE_WIDTH
-            const y1 = from.y + KNOWLEDGE_NODE_HEIGHT / 2
-            const x2 = to.x
-            const y2 = to.y + KNOWLEDGE_NODE_HEIGHT / 2
-            const dx = Math.max(90, (x2 - x1) * 0.44)
+            <svg aria-hidden="true" className="aos-graph-edges" height={height} width={width}>
+              {model.edges.map((edge, index) => {
+                const sourceNode = model.nodes.find(node => node.id === edge.source)
+                const targetNode = model.nodes.find(node => node.id === edge.target)
+                const source = positions.get(edge.source)
+                const target = positions.get(edge.target)
+                if (!sourceNode || !targetNode || !source || !target) return null
 
-            return (
-              <path
-                className="aos-knowledge-edge"
-                d={`M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`}
-                key={`${edge.source}->${edge.target}:${index}`}
-              />
-            )
-          })}
-        </svg>
+                const from = sourceNode.column <= targetNode.column ? source : target
+                const to = sourceNode.column <= targetNode.column ? target : source
+                const x1 = from.x + KNOWLEDGE_NODE_WIDTH
+                const y1 = from.y + KNOWLEDGE_NODE_HEIGHT / 2
+                const x2 = to.x
+                const y2 = to.y + KNOWLEDGE_NODE_HEIGHT / 2
+                const dx = Math.max(90, (x2 - x1) * 0.44)
 
-        {model.nodes.map(node => {
-          const position = positions.get(node.id)!
-          return (
-            <button
-              className={cn(
-                'aos-knowledge-node',
-                node.kind === 'memory' ? 'aos-knowledge-node-memory' : 'aos-knowledge-node-skill',
-                selectedId === node.id && 'aos-knowledge-node-selected'
-              )}
-              key={node.id}
-              onClick={() => onSelect(node.id)}
-              style={{
-                height: KNOWLEDGE_NODE_HEIGHT,
-                left: position.x,
-                top: position.y,
-                width: KNOWLEDGE_NODE_WIDTH
-              }}
-              aria-label={node.label}
-              type="button"
-            >
-              <span className="flex items-center justify-between gap-2">
-                <span className="grid size-5 shrink-0 place-items-center rounded border border-(--ui-stroke-tertiary) bg-(--ui-bg-primary)">
-                  <Codicon name={node.kind === 'memory' ? 'note' : 'sparkle'} size="0.64rem" />
-                </span>
-                <span className="text-[0.52rem] tabular-nums text-(--ui-text-tertiary)">
-                  {node.connections} links
-                </span>
-              </span>
-              <span className="mt-1.5 block truncate text-left text-[0.64rem] font-medium text-foreground">
-                {node.label}
-              </span>
-              <span className="mt-0.5 block truncate text-left text-[0.52rem] uppercase tracking-[0.05em] text-(--ui-text-quaternary)">
-                {node.category || node.kind}
-                {node.useCount ? ` · used ${node.useCount}` : ''}
-              </span>
-            </button>
-          )
-        })}
+                return (
+                  <path
+                    className={cn(
+                      'aos-knowledge-edge',
+                      focusPath &&
+                        selectedIsVisible &&
+                        edge.source !== selectedId &&
+                        edge.target !== selectedId &&
+                        'aos-knowledge-edge-dimmed'
+                    )}
+                    d={`M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`}
+                    key={`${edge.source}->${edge.target}:${index}`}
+                  />
+                )
+              })}
+            </svg>
+
+            {model.nodes.map(node => {
+              const position = positions.get(node.id)!
+              return (
+                <button
+                  className={cn(
+                    'aos-knowledge-node',
+                    node.kind === 'memory' ? 'aos-knowledge-node-memory' : 'aos-knowledge-node-skill',
+                    selectedId === node.id && 'aos-knowledge-node-selected',
+                    focusPath &&
+                      selectedIsVisible &&
+                      !focusedNodeIds.has(node.id) &&
+                      'aos-knowledge-node-dimmed'
+                  )}
+                  key={node.id}
+                  onClick={() => selectNode(node.id)}
+                  style={{
+                    height: KNOWLEDGE_NODE_HEIGHT,
+                    left: position.x,
+                    top: position.y,
+                    width: KNOWLEDGE_NODE_WIDTH
+                  }}
+                  aria-label={node.label}
+                  type="button"
+                >
+                  <span className="flex items-center justify-between gap-2">
+                    <span className="grid size-5 shrink-0 place-items-center rounded border border-(--ui-stroke-tertiary) bg-(--ui-bg-primary)">
+                      <Codicon name={node.kind === 'memory' ? 'note' : 'sparkle'} size="0.64rem" />
+                    </span>
+                    <span className="text-[0.52rem] tabular-nums text-(--ui-text-tertiary)">
+                      {node.connections} links
+                    </span>
+                  </span>
+                  <span className="mt-1.5 block truncate text-left text-[0.64rem] font-medium text-foreground">
+                    {node.label}
+                  </span>
+                  <span className="mt-0.5 block truncate text-left text-[0.52rem] uppercase tracking-[0.05em] text-(--ui-text-quaternary)">
+                    {node.category || node.kind}
+                    {node.useCount ? ` · used ${node.useCount}` : ''}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
       </div>
     </div>
   )
