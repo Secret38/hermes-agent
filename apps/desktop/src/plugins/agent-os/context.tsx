@@ -2,12 +2,12 @@ import { cn, Codicon, host, useQuery } from '@hermes/plugin-sdk'
 import { useState } from 'react'
 
 import { AGENT_OS_CONTEXT_KEY, fetchAgentOSContext } from './api'
+import { SemanticKnowledgeCanvas } from './visual-intelligence'
 import type {
   AgentOSLearningNode,
   AgentOSMcpConnection,
   AgentOSMemoryProviderConnection
 } from './types'
-import { SemanticKnowledgeCanvas } from './visual-intelligence'
 
 function LoadingPanel({ label }: { label: string }) {
   return (
@@ -55,15 +55,11 @@ function Stat({
 }
 
 function formatMemoryTimestamp(value: null | number | undefined): string {
-  if (!value) {
-    return 'unknown'
-  }
+  if (!value) return 'unknown'
 
   const milliseconds = value < 10_000_000_000 ? value * 1000 : value
   const date = new Date(milliseconds)
-  if (Number.isNaN(date.getTime())) {
-    return 'unknown'
-  }
+  if (Number.isNaN(date.getTime())) return 'unknown'
 
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: 'medium',
@@ -223,10 +219,10 @@ export function SemanticMemorySection() {
 
                         return (
                           <button
-                            aria-label={node?.label || other}
                             className="max-w-full truncate rounded border border-(--ui-stroke-tertiary) px-1.5 py-1 text-[0.58rem] text-(--ui-text-secondary) hover:bg-(--ui-control-hover-background)"
                             key={`${edge.source}->${edge.target}`}
                             onClick={() => setSelectedId(other)}
+                            aria-label={node?.label || other}
                             type="button"
                           >
                             {node?.label || other}
