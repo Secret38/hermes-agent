@@ -1,5 +1,5 @@
 import { cn, Codicon } from '@hermes/plugin-sdk'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 
 import type {
   AgentOSAction,
@@ -313,10 +313,46 @@ function nodePosition(node: ExecutionCanvasNode, countInColumn: number, canvasHe
   return { x, y }
 }
 
+export function fitCanvasZoom(
+  viewportWidth: number,
+  viewportHeight: number,
+  canvasWidth: number,
+  canvasHeight: number,
+  minZoom = 0.55,
+  maxZoom = 1.4
+): number {
+  if (viewportWidth <= 0 || viewportHeight <= 0 || canvasWidth <= 0 || canvasHeight <= 0) {
+    return 1
+  }
+
+  const horizontal = Math.max(0, viewportWidth - 24) / canvasWidth
+  const vertical = Math.max(0, viewportHeight - 24) / canvasHeight
+  const fitted = Math.min(horizontal, vertical, maxZoom)
+
+  return Math.max(minZoom, Math.round(fitted * 100) / 100)
+}
+
+export function connectedExecutionNodeIds(
+  model: ExecutionCanvasModel,
+  selectedId: string | undefined
+): Set<string> {
+  if (!selectedId) return new Set()
+
+  const connected = new Set<string>([selectedId])
+  for (const edge of model.edges) {
+    if (edge.source === selectedId) connected.add(edge.target)
+    if (edge.target === selectedId) connected.add(edge.source)
+  }
+
+  return connected
+}
+
 export function ExecutionCanvas({ task }: { task: AgentOSTask }) {
   const model = useMemo(() => buildExecutionCanvasModel(task), [task])
   const [selectedId, setSelectedId] = useState<string>()
   const [zoom, setZoom] = useState(1)
+  const [focusPath, setFocusPath] = useState(false)
+  const viewportRef = useRef<HTMLDivElement>(null)
   const counts = new Map<number, number>()
 
   for (const node of model.nodes) {
@@ -337,6 +373,28 @@ export function ExecutionCanvas({ task }: { task: AgentOSTask }) {
   const width = PADDING_X * 2 + model.columns * NODE_WIDTH + Math.max(0, model.columns - 1) * COLUMN_GAP
   const selected = selectedId ? positioned.get(selectedId)?.node : undefined
   const nodeById = new Map(model.nodes.map(node => [node.id, node]))
+  const focusedNodeIds = useMemo(
+    () => connectedExecutionNodeIds(model, focusPath ? selectedId : undefined),
+    [focusPath, model, selectedId]
+  )
+
+  const fitAll = () => {
+    const viewport = viewportRef.current
+    if (!viewport) return
+    setZoom(fitCanvasZoom(viewport.clientWidth, viewport.clientHeight, width, height))
+    viewport.scrollTo({ left: 0, top: 0, behavior: 'smooth' })
+  }
+
+  const selectNode = (id: string) => {
+    setSelectedId(id)
+    const viewport = viewportRef.current
+    const position = positioned.get(id)
+    if (!viewport || !position) return
+
+    const left = Math.max(0, position.x * zoom - viewport.clientWidth / 2 + (NODE_WIDTH * zoom) / 2)
+    const top = Math.max(0, position.y * zoom - viewport.clientHeight / 2 + (NODE_HEIGHT * zoom) / 2)
+    viewport.scrollTo({ left, top, behavior: 'smooth' })
+  }
 
   return (
     <section className="aos-panel overflow-hidden">
@@ -351,6 +409,28 @@ export function ExecutionCanvas({ task }: { task: AgentOSTask }) {
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
+          <button
+            aria-label="Fit execution canvas"
+            className="inline-flex h-7 items-center gap-1 rounded border border-(--ui-stroke-tertiary) px-2 text-[0.56rem] font-medium text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground"
+            onClick={fitAll}
+            type="button"
+          >
+            <Codicon name="screen-full" size="0.66rem" />
+            Fit
+          </button>
+          <button
+            aria-pressed={focusPath}
+            className={cn(
+              'inline-flex h-7 items-center gap-1 rounded border border-(--ui-stroke-tertiary) px-2 text-[0.56rem] font-medium text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground',
+              focusPath && 'bg-(--ui-control-active-background) text-foreground'
+            )}
+            disabled={!selectedId}
+            onClick={() => setFocusPath(value => !value)}
+            type="button"
+          >
+            <Codicon name="target" size="0.66rem" />
+            Focus
+          </button>
           <button
             aria-label="Zoom out execution canvas"
             className="grid size-7 place-items-center rounded border border-(--ui-stroke-tertiary) text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground disabled:opacity-40"
@@ -380,7 +460,7 @@ export function ExecutionCanvas({ task }: { task: AgentOSTask }) {
         </div>
       </div>
 
-      <div className="aos-graph-viewport aos-scrollbar">
+      <div className="aos-graph-viewport aos-scrollbar" ref={viewportRef}>
         <div
           className="aos-graph-stage"
           style={{
@@ -420,7 +500,12 @@ export function ExecutionCanvas({ task }: { task: AgentOSTask }) {
                     className={cn(
                       'aos-graph-edge',
                       edge.kind === 'membership' && 'aos-graph-edge-membership',
-                      edgeIsActive(edge, nodeById) && 'aos-graph-edge-active'
+                      edgeIsActive(edge, nodeById) && 'aos-graph-edge-active',
+                      focusPath &&
+                        selectedId &&
+                        edge.source !== selectedId &&
+                        edge.target !== selectedId &&
+                        'aos-graph-edge-dimmed'
                     )}
                     d={d}
                     data-kind={edge.kind}
@@ -435,11 +520,15 @@ export function ExecutionCanvas({ task }: { task: AgentOSTask }) {
               const position = positioned.get(node.id)!
               return (
                 <button
-                  className={cn('aos-graph-node', selectedId === node.id && 'aos-graph-node-selected')}
+                  className={cn(
+                    'aos-graph-node',
+                    selectedId === node.id && 'aos-graph-node-selected',
+                    focusPath && selectedId && !focusedNodeIds.has(node.id) && 'aos-graph-node-dimmed'
+                  )}
                   data-kind={node.kind}
                   data-state={node.state}
                   key={node.id}
-                  onClick={() => setSelectedId(node.id)}
+                  onClick={() => selectNode(node.id)}
                   style={{
                     height: NODE_HEIGHT,
                     left: position.x,
