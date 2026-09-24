@@ -1589,6 +1589,7 @@ export { SidebarRowLead } from '@/app/chat/sidebar/chrome'
  *  switcher, the fleet profile rail and any plugin rail listing gateways share
  *  it, so a connection looks the same wherever it is named. */
 export { ConnectionGlyph } from '@/app/chat/sidebar/connection-glyph'
+export type { SidebarProjectTree } from '@/app/chat/sidebar/projects/workspace-groups'
 export { SIDEBAR_ROW_LEAD, SIDEBAR_TRUNCATED_LEADING } from '@/app/chat/sidebar/row-geometry'
 export { PALETTE_AREA, type PaletteContribution } from '@/app/command-palette/contrib'
 /** THE overdue test for a cron job's `next_run_at`: non-null once the stored slot
@@ -1889,7 +1890,6 @@ export { cn } from '@/lib/utils'
  *  the user opens the session, `forgetSessionUnread` drops it when the session
  *  is gone. Pass the owning profile — a hidden session has no row to read it
  *  from, and the persisted half is bucketed per profile. */
-export type { SidebarProjectTree } from '@/app/chat/sidebar/projects/workspace-groups'
 export { $approvalModes, type ApprovalMode } from '@/store/approval-mode'
 export { $clarifyRequests, type ClarifyRequest } from '@/store/clarify'
 export { $goalsBySession, type SessionGoal } from '@/store/goals'

@@ -7,13 +7,13 @@ import { preserveLocalAssistantErrors, sealOpenToolParts, toChatMessages } from 
 import { createClientSessionState } from '@/lib/chat-runtime'
 import { sessionMessagesSignature } from '@/lib/session-signatures'
 import { $sidebarShowArchived } from '@/store/layout'
-import { $changeEventsAvailable, $cronChangeTick, $sessionsChangeTick } from '@/store/live-sync'
 import {
   clearLiveSessionSnapshot,
   liveSessionScopeKey,
   type LiveSessionStatusResponse,
   publishLiveSessionSnapshot
 } from '@/store/live-sessions'
+import { $changeEventsAvailable, $cronChangeTick, $sessionsChangeTick } from '@/store/live-sync'
 import { $onBattery, batteryPollInterval } from '@/store/power'
 import { refreshActiveProfile } from '@/store/profile'
 import { refreshProjectTree } from '@/store/projects'
