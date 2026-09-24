@@ -1,7 +1,8 @@
+import './agent-os.css'
+
 import { cn, Codicon, useQuery } from '@hermes/plugin-sdk'
 import { useEffect, useMemo, useState } from 'react'
 
-import './agent-os.css'
 import { AGENT_OS_SNAPSHOT_KEY, fetchAgentOSSnapshot } from './api'
 import type { AgentOSEvent, AgentOSTask } from './types'
 
@@ -17,11 +18,16 @@ const FILTERS: Array<{ id: EventFilter; label: string }> = [
 ]
 
 function eventMatches(event: AgentOSEvent, filter: EventFilter): boolean {
-  if (filter === 'all') return true
-  if (filter === 'verification') return event.type.startsWith('verification.')
-  if (filter === 'recovery') return event.type.startsWith('recovery.')
-  if (filter === 'checkpoint') return event.type.startsWith('checkpoint.')
-  if (filter === 'artifact') return event.type.startsWith('artifact.')
+  if (filter === 'all') {return true}
+
+  if (filter === 'verification') {return event.type.startsWith('verification.')}
+
+  if (filter === 'recovery') {return event.type.startsWith('recovery.')}
+
+  if (filter === 'checkpoint') {return event.type.startsWith('checkpoint.')}
+
+  if (filter === 'artifact') {return event.type.startsWith('artifact.')}
+
   return event.type.startsWith('risk.') || event.type.startsWith('approval.')
 }
 
@@ -33,13 +39,16 @@ function humanize(value: string): string {
 }
 
 function compactId(value: null | string | undefined): string {
-  if (!value) return '—'
+  if (!value) {return '—'}
+
   return value.length <= 20 ? value : `${value.slice(0, 10)}…${value.slice(-7)}`
 }
 
 function formatTime(value: string): string {
   const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
+
+  if (Number.isNaN(date.getTime())) {return value}
+
   return new Intl.DateTimeFormat(undefined, {
     hour: '2-digit',
     minute: '2-digit',
@@ -48,17 +57,28 @@ function formatTime(value: string): string {
 }
 
 function eventIcon(type: string): string {
-  if (type.startsWith('verification.')) return 'verified'
-  if (type.startsWith('recovery.')) return 'debug-restart'
-  if (type.startsWith('approval.')) return 'shield'
-  if (type.startsWith('risk.')) return 'warning'
-  if (type.startsWith('checkpoint.')) return 'save'
-  if (type.startsWith('artifact.')) return 'package'
-  if (type.startsWith('agent.')) return 'hubot'
-  if (type.startsWith('plan_step.')) return 'list-tree'
-  if (type.startsWith('plan.')) return 'type-hierarchy'
-  if (type.startsWith('action.')) return 'tools'
-  if (type.startsWith('task.')) return 'target'
+  if (type.startsWith('verification.')) {return 'verified'}
+
+  if (type.startsWith('recovery.')) {return 'debug-restart'}
+
+  if (type.startsWith('approval.')) {return 'shield'}
+
+  if (type.startsWith('risk.')) {return 'warning'}
+
+  if (type.startsWith('checkpoint.')) {return 'save'}
+
+  if (type.startsWith('artifact.')) {return 'package'}
+
+  if (type.startsWith('agent.')) {return 'hubot'}
+
+  if (type.startsWith('plan_step.')) {return 'list-tree'}
+
+  if (type.startsWith('plan.')) {return 'type-hierarchy'}
+
+  if (type.startsWith('action.')) {return 'tools'}
+
+  if (type.startsWith('task.')) {return 'target'}
+
   return 'circle-large-outline'
 }
 
@@ -91,39 +111,51 @@ function replayState(events: AgentOSEvent[]): ReplayState {
     const payload = event.payload ?? {}
     const to = typeof payload.to === 'string' ? payload.to : undefined
 
-    if (event.type === 'task.state_changed' && to) state.task = to
-    if (event.type === 'plan.created') state.plan = 'DRAFT'
-    if (event.type === 'plan.state_changed' && to) state.plan = to
+    if (event.type === 'task.state_changed' && to) {state.task = to}
+
+    if (event.type === 'plan.created') {state.plan = 'DRAFT'}
+
+    if (event.type === 'plan.state_changed' && to) {state.plan = to}
 
     if (event.type === 'action.created' && event.action_id) {
       state.actions[event.action_id] = typeof payload.state === 'string' ? payload.state : 'PLANNED'
     }
+
     if (event.type === 'action.state_changed' && event.action_id && to) {
       state.actions[event.action_id] = to
     }
 
     if (event.type === 'agent.created') {
       const id = typeof payload.agent_id === 'string' ? payload.agent_id : undefined
-      if (id) state.agents[id] = typeof payload.state === 'string' ? payload.state : 'CREATED'
+
+      if (id) {state.agents[id] = typeof payload.state === 'string' ? payload.state : 'CREATED'}
     }
+
     if (event.type === 'agent.state_changed') {
       const id = typeof payload.agent_id === 'string' ? payload.agent_id : undefined
-      if (id && to) state.agents[id] = to
+
+      if (id && to) {state.agents[id] = to}
     }
 
     if (event.type === 'plan_step.created') {
       const id = typeof payload.step_id === 'string' ? payload.step_id : undefined
-      if (id) state.steps[id] = typeof payload.state === 'string' ? payload.state : 'PENDING'
-    }
-    if (event.type === 'plan_step.state_changed') {
-      const id = typeof payload.step_id === 'string' ? payload.step_id : undefined
-      if (id && to) state.steps[id] = to
+
+      if (id) {state.steps[id] = typeof payload.state === 'string' ? payload.state : 'PENDING'}
     }
 
-    if (event.type === 'approval.requested') state.approvals += 1
-    if (event.type === 'recovery.attempted') state.recoveries += 1
-    if (event.type === 'verification.recorded') state.verifications += 1
-    if (event.type === 'artifact.recorded') state.artifacts += 1
+    if (event.type === 'plan_step.state_changed') {
+      const id = typeof payload.step_id === 'string' ? payload.step_id : undefined
+
+      if (id && to) {state.steps[id] = to}
+    }
+
+    if (event.type === 'approval.requested') {state.approvals += 1}
+
+    if (event.type === 'recovery.attempted') {state.recoveries += 1}
+
+    if (event.type === 'verification.recorded') {state.verifications += 1}
+
+    if (event.type === 'artifact.recorded') {state.artifacts += 1}
   }
 
   return state
@@ -215,9 +247,11 @@ function ReplayStatePanel({ state }: { state: ReplayState }) {
   const activeActions = Object.values(state.actions).filter(
     value => !['SUCCEEDED', 'FAILED', 'CANCELLED'].includes(value)
   ).length
+
   const activeAgents = Object.values(state.agents).filter(
     value => !['SUCCEEDED', 'FAILED', 'CANCELLED'].includes(value)
   ).length
+
   const completedSteps = Object.values(state.steps).filter(value => value === 'SUCCEEDED').length
 
   return (
@@ -264,6 +298,7 @@ export function AgentOSForensicsPage() {
     queryKey: AGENT_OS_SNAPSHOT_KEY,
     refetchInterval: 5_000
   })
+
   const tasks = snapshot?.tasks ?? []
   const [taskId, setTaskId] = useState('')
   const [filter, setFilter] = useState<EventFilter>('all')
@@ -273,8 +308,10 @@ export function AgentOSForensicsPage() {
   useEffect(() => {
     if (!tasks.length) {
       setTaskId('')
+
       return
     }
+
     if (!taskId || !tasks.some(task => task.id === taskId)) {
       setTaskId(tasks[0].id)
     }
@@ -288,6 +325,7 @@ export function AgentOSForensicsPage() {
   const safeCursor = Math.min(Math.max(cursor, 0), Math.max(eventCount - 1, 0))
   const replayEvents = allEvents.length ? allEvents.slice(0, safeCursor + 1) : []
   const state = useMemo(() => replayState(replayEvents), [replayEvents])
+
   const selectedEvent =
     allEvents.find(event => event.sequence === selectedSequence) ??
     (allEvents.length ? allEvents[safeCursor] : undefined)
@@ -310,9 +348,9 @@ export function AgentOSForensicsPage() {
             </p>
           </div>
           <button
+            aria-label="Refresh ledger"
             className="grid size-7 shrink-0 place-items-center rounded-md border border-(--ui-stroke-tertiary) text-(--ui-text-secondary) hover:bg-(--ui-control-hover-background)"
             onClick={() => void refetch()}
-            aria-label="Refresh ledger"
             type="button"
           >
             <Codicon name="refresh" size="0.78rem" />
@@ -414,7 +452,8 @@ export function AgentOSForensicsPage() {
                       key={event.sequence}
                       onSelect={() => {
                         const index = allEvents.findIndex(item => item.sequence === event.sequence)
-                        if (index >= 0) setCursor(index)
+
+                        if (index >= 0) {setCursor(index)}
                         setSelectedSequence(event.sequence)
                       }}
                     />

@@ -38,7 +38,9 @@ export function useAgentOSEstop() {
       engaged,
       ...(reason ? { reason } : {})
     })
+
     setRevision(value => value + 1)
+
     return result
   }
 

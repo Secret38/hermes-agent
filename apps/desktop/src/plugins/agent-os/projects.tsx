@@ -22,7 +22,8 @@ import { exactOperationsRoute } from './selectors'
 import { openHermesSession } from './session-navigation'
 
 function compactNumber(value: null | number | undefined): string {
-  if (value == null || !Number.isFinite(value)) return '—'
+  if (value == null || !Number.isFinite(value)) {return '—'}
+
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: value < 10 ? 2 : 0 }).format(value)
 }
 
@@ -37,11 +38,14 @@ function sessionOwner(
   routes: readonly PluginProfileRoute[]
 ): { allowed: boolean; route?: PluginProfileRoute } {
   const profile = session.profile || activeProfile || 'default'
+
   if (session.connection_id) {
-    if (session.connection_id === activeConnectionId && profile === activeProfile) return { allowed: true }
+    if (session.connection_id === activeConnectionId && profile === activeProfile) {return { allowed: true }}
     const route = exactOperationsRoute(session.connection_id, profile, routes)
+
     return route ? { allowed: true, route } : { allowed: false }
   }
+
   return { allowed: profile === activeProfile }
 }
 
@@ -93,6 +97,7 @@ export function ProjectsView() {
   const [openingSurface, setOpeningSurface] = useState<ProjectWorkspaceSurface | null>(null)
 
   const selected = projects.find(project => project.id === selectedId) ?? projects[0] ?? null
+
   const workspace = useQuery({
     enabled: Boolean(selected?.id),
     queryFn: () => readProjectWorkspace(selected!.id),
@@ -101,21 +106,26 @@ export function ProjectsView() {
     retry: false,
     staleTime: 5_000
   })
+
   const hydrated = workspace.data ?? selected
   const sessions = useMemo(() => flattenProjectSessions(hydrated), [hydrated])
   const tasks = selected ? projectOperationalTasks(operations.snapshots, selected.id) : []
+
   const effectiveWorkspaceSessionId =
     workspaceSessionId && sessions.some(session => session.id === workspaceSessionId)
       ? workspaceSessionId
       : sessions[0]?.id ?? null
+
   const workspaceSession = sessions.find(session => session.id === effectiveWorkspaceSessionId) ?? null
+
   const workspaceOwner = workspaceSession
     ? sessionOwner(workspaceSession, activeConnectionId, activeProfile, routes)
     : { allowed: false as const }
 
   const launch = async (surface: ProjectWorkspaceSurface) => {
-    if (!workspaceSession || !workspaceOwner.allowed || openingSurface) return
+    if (!workspaceSession || !workspaceOwner.allowed || openingSurface) {return}
     setOpeningSurface(surface)
+
     try {
       await launchProjectWorkspaceSurface(workspaceSession.id, workspaceOwner.route, surface)
     } catch (error) {
@@ -240,6 +250,7 @@ export function ProjectsView() {
                 <div className="aos-scrollbar max-h-80 overflow-y-auto p-2.5">
                   {sessions.map(session => {
                     const owner = sessionOwner(session, activeConnectionId, activeProfile, routes)
+
                     return (
                       <div className="flex items-center gap-2 border-b border-(--ui-stroke-tertiary) py-2 last:border-0" key={session._lineage_root_id || session.id}>
                         <div className="min-w-0 flex-1">
@@ -259,6 +270,7 @@ export function ProjectsView() {
                   {tasks.length ? tasks.map(task => {
                     const snapshot = operations.snapshots.find(candidate => candidate.tasks.some(item => item === task))
                     const source = snapshot ? operations.sources.find(item => item.id === snapshot.sourceId) : undefined
+
                     return (
                       <div className="flex items-center gap-2 border-b border-(--ui-stroke-tertiary) py-2 last:border-0" key={task.id}>
                         <div className="min-w-0 flex-1">

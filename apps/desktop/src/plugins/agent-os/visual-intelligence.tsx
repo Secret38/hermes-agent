@@ -44,7 +44,8 @@ const TERMINAL_STATES = new Set(['CANCELLED', 'COMPLETED', 'FAILED', 'SUCCEEDED'
 const ACTIVE_STATES = new Set(['ACTIVE', 'EXECUTING', 'RECOVERING', 'RUNNING', 'STARTING', 'VERIFYING'])
 
 function compactId(value: null | string | undefined): string {
-  if (!value) return '—'
+  if (!value) {return '—'}
+
   return value.length <= 18 ? value : `${value.slice(0, 9)}…${value.slice(-6)}`
 }
 
@@ -53,7 +54,7 @@ function stepLevels(steps: AgentOSPlanStep[], dependencies: AgentOSPlan['depende
   const parents = new Map<string, string[]>()
 
   for (const edge of dependencies ?? []) {
-    if (!known.has(edge.step_id) || !known.has(edge.dependency_step_id)) continue
+    if (!known.has(edge.step_id) || !known.has(edge.dependency_step_id)) {continue}
     parents.set(edge.step_id, [...(parents.get(edge.step_id) ?? []), edge.dependency_step_id])
   }
 
@@ -65,17 +66,19 @@ function stepLevels(steps: AgentOSPlanStep[], dependencies: AgentOSPlan['depende
 
     for (const id of [...pending]) {
       const deps = parents.get(id) ?? []
-      if (!deps.every(parent => levels.has(parent))) continue
+
+      if (!deps.every(parent => levels.has(parent))) {continue}
       levels.set(id, deps.length ? Math.max(...deps.map(parent => levels.get(parent) ?? 0)) + 1 : 0)
       pending.delete(id)
       changed = true
     }
 
-    if (!changed) break
+    if (!changed) {break}
   }
 
   const fallback = Math.max(-1, ...levels.values()) + 1
-  for (const id of pending) levels.set(id, fallback)
+
+  for (const id of pending) {levels.set(id, fallback)}
 
   return levels
 }
@@ -111,9 +114,11 @@ export function buildExecutionCanvasModel(task: AgentOSTask): ExecutionCanvasMod
   })
 
   const rowsByColumn = new Map<number, number>()
+
   const nextRow = (column: number) => {
     const row = rowsByColumn.get(column) ?? 0
     rowsByColumn.set(column, row + 1)
+
     return row
   }
 
@@ -166,6 +171,7 @@ export function buildExecutionCanvasModel(task: AgentOSTask): ExecutionCanvasMod
   }
 
   const verificationActions = task.actions.filter(action => action.verification_required)
+
   if (verificationActions.length) {
     const verified = verificationActions.filter(action => action.state === 'SUCCEEDED').length
     const failed = verificationActions.some(action => action.state === 'FAILED')
@@ -201,10 +207,12 @@ export function buildExecutionCanvasModel(task: AgentOSTask): ExecutionCanvasMod
 
   const nodeIds = new Set(nodes.map(node => node.id))
   const linkedTargets = new Set<string>()
+
   const addEdge = (source: string, target: string, kind: ExecutionEdgeKind, label: string) => {
-    if (!nodeIds.has(source) || !nodeIds.has(target) || source === target) return
+    if (!nodeIds.has(source) || !nodeIds.has(target) || source === target) {return}
     const id = `${kind}:${source}->${target}`
-    if (edges.some(edge => edge.id === id)) return
+
+    if (edges.some(edge => edge.id === id)) {return}
     edges.push({ id, source, target, kind, label })
     linkedTargets.add(target)
   }
@@ -223,7 +231,8 @@ export function buildExecutionCanvasModel(task: AgentOSTask): ExecutionCanvasMod
   for (const step of plan?.steps ?? []) {
     const nodeId = `step:${step.id}`
     const hasDependency = (plan?.dependencies ?? []).some(edge => edge.step_id === step.id)
-    if (!hasDependency) addEdge(goalId, nodeId, 'membership', 'planned from goal')
+
+    if (!hasDependency) {addEdge(goalId, nodeId, 'membership', 'planned from goal')}
 
     if (step.execution_id) {
       const target = task.agents.some(agent => agent.id === step.execution_id)
@@ -231,12 +240,14 @@ export function buildExecutionCanvasModel(task: AgentOSTask): ExecutionCanvasMod
         : task.actions.some(action => action.id === step.execution_id)
           ? `action:${step.execution_id}`
           : null
-      if (target) addEdge(nodeId, target, 'execution', 'executes as')
+
+      if (target) {addEdge(nodeId, target, 'execution', 'executes as')}
     }
   }
 
   for (const agent of task.agents) {
     const nodeId = `agent:${agent.id}`
+
     if (agent.parent_agent_id && task.agents.some(parent => parent.id === agent.parent_agent_id)) {
       addEdge(`agent:${agent.parent_agent_id}`, nodeId, 'execution', 'delegates')
     } else if (!linkedTargets.has(nodeId)) {
@@ -246,6 +257,7 @@ export function buildExecutionCanvasModel(task: AgentOSTask): ExecutionCanvasMod
 
   for (const action of task.actions) {
     const nodeId = `action:${action.id}`
+
     if (action.parent_action_id && task.actions.some(parent => parent.id === action.parent_action_id)) {
       addEdge(`action:${action.parent_action_id}`, nodeId, 'execution', 'child action')
     } else if (action.agent_id && task.agents.some(agent => agent.id === action.agent_id)) {
@@ -261,10 +273,12 @@ export function buildExecutionCanvasModel(task: AgentOSTask): ExecutionCanvasMod
 
   const persistId = `persist:${task.id}`
   const verifyId = `verify:${task.id}`
+
   if (nodeIds.has(verifyId)) {
     addEdge(verifyId, persistId, 'verification', 'records evidence')
   } else {
     const terminalActions = task.actions.filter(action => TERMINAL_STATES.has(action.state))
+
     if (terminalActions.length) {
       for (const action of terminalActions.slice(-4)) {
         addEdge(`action:${action.id}`, persistId, 'membership', 'records')
@@ -282,17 +296,23 @@ export function buildExecutionCanvasModel(task: AgentOSTask): ExecutionCanvasMod
 }
 
 function nodeIcon(kind: ExecutionNodeKind): string {
-  if (kind === 'goal') return 'target'
-  if (kind === 'plan') return 'list-tree'
-  if (kind === 'agent') return 'hubot'
-  if (kind === 'action') return 'tools'
-  if (kind === 'verify') return 'verified'
+  if (kind === 'goal') {return 'target'}
+
+  if (kind === 'plan') {return 'list-tree'}
+
+  if (kind === 'agent') {return 'hubot'}
+
+  if (kind === 'action') {return 'tools'}
+
+  if (kind === 'verify') {return 'verified'}
+
   return 'database'
 }
 
 function edgeIsActive(edge: ExecutionCanvasEdge, nodeById: Map<string, ExecutionCanvasNode>): boolean {
   const source = nodeById.get(edge.source)
   const target = nodeById.get(edge.target)
+
   return Boolean(
     (source && ACTIVE_STATES.has(source.state)) ||
     (target && ACTIVE_STATES.has(target.state))
@@ -310,6 +330,7 @@ function nodePosition(node: ExecutionCanvasNode, countInColumn: number, canvasHe
   const x = PADDING_X + node.column * (NODE_WIDTH + COLUMN_GAP)
   const totalHeight = countInColumn * NODE_HEIGHT + Math.max(0, countInColumn - 1) * ROW_GAP
   const y = (canvasHeight - totalHeight) / 2 + node.row * (NODE_HEIGHT + ROW_GAP)
+
   return { x, y }
 }
 
@@ -336,12 +357,14 @@ export function connectedExecutionNodeIds(
   model: ExecutionCanvasModel,
   selectedId: string | undefined
 ): Set<string> {
-  if (!selectedId) return new Set()
+  if (!selectedId) {return new Set()}
 
   const connected = new Set<string>([selectedId])
+
   for (const edge of model.edges) {
-    if (edge.source === selectedId) connected.add(edge.target)
-    if (edge.target === selectedId) connected.add(edge.source)
+    if (edge.source === selectedId) {connected.add(edge.target)}
+
+    if (edge.target === selectedId) {connected.add(edge.source)}
   }
 
   return connected
@@ -360,19 +383,24 @@ export function ExecutionCanvas({ task }: { task: AgentOSTask }) {
   }
 
   const maxRows = Math.max(1, ...counts.values())
+
   const height = Math.max(
     300,
     PADDING_Y * 2 + maxRows * NODE_HEIGHT + Math.max(0, maxRows - 1) * ROW_GAP
   )
+
   const positioned = new Map(
     model.nodes.map(node => {
       const position = nodePosition(node, counts.get(node.column) ?? 1, height)
+
       return [node.id, { node, ...position }] as const
     })
   )
+
   const width = PADDING_X * 2 + model.columns * NODE_WIDTH + Math.max(0, model.columns - 1) * COLUMN_GAP
   const selected = selectedId ? positioned.get(selectedId)?.node : undefined
   const nodeById = new Map(model.nodes.map(node => [node.id, node]))
+
   const focusedNodeIds = useMemo(
     () => connectedExecutionNodeIds(model, focusPath ? selectedId : undefined),
     [focusPath, model, selectedId]
@@ -380,7 +408,8 @@ export function ExecutionCanvas({ task }: { task: AgentOSTask }) {
 
   const fitAll = () => {
     const viewport = viewportRef.current
-    if (!viewport) return
+
+    if (!viewport) {return}
     setZoom(fitCanvasZoom(viewport.clientWidth, viewport.clientHeight, width, height))
     viewport.scrollTo({ left: 0, top: 0, behavior: 'smooth' })
   }
@@ -389,7 +418,8 @@ export function ExecutionCanvas({ task }: { task: AgentOSTask }) {
     setSelectedId(id)
     const viewport = viewportRef.current
     const position = positioned.get(id)
-    if (!viewport || !position) return
+
+    if (!viewport || !position) {return}
 
     const left = Math.max(0, position.x * zoom - viewport.clientWidth / 2 + (NODE_WIDTH * zoom) / 2)
     const top = Math.max(0, position.y * zoom - viewport.clientHeight / 2 + (NODE_HEIGHT * zoom) / 2)
@@ -441,9 +471,9 @@ export function ExecutionCanvas({ task }: { task: AgentOSTask }) {
             <Codicon name="zoom-out" size="0.72rem" />
           </button>
           <button
+            aria-label="Reset execution canvas zoom"
             className="h-7 min-w-12 rounded border border-(--ui-stroke-tertiary) px-1.5 text-[0.58rem] tabular-nums text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background)"
             onClick={() => setZoom(1)}
-            aria-label="Reset execution canvas zoom"
             type="button"
           >
             {Math.round(zoom * 100)}%
@@ -486,7 +516,8 @@ export function ExecutionCanvas({ task }: { task: AgentOSTask }) {
               {model.edges.map(edge => {
                 const source = positioned.get(edge.source)
                 const target = positioned.get(edge.target)
-                if (!source || !target) return null
+
+                if (!source || !target) {return null}
 
                 const x1 = source.x + NODE_WIDTH
                 const y1 = source.y + NODE_HEIGHT / 2
@@ -518,8 +549,10 @@ export function ExecutionCanvas({ task }: { task: AgentOSTask }) {
 
             {model.nodes.map(node => {
               const position = positioned.get(node.id)!
+
               return (
                 <button
+                  aria-label={`${node.title}: ${node.detail}`}
                   className={cn(
                     'aos-graph-node',
                     selectedId === node.id && 'aos-graph-node-selected',
@@ -535,7 +568,6 @@ export function ExecutionCanvas({ task }: { task: AgentOSTask }) {
                     top: position.y,
                     width: NODE_WIDTH
                   }}
-                  aria-label={`${node.title}: ${node.detail}`}
                   type="button"
                 >
                   <span className="flex min-w-0 items-start justify-between gap-2">
@@ -614,6 +646,7 @@ function knowledgeNodeScore(node: AgentOSLearningNode, degree: number): number {
 
 export function buildKnowledgeCanvasModel(graph: AgentOSLearningGraph, limit = 30): KnowledgeCanvasModel {
   const degree = new Map<string, number>()
+
   for (const edge of graph.edges) {
     degree.set(edge.source, (degree.get(edge.source) ?? 0) + 1)
     degree.set(edge.target, (degree.get(edge.target) ?? 0) + 1)
@@ -622,6 +655,7 @@ export function buildKnowledgeCanvasModel(graph: AgentOSLearningGraph, limit = 3
   const memory = graph.nodes
     .filter(node => node.kind === 'memory')
     .sort((a, b) => knowledgeNodeScore(b, degree.get(b.id) ?? 0) - knowledgeNodeScore(a, degree.get(a.id) ?? 0))
+
   const skills = graph.nodes
     .filter(node => node.kind !== 'memory')
     .sort((a, b) => knowledgeNodeScore(b, degree.get(b.id) ?? 0) - knowledgeNodeScore(a, degree.get(a.id) ?? 0))
@@ -665,12 +699,14 @@ export function connectedKnowledgeNodeIds(
   model: KnowledgeCanvasModel,
   selectedId: string | undefined
 ): Set<string> {
-  if (!selectedId || !model.nodes.some(node => node.id === selectedId)) return new Set()
+  if (!selectedId || !model.nodes.some(node => node.id === selectedId)) {return new Set()}
 
   const connected = new Set<string>([selectedId])
+
   for (const edge of model.edges) {
-    if (edge.source === selectedId) connected.add(edge.target)
-    if (edge.target === selectedId) connected.add(edge.source)
+    if (edge.source === selectedId) {connected.add(edge.target)}
+
+    if (edge.target === selectedId) {connected.add(edge.source)}
   }
 
   return connected
@@ -692,21 +728,27 @@ export function SemanticKnowledgeCanvas({
   const memoryCount = model.nodes.filter(node => node.column === 0).length
   const skillCount = model.nodes.filter(node => node.column === 1).length
   const rows = Math.max(memoryCount, skillCount, 1)
+
   const height = Math.max(
     300,
     KNOWLEDGE_PADDING * 2 +
       rows * KNOWLEDGE_NODE_HEIGHT +
       Math.max(0, rows - 1) * KNOWLEDGE_ROW_GAP
   )
+
   const width = KNOWLEDGE_PADDING * 2 + KNOWLEDGE_NODE_WIDTH * 2 + KNOWLEDGE_COLUMN_GAP
+
   const positions = new Map(
     model.nodes.map(node => {
       const count = node.column === 0 ? memoryCount : skillCount
+
       const total =
         count * KNOWLEDGE_NODE_HEIGHT + Math.max(0, count - 1) * KNOWLEDGE_ROW_GAP
+
       const y =
         (height - total) / 2 +
         node.row * (KNOWLEDGE_NODE_HEIGHT + KNOWLEDGE_ROW_GAP)
+
       const x =
         KNOWLEDGE_PADDING +
         node.column * (KNOWLEDGE_NODE_WIDTH + KNOWLEDGE_COLUMN_GAP)
@@ -714,7 +756,9 @@ export function SemanticKnowledgeCanvas({
       return [node.id, { x, y }] as const
     })
   )
+
   const selectedIsVisible = Boolean(selectedId && positions.has(selectedId))
+
   const focusedNodeIds = useMemo(
     () => connectedKnowledgeNodeIds(model, focusPath && selectedIsVisible ? selectedId : undefined),
     [focusPath, model, selectedId, selectedIsVisible]
@@ -722,7 +766,8 @@ export function SemanticKnowledgeCanvas({
 
   const fitAll = () => {
     const viewport = viewportRef.current
-    if (!viewport) return
+
+    if (!viewport) {return}
     setZoom(fitCanvasZoom(viewport.clientWidth, viewport.clientHeight, width, height, 0.55, 1.3))
     viewport.scrollTo({ left: 0, top: 0, behavior: 'smooth' })
   }
@@ -731,16 +776,19 @@ export function SemanticKnowledgeCanvas({
     onSelect(id)
     const viewport = viewportRef.current
     const position = positions.get(id)
-    if (!viewport || !position) return
+
+    if (!viewport || !position) {return}
 
     const left = Math.max(
       0,
       position.x * zoom - viewport.clientWidth / 2 + (KNOWLEDGE_NODE_WIDTH * zoom) / 2
     )
+
     const top = Math.max(
       0,
       position.y * zoom - viewport.clientHeight / 2 + (KNOWLEDGE_NODE_HEIGHT * zoom) / 2
     )
+
     viewport.scrollTo({ left, top, behavior: 'smooth' })
   }
 
@@ -826,7 +874,8 @@ export function SemanticKnowledgeCanvas({
                 const targetNode = model.nodes.find(node => node.id === edge.target)
                 const source = positions.get(edge.source)
                 const target = positions.get(edge.target)
-                if (!sourceNode || !targetNode || !source || !target) return null
+
+                if (!sourceNode || !targetNode || !source || !target) {return null}
 
                 const from = sourceNode.column <= targetNode.column ? source : target
                 const to = sourceNode.column <= targetNode.column ? target : source
@@ -855,8 +904,10 @@ export function SemanticKnowledgeCanvas({
 
             {model.nodes.map(node => {
               const position = positions.get(node.id)!
+
               return (
                 <button
+                  aria-label={node.label}
                   className={cn(
                     'aos-knowledge-node',
                     node.kind === 'memory' ? 'aos-knowledge-node-memory' : 'aos-knowledge-node-skill',
@@ -874,7 +925,6 @@ export function SemanticKnowledgeCanvas({
                     top: position.y,
                     width: KNOWLEDGE_NODE_WIDTH
                   }}
-                  aria-label={node.label}
                   type="button"
                 >
                   <span className="flex items-center justify-between gap-2">
@@ -904,16 +954,21 @@ export function SemanticKnowledgeCanvas({
 
 function safeVerificationLabel(action: AgentOSAction): string {
   const result = action.verification_result ?? {}
+
   for (const key of ['verdict', 'status', 'result']) {
     const value = result[key]
-    if (typeof value === 'string' && value.trim()) return value
-    if (typeof value === 'boolean') return value ? 'PASS' : 'FAIL'
+
+    if (typeof value === 'string' && value.trim()) {return value}
+
+    if (typeof value === 'boolean') {return value ? 'PASS' : 'FAIL'}
   }
+
   return action.verification_required ? 'PENDING' : 'NOT REQUIRED'
 }
 
 function latestActionForTool(task: AgentOSTask, names: string[]): AgentOSAction | undefined {
   const normalized = new Set(names.map(name => name.replaceAll('-', '_').toLowerCase()))
+
   return [...task.actions]
     .filter(action => normalized.has(action.tool.replaceAll('-', '_').toLowerCase()))
     .sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0]
@@ -1038,14 +1093,16 @@ export function buildRuntimeTopologyCanvasModel(
   nodes: AgentOSTopologyNode[],
   edges: Array<{ source: string; target: string; relation: string }>
 ): RuntimeTopologyCanvasModel {
-  if (!nodes.length) return { nodes: [], edges: [], columns: 0 }
+  if (!nodes.length) {return { nodes: [], edges: [], columns: 0 }}
 
   const known = new Set(nodes.map(node => node.id))
   const validEdges = edges.filter(edge => known.has(edge.source) && known.has(edge.target))
+
   const core =
     nodes.find(node => node.id === 'agent-os') ??
     nodes.find(node => node.kind === 'core') ??
     nodes[0]
+
   const levels = new Map<string, number>([[core.id, 0]])
   const outgoing = new Map<string, string[]>()
 
@@ -1054,22 +1111,26 @@ export function buildRuntimeTopologyCanvasModel(
   }
 
   const queue = [core.id]
+
   while (queue.length) {
     const current = queue.shift()!
     const level = levels.get(current) ?? 0
+
     for (const target of outgoing.get(current) ?? []) {
-      if (levels.has(target)) continue
+      if (levels.has(target)) {continue}
       levels.set(target, level + 1)
       queue.push(target)
     }
   }
 
   const fallback = Math.max(0, ...levels.values()) + 1
+
   for (const node of nodes) {
-    if (!levels.has(node.id)) levels.set(node.id, fallback)
+    if (!levels.has(node.id)) {levels.set(node.id, fallback)}
   }
 
   const rows = new Map<number, number>()
+
   const modelNodes = nodes
     .slice()
     .sort(
@@ -1082,6 +1143,7 @@ export function buildRuntimeTopologyCanvasModel(
       const column = levels.get(node.id) ?? fallback
       const row = rows.get(column) ?? 0
       rows.set(column, row + 1)
+
       return {
         ...node,
         column,
@@ -1106,12 +1168,14 @@ export function connectedRuntimeTopologyNodeIds(
   model: RuntimeTopologyCanvasModel,
   selectedId: string | undefined
 ): Set<string> {
-  if (!selectedId || !model.nodes.some(node => node.id === selectedId)) return new Set()
+  if (!selectedId || !model.nodes.some(node => node.id === selectedId)) {return new Set()}
 
   const connected = new Set<string>([selectedId])
+
   for (const edge of model.edges) {
-    if (edge.source === selectedId) connected.add(edge.target)
-    if (edge.target === selectedId) connected.add(edge.source)
+    if (edge.source === selectedId) {connected.add(edge.target)}
+
+    if (edge.target === selectedId) {connected.add(edge.source)}
   }
 
   return connected
@@ -1130,30 +1194,38 @@ export function RuntimeTopologyCanvas({
   const [focusPath, setFocusPath] = useState(false)
   const viewportRef = useRef<HTMLDivElement>(null)
   const counts = new Map<number, number>()
+
   for (const node of model.nodes) {
     counts.set(node.column, (counts.get(node.column) ?? 0) + 1)
   }
+
   const maxRows = Math.max(1, ...counts.values())
+
   const height = Math.max(
     280,
     TOPOLOGY_PADDING * 2 +
       maxRows * TOPOLOGY_NODE_HEIGHT +
       Math.max(0, maxRows - 1) * TOPOLOGY_ROW_GAP
   )
+
   const width =
     TOPOLOGY_PADDING * 2 +
     model.columns * TOPOLOGY_NODE_WIDTH +
     Math.max(0, model.columns - 1) * TOPOLOGY_COLUMN_GAP
+
   const positions = new Map(
     model.nodes.map(node => {
       const count = counts.get(node.column) ?? 1
       const total = count * TOPOLOGY_NODE_HEIGHT + Math.max(0, count - 1) * TOPOLOGY_ROW_GAP
       const x = TOPOLOGY_PADDING + node.column * (TOPOLOGY_NODE_WIDTH + TOPOLOGY_COLUMN_GAP)
       const y = (height - total) / 2 + node.row * (TOPOLOGY_NODE_HEIGHT + TOPOLOGY_ROW_GAP)
+
       return [node.id, { x, y }] as const
     })
   )
+
   const selected = selectedId ? model.nodes.find(node => node.id === selectedId) : undefined
+
   const focusedNodeIds = useMemo(
     () => connectedRuntimeTopologyNodeIds(model, focusPath ? selectedId : undefined),
     [focusPath, model, selectedId]
@@ -1161,7 +1233,8 @@ export function RuntimeTopologyCanvas({
 
   const fitAll = () => {
     const viewport = viewportRef.current
-    if (!viewport) return
+
+    if (!viewport) {return}
     setZoom(fitCanvasZoom(viewport.clientWidth, viewport.clientHeight, width, height, 0.55, 1.2))
     viewport.scrollTo({ left: 0, top: 0, behavior: 'smooth' })
   }
@@ -1170,7 +1243,8 @@ export function RuntimeTopologyCanvas({
     setSelectedId(id)
     const viewport = viewportRef.current
     const position = positions.get(id)
-    if (!viewport || !position) return
+
+    if (!viewport || !position) {return}
 
     const left = Math.max(0, position.x * zoom - viewport.clientWidth / 2 + (TOPOLOGY_NODE_WIDTH * zoom) / 2)
     const top = Math.max(0, position.y * zoom - viewport.clientHeight / 2 + (TOPOLOGY_NODE_HEIGHT * zoom) / 2)
@@ -1249,12 +1323,14 @@ export function RuntimeTopologyCanvas({
             {model.edges.map((edge, index) => {
               const source = positions.get(edge.source)
               const target = positions.get(edge.target)
-              if (!source || !target) return null
+
+              if (!source || !target) {return null}
               const x1 = source.x + TOPOLOGY_NODE_WIDTH
               const y1 = source.y + TOPOLOGY_NODE_HEIGHT / 2
               const x2 = target.x
               const y2 = target.y + TOPOLOGY_NODE_HEIGHT / 2
               const dx = Math.max(42, (x2 - x1) * 0.43)
+
               return (
                 <path
                   className={cn(
@@ -1274,8 +1350,10 @@ export function RuntimeTopologyCanvas({
 
           {model.nodes.map(node => {
             const position = positions.get(node.id)!
+
             return (
               <button
+                aria-label={`${node.label}: ${node.status}`}
                 className={cn(
                   'aos-runtime-topology-node',
                   selectedId === node.id && 'aos-runtime-topology-node-selected',
@@ -1290,7 +1368,6 @@ export function RuntimeTopologyCanvas({
                   top: position.y,
                   width: TOPOLOGY_NODE_WIDTH
                 }}
-                aria-label={`${node.label}: ${node.status}`}
                 type="button"
               >
                 <span className="flex items-start justify-between gap-2">

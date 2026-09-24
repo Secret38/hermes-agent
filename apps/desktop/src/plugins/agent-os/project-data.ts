@@ -21,20 +21,23 @@ export function projectOperationalTasks(
 }
 
 export function flattenProjectSessions(project: SidebarProjectTree | null | undefined): SessionInfo[] {
-  if (!project) return []
+  if (!project) {return []}
 
   const newestByLineage = new Map<string, SessionInfo>()
+
   const consider = (session: SessionInfo) => {
     const key = session._lineage_root_id || session.id
     const current = newestByLineage.get(key)
     const activity = session.last_active || session.started_at || 0
     const currentActivity = current ? current.last_active || current.started_at || 0 : -1
-    if (!current || activity > currentActivity) newestByLineage.set(key, session)
+
+    if (!current || activity > currentActivity) {newestByLineage.set(key, session)}
   }
 
   for (const repo of project.repos) {
-    for (const group of repo.groups) group.sessions.forEach(consider)
+    for (const group of repo.groups) {group.sessions.forEach(consider)}
   }
+
   project.previewSessions?.forEach(consider)
 
   return [...newestByLineage.values()].sort(

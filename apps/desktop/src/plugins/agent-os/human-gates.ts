@@ -59,6 +59,7 @@ function labelForSession(runtimeSessionId: string): string {
 
 function profileForSession(runtimeSessionId: string): string {
   const storedId = storedHermesSessionId(runtimeSessionId)
+
   return knownSessionProfile(ownerLookupSessionRows(), storedId) || 'default'
 }
 
@@ -68,6 +69,7 @@ export function approvalProvenanceFor(
   modeForProfile: (profile: string) => ApprovalMode | 'unknown' = () => 'unknown'
 ): ApprovalProvenance {
   const profile = profileForSession(runtimeSessionId)
+
   const patternKeys = [
     ...(request.patternKey ? [request.patternKey] : []),
     ...(request.patternKeys ?? [])

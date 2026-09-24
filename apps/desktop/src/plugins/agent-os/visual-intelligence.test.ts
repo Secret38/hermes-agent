@@ -301,6 +301,7 @@ describe('Agent OS runtime topology canvas', () => {
       { id: 'computer', kind: 'capability', label: 'Computer Use', status: 'WARN' },
       { id: 'orphan', kind: 'tool', label: 'Unlinked tool', status: 'PASS' }
     ]
+
     const edges = [
       { source: 'agent-os', target: 'browser', relation: 'executes' },
       { source: 'agent-os', target: 'computer', relation: 'executes' },

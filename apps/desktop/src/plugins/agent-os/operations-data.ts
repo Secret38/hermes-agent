@@ -25,6 +25,7 @@ export function useHermesOperations() {
   const cwd = useValue(host.state.cwd)
 
   const contributions = useContributions(OPERATIONS_TASK_SOURCES_AREA)
+
   const sources = contributions
     .map(contribution => contribution.data as OperationsTaskSource | undefined)
     .filter((source): source is OperationsTaskSource => Boolean(source?.id && source.readSnapshot))

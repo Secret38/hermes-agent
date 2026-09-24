@@ -78,6 +78,7 @@ describe('Agent OS selectors', () => {
       title: 'Run',
       workerSessionId: 'session-1'
     }
+
     const snapshot = {
       connectionId: 'source-a',
       observedAt: 1,
@@ -86,6 +87,7 @@ describe('Agent OS selectors', () => {
       sourceLabel: 'Kanban',
       tasks: [task]
     }
+
     const route = {
       connectionId: 'source-a',
       mode: 'remote' as const,
