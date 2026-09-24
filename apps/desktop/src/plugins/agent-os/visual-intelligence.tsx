@@ -479,9 +479,9 @@ export function ExecutionCanvas({ task }: { task: AgentOSTask }) {
             <Codicon name="zoom-out" size="0.72rem" />
           </button>
           <button
+            aria-label="Reset execution canvas zoom"
             className="h-7 min-w-12 rounded border border-(--ui-stroke-tertiary) px-1.5 text-[0.58rem] tabular-nums text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background)"
             onClick={() => setZoom(1)}
-            aria-label="Reset execution canvas zoom"
             type="button"
           >
             {Math.round(zoom * 100)}%
@@ -560,6 +560,7 @@ export function ExecutionCanvas({ task }: { task: AgentOSTask }) {
               const position = positioned.get(node.id)!
               return (
                 <button
+                  aria-label={`${node.title}: ${node.detail}`}
                   className={cn(
                     'aos-graph-node',
                     selectedId === node.id && 'aos-graph-node-selected',
@@ -575,7 +576,6 @@ export function ExecutionCanvas({ task }: { task: AgentOSTask }) {
                     top: position.y,
                     width: NODE_WIDTH
                   }}
-                  aria-label={`${node.title}: ${node.detail}`}
                   type="button"
                 >
                   <span className="flex min-w-0 items-start justify-between gap-2">
@@ -909,6 +909,7 @@ export function SemanticKnowledgeCanvas({
               const position = positions.get(node.id)!
               return (
                 <button
+                  aria-label={node.label}
                   className={cn(
                     'aos-knowledge-node',
                     node.kind === 'memory' ? 'aos-knowledge-node-memory' : 'aos-knowledge-node-skill',
@@ -926,7 +927,6 @@ export function SemanticKnowledgeCanvas({
                     top: position.y,
                     width: KNOWLEDGE_NODE_WIDTH
                   }}
-                  aria-label={node.label}
                   type="button"
                 >
                   <span className="flex items-center justify-between gap-2">
@@ -1352,6 +1352,7 @@ export function RuntimeTopologyCanvas({
             const position = positions.get(node.id)!
             return (
               <button
+                aria-label={`${node.label}: ${node.status}`}
                 className={cn(
                   'aos-runtime-topology-node',
                   selectedId === node.id && 'aos-runtime-topology-node-selected',
@@ -1366,7 +1367,6 @@ export function RuntimeTopologyCanvas({
                   top: position.y,
                   width: TOPOLOGY_NODE_WIDTH
                 }}
-                aria-label={`${node.label}: ${node.status}`}
                 type="button"
               >
                 <span className="flex items-start justify-between gap-2">
