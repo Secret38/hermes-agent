@@ -1052,6 +1052,20 @@ function LiveComputerViewport({ taskId }: { taskId: string }) {
     return subscribeAgentOSLiveFrame(taskId, setFrame)
   }, [open, taskId])
 
+  useEffect(() => {
+    if (!visibleFrame) {
+      return
+    }
+
+    const expiresAt = Date.parse(visibleFrame.expires_at)
+    const delay = Number.isFinite(expiresAt) ? Math.max(0, expiresAt - Date.now()) : 0
+    const timer = window.setTimeout(() => {
+      setFrame(current => (current?.sequence === visibleFrame.sequence ? null : current))
+    }, delay)
+
+    return () => window.clearTimeout(timer)
+  }, [visibleFrame])
+
   if (!open) {
     return (
       <div className="border-t border-(--ui-stroke-tertiary) px-3.5 py-3">
