@@ -762,3 +762,30 @@
     background: Highlight;
   }
 }
+
+
+.aos-primary-nav {
+  scrollbar-gutter: stable both-edges;
+  overscroll-behavior-inline: contain;
+}
+
+@media (max-width: 900px), (max-height: 760px) {
+  .aos-mission-header {
+    padding-top: 0.65rem !important;
+    padding-bottom: 0.55rem !important;
+  }
+
+  .aos-primary-nav {
+    width: 100%;
+  }
+}
+
+@media (max-width: 720px) {
+  .agent-os-page footer {
+    gap: 0.5rem;
+  }
+
+  .agent-os-page footer > :first-child {
+    max-width: 58%;
+  }
+}
