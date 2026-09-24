@@ -4,7 +4,9 @@ import type { AgentOSTask } from './types'
 import {
   buildExecutionCanvasModel,
   buildKnowledgeCanvasModel,
-  buildRuntimeTopologyCanvasModel
+  buildRuntimeTopologyCanvasModel,
+  connectedExecutionNodeIds,
+  fitCanvasZoom
 } from './visual-intelligence'
 
 function taskFixture(): AgentOSTask {
@@ -285,5 +287,25 @@ describe('Agent OS runtime topology canvas', () => {
     expect(model.nodes.find(node => node.id === 'browser')?.column).toBe(1)
     expect(model.nodes.find(node => node.id === 'computer')?.column).toBe(1)
     expect(model.nodes.find(node => node.id === 'orphan')?.column).toBe(2)
+  })
+})
+
+
+describe('Agent OS execution viewport helpers', () => {
+  it('fits the canvas within the viewport while respecting zoom bounds', () => {
+    expect(fitCanvasZoom(1000, 600, 2000, 1200)).toBe(0.49 < 0.55 ? 0.55 : 0.55)
+    expect(fitCanvasZoom(1200, 800, 600, 300)).toBe(1.4)
+    expect(fitCanvasZoom(0, 800, 600, 300)).toBe(1)
+  })
+
+  it('returns only the selected execution node and its direct neighbors for focus mode', () => {
+    const model = buildExecutionCanvasModel(taskFixture())
+    const focused = connectedExecutionNodeIds(model, 'agent:agent-root')
+
+    expect(focused.has('agent:agent-root')).toBe(true)
+    expect(focused.has('step:step-1')).toBe(true)
+    expect(focused.has('agent:agent-child')).toBe(true)
+    expect(focused.has('action:action-1')).toBe(true)
+    expect(focused.has('persist:task-1')).toBe(false)
   })
 })
