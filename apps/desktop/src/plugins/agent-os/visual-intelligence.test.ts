@@ -7,6 +7,7 @@ import {
   buildRuntimeTopologyCanvasModel,
   connectedExecutionNodeIds,
   connectedKnowledgeNodeIds,
+  connectedRuntimeTopologyNodeIds,
   fitCanvasZoom
 } from './visual-intelligence'
 
@@ -316,6 +317,27 @@ describe('Agent OS runtime topology canvas', () => {
     expect(model.nodes.find(node => node.id === 'browser')?.column).toBe(1)
     expect(model.nodes.find(node => node.id === 'computer')?.column).toBe(1)
     expect(model.nodes.find(node => node.id === 'orphan')?.column).toBe(2)
+  })
+
+  it('returns the selected runtime node and direct topology neighbors', () => {
+    const model = buildRuntimeTopologyCanvasModel(
+      [
+        { id: 'agent-os', kind: 'core', label: 'Agent OS', status: 'PASS' },
+        { id: 'browser', kind: 'capability', label: 'Browser', status: 'PASS' },
+        { id: 'computer', kind: 'capability', label: 'Computer Use', status: 'WARN' },
+        { id: 'orphan', kind: 'tool', label: 'Unlinked tool', status: 'PASS' }
+      ],
+      [
+        { source: 'agent-os', target: 'browser', relation: 'executes' },
+        { source: 'agent-os', target: 'computer', relation: 'executes' }
+      ]
+    )
+
+    const focused = connectedRuntimeTopologyNodeIds(model, 'browser')
+
+    expect(focused).toEqual(new Set(['browser', 'agent-os']))
+    expect(focused.has('computer')).toBe(false)
+    expect(focused.has('orphan')).toBe(false)
   })
 })
 
