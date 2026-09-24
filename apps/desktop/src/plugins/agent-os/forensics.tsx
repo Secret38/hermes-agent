@@ -2,6 +2,7 @@ import './agent-os.css'
 
 import { cn, Codicon, useQuery } from '@hermes/plugin-sdk'
 import { useEffect, useMemo, useState } from 'react'
+
 import { AGENT_OS_SNAPSHOT_KEY, fetchAgentOSSnapshot } from './api'
 import type { AgentOSEvent, AgentOSTask } from './types'
 
