@@ -54,6 +54,19 @@ function Stat({
   )
 }
 
+function formatMemoryTimestamp(value: null | number | undefined): string {
+  if (!value) return 'unknown'
+
+  const milliseconds = value < 10_000_000_000 ? value * 1000 : value
+  const date = new Date(milliseconds)
+  if (Number.isNaN(date.getTime())) return 'unknown'
+
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  }).format(date)
+}
+
 function memoryCardForNode(
   node: AgentOSLearningNode | undefined,
   cards: Array<{ source: string; title: string; body: string }>
@@ -150,28 +163,47 @@ export function SemanticMemorySection() {
                   />
                 </div>
 
-                {selectedCard ? (
+                <div className="mt-3 grid grid-cols-2 gap-1.5 text-[0.58rem]">
+                  <div className="rounded border border-(--ui-stroke-tertiary) bg-(--ui-bg-primary) p-2">
+                    <div className="aos-kicker">Source</div>
+                    <div className="mt-1 truncate text-(--ui-text-secondary)">
+                      {selected.kind === 'memory' ? selected.memorySource || selectedCard?.source || 'memory' : selected.createdBy || 'profile'}
+                    </div>
+                  </div>
+                  <div className="rounded border border-(--ui-stroke-tertiary) bg-(--ui-bg-primary) p-2">
+                    <div className="aos-kicker">Created</div>
+                    <div className="mt-1 truncate text-(--ui-text-secondary)">{formatMemoryTimestamp(selected.timestamp)}</div>
+                  </div>
+                  <div className="rounded border border-(--ui-stroke-tertiary) bg-(--ui-bg-primary) p-2">
+                    <div className="aos-kicker">Usage</div>
+                    <div className="mt-1 tabular-nums text-(--ui-text-secondary)">{selected.useCount ?? 0} uses</div>
+                  </div>
+                  <div className="rounded border border-(--ui-stroke-tertiary) bg-(--ui-bg-primary) p-2">
+                    <div className="aos-kicker">Graph</div>
+                    <div className="mt-1 tabular-nums text-(--ui-text-secondary)">{edgeCountByNode.get(selected.id) ?? 0} links</div>
+                  </div>
+                </div>
+
+                <div className="mt-2 flex flex-wrap gap-1">
+                  <span className="rounded border border-(--ui-stroke-tertiary) px-1.5 py-0.5 text-[0.54rem] text-(--ui-text-tertiary)">
+                    {selected.category || selected.memorySource || 'general'}
+                  </span>
+                  {selected.state && (
+                    <span className="rounded border border-(--ui-stroke-tertiary) px-1.5 py-0.5 text-[0.54rem] uppercase tracking-[0.05em] text-(--ui-text-tertiary)">
+                      {selected.state}
+                    </span>
+                  )}
+                  {selected.pinned && (
+                    <span className="inline-flex items-center gap-1 rounded border border-(--ui-stroke-tertiary) px-1.5 py-0.5 text-[0.54rem] text-(--ui-text-tertiary)">
+                      <Codicon name="pinned" size="0.56rem" />
+                      pinned
+                    </span>
+                  )}
+                </div>
+
+                {selectedCard && (
                   <div className="aos-scrollbar mt-3 max-h-72 overflow-y-auto whitespace-pre-wrap rounded-md border border-(--ui-stroke-tertiary) bg-(--ui-bg-primary) p-2.5 text-[0.65rem] leading-relaxed text-(--ui-text-secondary)">
                     {selectedCard.body}
-                  </div>
-                ) : (
-                  <div className="mt-3 space-y-2 text-[0.64rem] text-(--ui-text-tertiary)">
-                    <div className="flex justify-between gap-3">
-                      <span>Category</span>
-                      <span className="text-right text-(--ui-text-secondary)">{selected.category || 'general'}</span>
-                    </div>
-                    <div className="flex justify-between gap-3">
-                      <span>Use count</span>
-                      <span className="tabular-nums text-(--ui-text-secondary)">{selected.useCount ?? 0}</span>
-                    </div>
-                    <div className="flex justify-between gap-3">
-                      <span>Created by</span>
-                      <span className="text-(--ui-text-secondary)">{selected.createdBy || 'profile'}</span>
-                    </div>
-                    <div className="flex justify-between gap-3">
-                      <span>Connections</span>
-                      <span className="tabular-nums text-(--ui-text-secondary)">{edgeCountByNode.get(selected.id) ?? 0}</span>
-                    </div>
                   </div>
                 )}
 
