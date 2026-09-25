@@ -4,9 +4,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentOSLiveFrameMessage } from './api'
 import type { AgentOSTask } from './types'
 
-const subscribeAgentOSLiveFrame = vi.fn()
+const mocks = vi.hoisted(() => ({
+  subscribeAgentOSLiveFrame: vi.fn()
+}))
 vi.mock('./api', () => ({
-  subscribeAgentOSLiveFrame: (...args: unknown[]) => subscribeAgentOSLiveFrame(...args)
+  subscribeAgentOSLiveFrame: (...args: unknown[]) => mocks.subscribeAgentOSLiveFrame(...args)
 }))
 
 import { RuntimeObservatory } from './visual-intelligence'
@@ -57,8 +59,8 @@ describe('Agent OS Runtime Observatory live viewport', () => {
   beforeEach(() => {
     emit = undefined
     close.mockReset()
-    subscribeAgentOSLiveFrame.mockReset()
-    subscribeAgentOSLiveFrame.mockImplementation(
+    mocks.subscribeAgentOSLiveFrame.mockReset()
+    mocks.subscribeAgentOSLiveFrame.mockImplementation(
       (_taskId: string, _sessionId: string, onFrame: (frame: AgentOSLiveFrameMessage) => void) => {
         emit = onFrame
         return close
@@ -72,7 +74,7 @@ describe('Agent OS Runtime Observatory live viewport', () => {
     expect(screen.queryByAltText('Live Computer Use frame for the current Agent OS task')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Start live view' }))
 
-    expect(subscribeAgentOSLiveFrame).toHaveBeenCalledWith(
+    expect(mocks.subscribeAgentOSLiveFrame).toHaveBeenCalledWith(
       'task-live',
       'session-live',
       expect.any(Function)
