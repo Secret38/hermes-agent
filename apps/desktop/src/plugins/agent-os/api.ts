@@ -105,15 +105,17 @@ export type AgentOSLiveFrameMessage =
 
 export function subscribeAgentOSLiveFrame(
   taskId: string,
+  sessionId: string,
   onFrame: (frame: AgentOSLiveFrameMessage) => void
 ): () => void {
   const taskKey = taskId.trim()
-  if (!taskKey || !openSocket) {
+  const sessionKey = sessionId.trim()
+  if (!taskKey || !sessionKey || !openSocket) {
     return () => undefined
   }
 
   return openSocket(
-    `/live/${encodeURIComponent(taskKey)}`,
+    `/live/${encodeURIComponent(taskKey)}?session_id=${encodeURIComponent(sessionKey)}`,
     data => onFrame(data as AgentOSLiveFrameMessage)
   )
 }
