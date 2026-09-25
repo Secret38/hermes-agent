@@ -1,7 +1,7 @@
 import { cn, Codicon } from '@hermes/plugin-sdk'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { subscribeAgentOSLiveFrame, type AgentOSLiveFrameMessage } from './api'
+import { type AgentOSLiveFrameMessage, subscribeAgentOSLiveFrame } from './api'
 import type {
   AgentOSAction,
   AgentOSAgent,
