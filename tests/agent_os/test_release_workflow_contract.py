@@ -73,7 +73,11 @@ def test_release_publication_is_blocked_on_every_v1_qualification_invariant():
     jobs = _workflow()["jobs"]
     publish = jobs["sign-publish"]
 
-    assert set(publish["needs"]) == {"build-windows", "qualify-windows-gui"}
+    assert set(publish["needs"]) == {
+        "build-windows",
+        "qualify-windows-gui",
+        "qualify-windows-upgrade",
+    }
 
     evidence = _step(publish, "Verify build and qualification identity")["run"]
     for invariant in (
@@ -99,6 +103,52 @@ def test_release_publication_is_blocked_on_every_v1_qualification_invariant():
     release = _step(publish, "Publish GitHub Release")["run"]
     assert "gh release create" in release
     assert "--verify-tag" in release
+
+
+def test_release_qualification_requires_previous_release_exact_candidate_upgrade():
+    jobs = _workflow()["jobs"]
+    upgrade = jobs["qualify-windows-upgrade"]
+    publish = jobs["sign-publish"]
+
+    assert upgrade["needs"] == "build-windows"
+    assert upgrade["runs-on"] == ["self-hosted", "windows", "x64", "agent-os-gui"]
+
+    download = _step(upgrade, "Download exact immutable installer candidate")
+    assert download["with"]["name"] == "agent-os-release-build-${{ github.sha }}"
+
+    identity = _step(upgrade, "Verify exact candidate identity")["run"]
+    assert "source-build-metadata.json" in identity
+    assert "Get-FileHash -Algorithm SHA256" in identity
+    assert "GITHUB_SHA" in identity
+
+    resolve = _step(upgrade, "Resolve previous supported desktop release")["run"]
+    assert "agent-os-v*" in resolve
+    assert "apps/desktop" in resolve
+
+    install = _step(upgrade, "Install previous release")["run"]
+    update = _step(upgrade, "Upgrade through exact Hermes-Setup.exe candidate")["run"]
+    assert "installer-script+desktop" in install
+    assert "desktop-installer@latest" in update
+    assert "qualification/upgrade-candidate/Hermes-Setup.exe" in update
+
+    verify = _step(upgrade, "Verify upgraded runtime and preserved state")["run"]
+    assert "AGENT_OS_UPGRADE_SENTINEL" in verify
+    assert "rev-parse HEAD" in verify
+    assert "--require-full" in verify
+    assert "--require-production-security" in verify
+    assert "upgrade-metadata.json" in verify
+
+    publish_download = _step(publish, "Download upgrade qualification evidence")
+    assert publish_download["with"]["name"] == "agent-os-upgrade-qualification-${{ github.sha }}"
+
+    publication = _step(publish, "Verify build and qualification identity")["run"]
+    for invariant in (
+        "exact_installer_candidate",
+        "state_preserved",
+        "full_ready",
+        "production_security_ready",
+    ):
+        assert invariant in publication
 
 
 def test_release_qualification_still_requires_runtime_repair_state_and_uninstall_proofs():
