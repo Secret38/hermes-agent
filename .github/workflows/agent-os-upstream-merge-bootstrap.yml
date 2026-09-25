@@ -42,31 +42,31 @@ jobs:
           fi
 
           cat > /tmp/expected-conflicts.txt <<'EOF'
-.github/workflows/ci.yaml
-.github/workflows/installer-tests.yml
-.github/workflows/tests-os.yml
-apps/desktop/e2e/fixtures.ts
-apps/desktop/src/plugins/kanban/api.ts
-apps/desktop/src/plugins/kanban/plugin.tsx
-apps/desktop/src/sdk/index.ts
-apps/shared/src/gateway-contract.openrpc.json
-cli.py
-scripts/install.ps1
-scripts/install.sh
-tests/agent/test_tool_dispatch_helpers.py
-tests/ci/test_classify_changes.py
-tests/tools/test_approval.py
-tests/tools/test_browser_cdp_tool.py
-tests/tools/test_computer_use_capture_routing.py
-tests/tools/test_tirith_security.py
-tools/browser_tool_install.py
-tools/computer_use/cua_backend.py
-tools/computer_use/permissions.py
-tools/computer_use/tool.py
-tools/tirith_security.py
-ui-tui/src/__tests__/appChromeBlockedTimers.test.tsx
-ui-tui/src/__tests__/virtualHistoryOffsetCache.test.ts
-EOF
+          .github/workflows/ci.yaml
+          .github/workflows/installer-tests.yml
+          .github/workflows/tests-os.yml
+          apps/desktop/e2e/fixtures.ts
+          apps/desktop/src/plugins/kanban/api.ts
+          apps/desktop/src/plugins/kanban/plugin.tsx
+          apps/desktop/src/sdk/index.ts
+          apps/shared/src/gateway-contract.openrpc.json
+          cli.py
+          scripts/install.ps1
+          scripts/install.sh
+          tests/agent/test_tool_dispatch_helpers.py
+          tests/ci/test_classify_changes.py
+          tests/tools/test_approval.py
+          tests/tools/test_browser_cdp_tool.py
+          tests/tools/test_computer_use_capture_routing.py
+          tests/tools/test_tirith_security.py
+          tools/browser_tool_install.py
+          tools/computer_use/cua_backend.py
+          tools/computer_use/permissions.py
+          tools/computer_use/tool.py
+          tools/tirith_security.py
+          ui-tui/src/__tests__/appChromeBlockedTimers.test.tsx
+          ui-tui/src/__tests__/virtualHistoryOffsetCache.test.ts
+          EOF
 
           git diff --name-only --diff-filter=U | sort > /tmp/actual-conflicts.txt
           if ! diff -u /tmp/expected-conflicts.txt /tmp/actual-conflicts.txt; then
