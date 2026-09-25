@@ -26,6 +26,8 @@ jobs:
       - name: Probe three-way merge
         shell: bash
         run: |
+          git config user.name "agent-os-upstream-probe"
+          git config user.email "agent-os-upstream-probe@users.noreply.github.com"
           set +e
           git merge --no-commit --no-ff origin/upstream-main-2026-09-25
           merge_status=$?
