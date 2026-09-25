@@ -1,0 +1,49 @@
+name: Agent OS Security Release Gate
+
+on:
+  pull_request:
+    paths:
+      - "agent_os/**"
+      - "tools/approval*.py"
+      - "tools/computer_use/**"
+      - "plugins/agent-os/**"
+      - "tests/agent_os/test_release_security_regressions.py"
+      - "tests/agent_os/test_live_frame_socket.py"
+      - "tests/agent_os/test_hermes_computer_adapter.py"
+      - ".github/workflows/agent-os-security-release-gate.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-os-security-release-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regression:
+    name: P0 security regressions
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # 8.2.0
+        with:
+          version: "0.9.28"
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync --locked --python 3.11 --extra all --extra dev
+
+      - name: Run Agent OS P0 security regression suite
+        run: |
+          uv run --python 3.11 pytest -q             tests/agent_os/test_release_security_regressions.py             tests/agent_os/test_live_frames.py             tests/agent_os/test_live_frame_socket.py             tests/agent_os/test_hermes_computer_adapter.py
