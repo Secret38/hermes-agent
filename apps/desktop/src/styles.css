@@ -3740,3 +3740,30 @@ html[data-hud-window] [data-slot='popover-content'] {
 [data-hud-shell] [data-slot='composer-bounds'] *::-webkit-scrollbar {
   display: none;
 }
+
+
+/* Windows High Contrast / forced-colors: preserve structural boundaries and
+   keyboard focus even when theme tokens, translucency and shadows are replaced
+   by OS system colors. Keep this semantic rather than recreating the theme. */
+@media (forced-colors: active) {
+  :root {
+    --ui-stroke-primary: CanvasText;
+    --ui-stroke-secondary: CanvasText;
+    --ui-stroke-tertiary: CanvasText;
+    --ui-stroke-quaternary: CanvasText;
+  }
+
+  :focus-visible {
+    outline: 2px solid Highlight !important;
+    outline-offset: 2px;
+  }
+
+  [data-slot='dialog-content'],
+  [data-slot='popover-content'],
+  [data-slot='dropdown-menu-content'],
+  [data-slot='composer-dock'],
+  .aos-panel {
+    border-color: CanvasText !important;
+    box-shadow: none !important;
+  }
+}

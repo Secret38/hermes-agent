@@ -30,6 +30,7 @@ const sidebars: SidebarsConfig = {
         'user-guide/cli',
         'user-guide/tui',
         'user-guide/desktop',
+        'user-guide/agent-os',
         'user-guide/bot-mode',
         'user-guide/windows-native',
         'user-guide/windows-wsl-quickstart',
@@ -803,6 +804,7 @@ const sidebars: SidebarsConfig = {
             'developer-guide/state-db-recovery',
             'developer-guide/provider-runtime',
             'developer-guide/programmatic-integration',
+            'developer-guide/agent-os-release',
           ],
         },
         {

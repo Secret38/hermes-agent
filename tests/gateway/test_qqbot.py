@@ -853,8 +853,10 @@ class TestDefaultInteractionDispatch:
 
         resolve_calls = []
 
-        def fake_resolve(session_key, choice, resolve_all=False):
-            resolve_calls.append((session_key, choice, resolve_all))
+        def fake_resolve(session_key, choice, resolve_all=False, **kwargs):
+            resolve_calls.append(
+                (session_key, choice, resolve_all, kwargs.get("actor_user_id"))
+            )
             return 1
 
         # Patch the *module-level* function that _default_interaction_dispatch
@@ -874,7 +876,7 @@ class TestDefaultInteractionDispatch:
         finally:
             tools.approval.resolve_gateway_approval = orig
 
-        assert resolve_calls == [("agent:main:qqbot:dm:u-42", "once", False)]
+        assert resolve_calls == [("agent:main:qqbot:dm:u-42", "once", False, "u-42")]
 
 
     @pytest.mark.asyncio
@@ -993,7 +995,7 @@ class TestProfileNamespaceApprovalAuthz:
         finally:
             tools.approval.resolve_gateway_approval = orig
 
-        assert resolve_calls == [("agent:coder:qqbot:c2c:u-42", "once", False)]
+        assert resolve_calls == [("agent:coder:qqbot:c2c:u-42", "once", False, "u-42")]
 
     @pytest.mark.asyncio
     async def test_group_click_on_named_profile_key_authorizes_session_owner(self):
@@ -1021,7 +1023,7 @@ class TestProfileNamespaceApprovalAuthz:
         finally:
             tools.approval.resolve_gateway_approval = orig
 
-        assert resolve_calls == [("agent:coder:qqbot:group:g-1:owner", "once", False)]
+        assert resolve_calls == [("agent:coder:qqbot:group:g-1:owner", "once", False, "owner")]
 
     @pytest.mark.asyncio
     async def test_named_profile_key_still_rejects_wrong_operator(self):
