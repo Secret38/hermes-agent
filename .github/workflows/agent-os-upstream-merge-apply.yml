@@ -67,7 +67,7 @@ jobs:
             exit 1
           fi
 
-          git diff --cached --check
+          test -z "$(git ls-files -u)"
           git commit -m "chore(agent-os): merge Hermes upstream for release qualification"
           after="$(git rev-parse HEAD)"
 
