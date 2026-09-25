@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -177,3 +178,40 @@ def test_cleanup_removes_ephemeral_frame(monkeypatch):
 
     assert HermesComputerUseExecutor.cleanup(current.task_id) is True
     assert live_runtime_frames.latest(current.task_id) is None
+
+
+def test_executor_binds_live_frame_to_origin_session(monkeypatch):
+    current = action("capture")
+    encoded = base64.b64encode(b"frame").decode("ascii")
+    monkeypatch.setattr(
+        "agent_os.adapters.hermes_computer.AgentOSStore",
+        lambda: SimpleNamespace(
+            get_task=lambda task_id: SimpleNamespace(session_id="origin-session")
+        ),
+    )
+    monkeypatch.setattr(
+        "agent_os.adapters.hermes_computer.handle_computer_use",
+        lambda args, **kwargs: {
+            "_multimodal": True,
+            "content": [
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{encoded}"},
+                }
+            ],
+            "text_summary": "capture",
+            "meta": {"width": 640, "height": 480},
+            "action_result": {"ok": True, "action": "capture"},
+        },
+    )
+    live_runtime_frames.clear()
+
+    result = HermesComputerUseExecutor().execute(current)
+
+    frame = live_runtime_frames.latest(
+        current.task_id,
+        session_id="origin-session",
+    )
+    assert frame is not None
+    assert frame.session_id == "origin-session"
+    assert "image_b64" not in result.actual_state
