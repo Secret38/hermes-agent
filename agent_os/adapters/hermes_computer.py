@@ -15,11 +15,21 @@ from agent_os.contracts import ActionRecord
 from agent_os.execution_context import current_authorized_execution
 from agent_os.kernel import ExecutionResult
 from agent_os.live_frames import live_runtime_frames
+from agent_os.store import AgentOSStore
 from agent_os.verification.gate import VerificationResult, VerificationVerdict
 
 
 class ComputerUseExecutionError(RuntimeError):
     pass
+
+
+def _origin_session_id(task_id: str) -> str:
+    """Resolve durable task ownership without changing CUA backend isolation."""
+    try:
+        task = AgentOSStore().get_task(task_id)
+    except Exception:
+        task = None
+    return str(task.session_id or task_id) if task is not None else task_id
 
 
 def computer_use_available() -> bool:
@@ -61,7 +71,7 @@ class HermesComputerUseExecutor:
         )
         live_runtime_frames.publish_multimodal(
             task_id=action.task_id,
-            session_id=computer_session_id,
+            session_id=_origin_session_id(action.task_id),
             action_id=action.id,
             raw=raw,
         )
