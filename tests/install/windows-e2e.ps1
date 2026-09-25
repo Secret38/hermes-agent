@@ -612,8 +612,15 @@ function Invoke-PhaseInstallGui {
     # git URL redirect to serve.git.
     $setupExe = Join-Path $WorkRoot "Hermes-Setup.exe"
     if (-not (Test-Path -LiteralPath $setupExe)) {
-        Write-Host "  downloading $SetupExeUrl"
-        Invoke-WebRequest -Uri $SetupExeUrl -OutFile $setupExe
+        if (Test-Path -LiteralPath $SetupExeUrl -PathType Leaf) {
+            $candidate = (Resolve-Path -LiteralPath $SetupExeUrl).Path
+            Write-Host "  copying exact local installer candidate $candidate"
+            Copy-Item -LiteralPath $candidate -Destination $setupExe -Force
+        }
+        else {
+            Write-Host "  downloading $SetupExeUrl"
+            Invoke-WebRequest -Uri $SetupExeUrl -OutFile $setupExe
+        }
     }
     Assert-True ((Get-Item $setupExe).Length -gt 1MB) "Hermes-Setup.exe downloaded ($([math]::Round((Get-Item $setupExe).Length / 1MB, 1)) MB)"
 
