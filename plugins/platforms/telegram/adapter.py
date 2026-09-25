@@ -4622,6 +4622,22 @@ class TelegramAdapter(BasePlatformAdapter):
         except (ValueError, IndexError):
             await query.answer(text="Invalid approval data.")
             return
+        # Peek before consuming local state: a different participant in the same group must not
+        # retire the owner's live approval card merely by clicking it.
+        pending_session_key = self._approval_state.get(approval_id)
+        actor_user_id = str(getattr(query.from_user, "id", "") or "")
+        if pending_session_key:
+            from tools.approval import gateway_approval_actor_authorized
+            if not gateway_approval_actor_authorized(
+                pending_session_key, actor_user_id
+            ):
+                logger.warning(
+                    "Rejected Telegram approval click for session %s by non-owner user %s",
+                    pending_session_key, actor_user_id or "<unknown>",
+                )
+                await query.answer(text=_UNAUTHORIZED)
+                return
+
         session_key = await self._claim_callback_state(
             query, cb, self._approval_state, approval_id, _UNAUTHORIZED,
             "This approval has already been resolved.")
@@ -4635,7 +4651,9 @@ class TelegramAdapter(BasePlatformAdapter):
             # the approval wait timed out (count == 0) must NOT claim "Approved" — the command was already
             # denied and will not run (#63501 regression follow-up: 60s waits made stale taps common).
             from tools.approval import resolve_gateway_approval
-            count = resolve_gateway_approval(session_key, choice)
+            count = resolve_gateway_approval(
+                session_key, choice, actor_user_id=actor_user_id
+            )
             logger.info(
                 "Telegram button resolved %d approval(s) for session %s (choice=%s, user=%s)", count, session_key, choice, user_display)
         except Exception as exc:

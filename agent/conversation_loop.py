@@ -1391,9 +1391,15 @@ def _run_phase(fn, agent, state: _LoopState, **extra):
         params = _PHASE_PARAMS[fn] = tuple(p for p in inspect.signature(fn).parameters if p != "agent")
     verdict = fn(agent, **{n: extra[n] if n in extra else getattr(state, n) for n in params})
     latched = _LATCHED_VERDICT_FIELDS.get(getattr(fn, "__name__", ""), ())
+    state_fields = _LoopState.__dataclass_fields__
     for f in fields(verdict):
         if f.name in ("action", "result"):
             continue
+        if f.name not in state_fields:
+            raise RuntimeError(
+                f"Phase {getattr(fn, '__name__', repr(fn))} returned unknown loop-state field "
+                f"{f.name!r}; add it to _LoopState or remove it from the verdict."
+            )
         value = getattr(verdict, f.name)
         if f.name not in latched:
             setattr(state, f.name, value)

@@ -327,6 +327,7 @@ export function findElectron(): string {
  */
 export async function launchDesktop(
   env: Record<string, string>,
+  extraArgs: string[] = [],
 ): Promise<{ app: ElectronApplication; page: Page }> {
   assertDistBuilt()
 
@@ -340,6 +341,7 @@ export async function launchDesktop(
       DESKTOP_ROOT, // `electron .` — the `.` is the desktop package dir
       '--disable-gpu',
       '--no-sandbox',
+      ...extraArgs,
     ],
     env,
     cwd: DESKTOP_ROOT,
@@ -387,6 +389,10 @@ export interface MockBackendOptions {
  */
 export interface MockBackendOptions {
   mockServer?: MockServerOptions
+  /** Chromium/Electron CLI arguments appended after the standard E2E flags. */
+  launchArgs?: string[]
+  /** Optional hook for seeding sandbox state before Electron/backend launch. */
+  prepareSandbox?: (sandbox: Sandbox) => Promise<void> | void
 }
 
 export async function setupMockBackend(options: MockBackendOptions = {}): Promise<MockBackendFixture> {
@@ -403,10 +409,11 @@ export async function setupMockBackend(options: MockBackendOptions = {}): Promis
     options.modelContextLength,
   )
   writeEnvFile(sandbox.hermesHome)
+  await options.prepareSandbox?.(sandbox)
 
   // 3. Build env + launch
   const env = buildAppEnv(sandbox)
-  const { app, page } = await launchDesktop(env)
+  const { app, page } = await launchDesktop(env, options.launchArgs)
 
   return {
     app,

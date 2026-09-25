@@ -22,7 +22,8 @@ from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 from agent_os.dashboard import build_dashboard_snapshot, dashboard_event_sequence
-from agent_os.mission_control import MissionBusyError, MissionRuntimeService
+from agent_os.live_frames import live_runtime_frames
+from agent_os.mission_control import MissionBusyError, MissionPausedError, MissionRuntimeService
 
 router = APIRouter()
 
@@ -179,7 +180,7 @@ async def create_mission(request: MissionCreateRequest):
             workspace_id=request.workspace_id,
             session_id=request.session_id,
         )
-    except MissionBusyError as exc:
+    except (MissionBusyError, MissionPausedError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -191,7 +192,7 @@ async def resume_mission(job_id: str, _request: MissionResumeRequest):
     service = _mission_service()
     try:
         job = service.resume(job_id)
-    except MissionBusyError as exc:
+    except (MissionBusyError, MissionPausedError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -241,5 +242,62 @@ async def events(ws: WebSocket):
                 last_sequence = sequence
                 await ws.send_json({"type": "ledger.changed", "sequence": sequence})
             await asyncio.sleep(0.75)
+    except WebSocketDisconnect:
+        return
+
+
+@router.websocket("/live/{task_id}")
+async def live_runtime_frames_socket(
+    ws: WebSocket,
+    task_id: str,
+    session_id: str | None = None,
+):
+    """Stream the newest in-memory CUA frame for one exact Agent OS task.
+
+    Opening this socket is the opt-in. The endpoint never triggers a capture,
+    never persists pixels, and never replays expired frames.
+    """
+
+    if not _ws_upgrade_authorized(ws):
+        await ws.close(code=4401)
+        return
+
+    task_key = str(task_id).strip()
+    session_key = str(session_id or "").strip()
+    if (
+        not task_key
+        or len(task_key) > 512
+        or not session_key
+        or len(session_key) > 512
+    ):
+        await ws.close(code=4400)
+        return
+
+    await ws.accept()
+    last_token: tuple[str, float] | None = None
+    announced_empty = False
+
+    try:
+        while True:
+            frame = live_runtime_frames.latest(task_key, session_id=session_key)
+            if frame is None:
+                if last_token is not None:
+                    last_token = None
+                    announced_empty = True
+                    await ws.send_json(
+                        {"type": "runtime.frame.expired", "task_id": task_key}
+                    )
+                elif not announced_empty:
+                    announced_empty = True
+                    await ws.send_json(
+                        {"type": "runtime.frame.waiting", "task_id": task_key}
+                    )
+            else:
+                token = (frame.action_id, frame.captured_at)
+                if token != last_token:
+                    last_token = token
+                    announced_empty = False
+                    await ws.send_json(frame.payload())
+            await asyncio.sleep(0.2)
     except WebSocketDisconnect:
         return

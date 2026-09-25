@@ -6,6 +6,7 @@ type Rest = <T>(path: string, opts?: PluginRestOptions) => Promise<T>
 type Socket = (path: string, onMessage: (data: unknown) => void) => () => void
 
 let rest: null | Rest = null
+let openSocket: null | Socket = null
 
 export const AGENT_OS_SNAPSHOT_KEY = ['agent-os', 'mission-control'] as const
 export const AGENT_OS_CONTEXT_KEY = ['agent-os', 'mission-context'] as const
@@ -14,6 +15,7 @@ export const AGENT_OS_APPROVALS_KEY = ['agent-os', 'approvals'] as const
 
 export function bindAgentOSApi(nextRest: Rest, socket: Socket): () => void {
   rest = nextRest
+  openSocket = socket
 
   const close = socket('/events', data => {
     const frame = data as { type?: string } | null
@@ -25,6 +27,7 @@ export function bindAgentOSApi(nextRest: Rest, socket: Socket): () => void {
 
   return () => {
     close()
+    openSocket = null
     rest = null
   }
 }
@@ -84,4 +87,35 @@ export function resolveAgentOSApproval(
         body: { choice }
       })
     : Promise.reject(new Error('Agent OS Mission Control API is not ready'))
+}
+
+
+export type AgentOSLiveFrameMessage =
+  | {
+      type: 'runtime.frame'
+      task_id: string
+      session_id: string
+      action_id: string
+      mime_type: 'image/jpeg' | 'image/png' | 'image/webp'
+      image_b64: string
+      width: number | null
+      height: number | null
+    }
+  | { type: 'runtime.frame.expired' | 'runtime.frame.waiting'; task_id: string }
+
+export function subscribeAgentOSLiveFrame(
+  taskId: string,
+  sessionId: string,
+  onFrame: (frame: AgentOSLiveFrameMessage) => void
+): () => void {
+  const taskKey = taskId.trim()
+  const sessionKey = sessionId.trim()
+  if (!taskKey || !sessionKey || !openSocket) {
+    return () => undefined
+  }
+
+  return openSocket(
+    `/live/${encodeURIComponent(taskKey)}?session_id=${encodeURIComponent(sessionKey)}`,
+    data => onFrame(data as AgentOSLiveFrameMessage)
+  )
 }

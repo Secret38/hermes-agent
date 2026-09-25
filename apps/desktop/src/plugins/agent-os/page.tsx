@@ -1,7 +1,8 @@
+import './agent-os.css'
+
 import { cn, Codicon, host, queryClient, useQuery } from '@hermes/plugin-sdk'
 import { useMemo, useState } from 'react'
 
-import './agent-os.css'
 import {
   AGENT_OS_APPROVALS_KEY,
   AGENT_OS_CONTEXT_KEY,
@@ -9,8 +10,14 @@ import {
   AGENT_OS_SNAPSHOT_KEY,
   fetchAgentOSSnapshot
 } from './api'
+import { useAgentOSAudit } from './audit-data'
 import { ExternalConnectionsSection, SemanticMemorySection } from './context'
 import { MissionControlActions } from './control'
+import { useHermesOperations, useLiveFleet } from './operations-data'
+import { ProjectsView } from './projects'
+import { useComputerUseSecurity, useNetworkSecurity, useTelemetrySecurity } from './security-data'
+import { exactOperationsRoute, exactWorkerRoute } from './selectors'
+import { openHermesSession } from './session-navigation'
 import type {
   AgentOSAction,
   AgentOSAgent,
@@ -18,11 +25,11 @@ import type {
   AgentOSPlan,
   AgentOSPlanStep,
   AgentOSSnapshot,
-  AgentOSTask,
-  AgentOSTopologyNode
+  AgentOSTask
 } from './types'
+import { ExecutionCanvas, RuntimeObservatory, RuntimeTopologyCanvas } from './visual-intelligence'
 
-type MissionTab = 'overview' | 'tasks' | 'memory' | 'connections'
+type MissionTab = 'overview' | 'tasks' | 'operations' | 'projects' | 'fleet' | 'memory' | 'connections' | 'security'
 
 const ACTIVE_TASK_STATES = new Set([
   'CREATED',
@@ -327,7 +334,6 @@ function PlanGraph({ plan }: { plan: AgentOSPlan | null | undefined }) {
                         aria-label={`Inspect ${step.title}`}
                         className="grid size-6 shrink-0 place-items-center rounded text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground"
                         onClick={() => setSelectedStepId(step.id)}
-                        title="Inspect step"
                         type="button"
                       >
                         <Codicon name={stateGlyph(step.state)} size="0.78rem" />
@@ -407,10 +413,10 @@ function PlanGraph({ plan }: { plan: AgentOSPlan | null | undefined }) {
                 {(depsByStep.get(selectedStep.id) ?? []).length ? (
                   (depsByStep.get(selectedStep.id) ?? []).map(id => (
                     <button
+                      aria-label={titleById.get(id) ?? id}
                       className="max-w-full truncate rounded border border-(--ui-stroke-tertiary) px-1.5 py-1 text-[0.58rem] text-(--ui-text-secondary) hover:bg-(--ui-control-hover-background)"
                       key={id}
                       onClick={() => setSelectedStepId(id)}
-                      title={titleById.get(id) ?? id}
                       type="button"
                     >
                       {titleById.get(id) ?? compactId(id)}
@@ -455,9 +461,12 @@ function PlanGraph({ plan }: { plan: AgentOSPlan | null | undefined }) {
 type TimelineFilter = 'all' | 'actions' | 'agents' | 'plan' | 'safety' | 'system'
 
 function eventGroup(type: string): Exclude<TimelineFilter, 'all'> {
-  if (type.startsWith('action.')) return 'actions'
-  if (type.startsWith('agent.')) return 'agents'
-  if (type.startsWith('plan')) return 'plan'
+  if (type.startsWith('action.')) {return 'actions'}
+
+  if (type.startsWith('agent.')) {return 'agents'}
+
+  if (type.startsWith('plan')) {return 'plan'}
+
   if (
     type.startsWith('verification.') ||
     type.startsWith('recovery.') ||
@@ -472,14 +481,21 @@ function eventGroup(type: string): Exclude<TimelineFilter, 'all'> {
 }
 
 function eventIcon(type: string): string {
-  if (type.startsWith('agent.')) return 'hubot'
-  if (type.startsWith('plan')) return 'list-tree'
-  if (type.startsWith('action.')) return 'tools'
-  if (type.startsWith('verification.')) return 'verified'
-  if (type.startsWith('recovery.')) return 'debug-restart'
-  if (type.startsWith('approval.') || type.startsWith('risk.')) return 'shield'
-  if (type.startsWith('checkpoint.')) return 'save'
-  if (type.startsWith('artifact.')) return 'files'
+  if (type.startsWith('agent.')) {return 'hubot'}
+
+  if (type.startsWith('plan')) {return 'list-tree'}
+
+  if (type.startsWith('action.')) {return 'tools'}
+
+  if (type.startsWith('verification.')) {return 'verified'}
+
+  if (type.startsWith('recovery.')) {return 'debug-restart'}
+
+  if (type.startsWith('approval.') || type.startsWith('risk.')) {return 'shield'}
+
+  if (type.startsWith('checkpoint.')) {return 'save'}
+
+  if (type.startsWith('artifact.')) {return 'files'}
 
   return 'circle-large-outline'
 }
@@ -533,6 +549,7 @@ function Timeline({ events }: { events: AgentOSEvent[] }) {
       <div className="mb-3 flex flex-wrap gap-1">
         {filters.map(item => (
           <button
+            aria-label={item.label}
             className={cn(
               'rounded border px-1.5 py-1 text-[0.56rem] font-medium transition-colors',
               filter === item.id
@@ -541,7 +558,6 @@ function Timeline({ events }: { events: AgentOSEvent[] }) {
             )}
             key={item.id}
             onClick={() => setFilter(item.id)}
-            title={item.label}
             type="button"
           >
             {item.id === 'all' ? 'All' : item.label}
@@ -560,7 +576,6 @@ function Timeline({ events }: { events: AgentOSEvent[] }) {
               aria-label={`Inspect ${humanize(event.type)} event`}
               className="aos-timeline-glyph hover:border-[color-mix(in_srgb,var(--dt-primary)_40%,var(--ui-stroke-tertiary))] hover:text-foreground"
               onClick={() => setSelectedEventId(event.id)}
-              title="Inspect event"
               type="button"
             >
               <Codicon name={eventIcon(event.type)} size="0.7rem" />
@@ -692,9 +707,7 @@ function TaskList({
           onClick={() => onSelect(task.id)}
           type="button"
         >
-          <div className="flex w-full min-w-0 items-start justify-between gap-3">
-            <span className="line-clamp-2 min-w-0 text-xs font-medium leading-relaxed text-foreground">{task.goal}</span>
-            <StateBadge compact state={task.state} />
+          <div className="flex w-full min-w-0 items-start justify-between gap-3">            <span className="line-clamp-2 min-w-0 text-xs font-medium leading-relaxed text-foreground">{task.goal}</span>            <StateBadge compact state={task.state} />
           </div>
           <div className="mt-1.5 flex w-full min-w-0 items-center gap-2 text-[0.6rem] text-(--ui-text-tertiary)">
             <span className="truncate font-mono">{compactId(task.id)}</span>
@@ -870,7 +883,6 @@ function ActionControls({ actions }: { actions: AgentOSAction[] }) {
                   aria-label={`Inspect ${action.tool} ${action.operation}`}
                   className="grid size-6 place-items-center rounded text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground"
                   onClick={() => setSelectedActionId(action.id)}
-                  title="Inspect action"
                   type="button"
                 >
                   <Codicon name="search" size="0.68rem" />
@@ -1082,9 +1094,9 @@ function TaskHeader({ task }: { task: AgentOSTask }) {
         <span>updated {formatDateTime(task.updated_at)}</span>
         {task.session_id && (
           <button
+            aria-label={`Open originating session ${task.session_id}`}
             className="inline-flex items-center gap-1 rounded border border-(--ui-stroke-tertiary) px-1.5 py-0.5 text-(--ui-text-secondary) hover:bg-(--ui-control-hover-background) hover:text-foreground"
             onClick={() => host.navigate(`/${encodeURIComponent(task.session_id!)}`)}
-            title={task.session_id}
             type="button"
           >
             <Codicon name="comment-discussion" size="0.62rem" />
@@ -1105,6 +1117,8 @@ function TaskDetail({ task }: { task: AgentOSTask }) {
 
       <AttentionQueue task={task} />
       <SafetyStrip task={task} />
+      <ExecutionCanvas task={task} />
+      <RuntimeObservatory task={task} />
 
       <div className="grid min-h-0 gap-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)]">
         <section className="aos-panel min-w-0 overflow-hidden">
@@ -1278,6 +1292,8 @@ function Overview({
 
       {selected && (
         <>
+          <ExecutionCanvas task={selected} />
+          <RuntimeObservatory task={selected} />
           <ProcessMap task={selected} />
           <AttentionQueue task={selected} />
           <SafetyStrip task={selected} />
@@ -1299,6 +1315,7 @@ function Overview({
 
 function MemoryTopology({ snapshot }: { snapshot: AgentOSSnapshot }) {
   const memory = snapshot.memory
+
   const nodes = [
     {
       id: 'workspaces',
@@ -1393,9 +1410,7 @@ function MemoryView({ snapshot }: { snapshot: AgentOSSnapshot }) {
         <MetricCard icon="comment-discussion" label="Sessions" value={memory.sessions.length} />
         <MetricCard icon="save" label="Checkpoints" value={memory.checkpoints.length} />
         <MetricCard icon="git-merge" label="Relations" value={memory.relations.length} />
-      </div>
-
-      <div className="grid gap-3 xl:grid-cols-[1fr_1fr_1fr]">
+      </div>      <div className="grid gap-3 xl:grid-cols-[1fr_1fr_1fr]">
         <section className="aos-panel overflow-hidden">
           <SectionHeader icon="folder" meta={`${memory.workspaces.length}`} title="Workspace memory" />
           <div className="aos-memory-column aos-scrollbar max-h-[30rem] space-y-1 overflow-y-auto p-3">
@@ -1480,30 +1495,7 @@ function MemoryView({ snapshot }: { snapshot: AgentOSSnapshot }) {
   )
 }
 
-function TopologyNode({ node }: { node: AgentOSTopologyNode }) {
-  return (
-    <div className="aos-topology-node" data-status={node.status}>
-      <div className="flex min-w-0 items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="aos-kicker">{humanize(node.kind)}</div>
-          <div className="mt-1 truncate text-xs font-semibold text-foreground">{node.label}</div>
-        </div>
-        <StateBadge compact state={node.status} />
-      </div>
-      {node.detail && <div className="mt-2 line-clamp-3 text-[0.62rem] leading-relaxed text-(--ui-text-tertiary)">{node.detail}</div>}
-      {node.remediation && (
-        <div className="mt-2 border-t border-(--ui-stroke-tertiary) pt-2 text-[0.6rem] leading-relaxed text-(--ui-text-tertiary)">
-          {node.remediation}
-        </div>
-      )}
-    </div>
-  )
-}
-
 function ConnectionsView({ snapshot }: { snapshot: AgentOSSnapshot }) {
-  const core = snapshot.topology.nodes.find(node => node.id === 'agent-os')
-  const children = snapshot.topology.nodes.filter(node => node.id !== 'agent-os')
-
   return (
     <div className="space-y-3">
       <div className="aos-panel p-4">
@@ -1528,25 +1520,7 @@ function ConnectionsView({ snapshot }: { snapshot: AgentOSSnapshot }) {
 
       <section className="aos-panel overflow-hidden">
         <SectionHeader icon="type-hierarchy" meta={`${snapshot.topology.edges.length} links`} title="Execution topology" />
-        <div className="aos-topology p-5">
-          {core && (
-            <div className="aos-topology-core rounded-lg border border-[color-mix(in_srgb,var(--dt-primary)_35%,var(--ui-stroke-tertiary))] bg-[color-mix(in_srgb,var(--dt-primary)_7%,var(--ui-bg-secondary))] p-3 text-center">
-              <div className="mx-auto mb-2 grid size-8 place-items-center rounded-full border border-(--ui-stroke-tertiary) bg-(--ui-bg-primary)">
-                <Codicon name="circuit-board" size="0.95rem" />
-              </div>
-              <div className="text-sm font-semibold text-foreground">{core.label}</div>
-              <div className="mt-1 flex justify-center">
-                <StateBadge compact state={core.status} />
-              </div>
-            </div>
-          )}
-
-          <div className="aos-topology-grid">
-            {children.map(node => (
-              <TopologyNode key={node.id} node={node} />
-            ))}
-          </div>
-        </div>
+        <RuntimeTopologyCanvas edges={snapshot.topology.edges} nodes={snapshot.topology.nodes} />
       </section>
 
       <ExternalConnectionsSection />
@@ -1567,6 +1541,363 @@ function ConnectionsView({ snapshot }: { snapshot: AgentOSSnapshot }) {
               </div>
             </div>
           ))}
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function OperationsView() {
+  const operations = useHermesOperations()
+  const audit = useAgentOSAudit()
+  const routes = operations.routes.data ?? []
+
+  const rows = operations.snapshots.flatMap(snapshot =>
+    snapshot.tasks.map(task => ({ snapshot, task }))
+  )
+
+  const running = rows.filter(row => row.task.status === 'running').length
+
+  const attention = rows.filter(
+    row => row.task.status === 'blocked' || row.task.status === 'review' || Boolean(row.task.warning?.count)
+  ).length
+
+  return (
+    <div className="space-y-3">
+      <div className="aos-summary-grid grid grid-cols-2 gap-2 md:grid-cols-4">
+        <MetricCard icon="plug" label="Sources" value={operations.sources.length} />
+        <MetricCard icon="checklist" label="Operational tasks" value={rows.length} />
+        <MetricCard icon="pulse" label="Running" value={running} />
+        <MetricCard icon="bell" label="Needs attention" value={attention} />
+      </div>
+
+      <section className="aos-panel overflow-hidden">
+        <SectionHeader
+          icon="server-process"
+          meta={operations.query.isFetching ? 'refreshing' : `${rows.length} visible`}
+          title="Operational work"
+        />
+        {operations.query.error ? (
+          <div className="p-4 text-xs text-destructive">
+            {operations.query.error instanceof Error ? operations.query.error.message : String(operations.query.error)}
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="grid min-h-48 place-items-center p-6 text-center text-xs text-(--ui-text-tertiary)">
+            No external operational tasks are currently published.
+          </div>
+        ) : (
+          <div className="aos-scrollbar max-h-[38rem] overflow-y-auto p-2.5">
+            <div className="space-y-1.5">
+              {rows.map(({ snapshot, task }) => {
+                const source = operations.sources.find(item => item.id === snapshot.sourceId)
+                const workerRoute = exactWorkerRoute(task, snapshot, routes)
+                const originRoute = exactOperationsRoute(snapshot.connectionId, snapshot.profile, routes)
+
+                return (
+                  <div
+                    className="rounded-md border border-(--ui-stroke-tertiary) bg-(--ui-bg-secondary) p-2.5"
+                    key={`${snapshot.sourceId}:${snapshot.scopeKey ?? ''}:${task.id}`}
+                  >
+                    <div className="flex min-w-0 items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="aos-kicker">{snapshot.sourceLabel}</span>
+                          {snapshot.scopeLabel && (
+                            <span className="truncate text-[0.56rem] text-(--ui-text-quaternary)">
+                              {snapshot.scopeLabel}
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-1 truncate text-xs font-medium text-foreground" title={task.title}>
+                          {task.title}
+                        </div>
+                        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[0.58rem] text-(--ui-text-tertiary)">
+                          {task.assignee && <span>assignee {task.assignee}</span>}
+                          {task.projectName && <span>project {task.projectName}</span>}
+                          {task.runId != null && <span>run {task.runId}</span>}
+                          {task.warning?.count ? <span>{task.warning.count} diagnostic(s)</span> : null}
+                        </div>
+                      </div>
+                      <StateBadge compact state={task.status} />
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap justify-end gap-1.5">
+                      {source?.openTask && (
+                        <button
+                          className="rounded border border-(--ui-stroke-tertiary) px-2 py-1 text-[0.58rem] text-(--ui-text-secondary) hover:bg-(--ui-control-hover-background)"
+                          onClick={() => source.openTask?.(task.id)}
+                          type="button"
+                        >
+                          Open source
+                        </button>
+                      )}
+                      {task.originSessionId && originRoute && (
+                        <button
+                          className="rounded border border-(--ui-stroke-tertiary) px-2 py-1 text-[0.58rem] text-(--ui-text-secondary) hover:bg-(--ui-control-hover-background)"
+                          onClick={() => openHermesSession(task.originSessionId!, originRoute)}
+                          type="button"
+                        >
+                          Origin
+                        </button>
+                      )}
+                      {task.workerSessionId && workerRoute && (
+                        <button
+                          aria-label="Open the exact worker session bound to this run"
+                          className="rounded border border-[color-mix(in_srgb,var(--dt-primary)_40%,var(--ui-stroke-tertiary))] px-2 py-1 text-[0.58rem] font-medium text-foreground hover:bg-(--ui-control-hover-background)"
+                          onClick={() => openHermesSession(task.workerSessionId!, workerRoute)}
+                          type="button"
+                        >
+                          Worker
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+      </section>
+
+      <section className="aos-panel overflow-hidden">
+        <SectionHeader
+          icon="history"
+          meta={audit.data ? `${audit.data.events.length} recent` : undefined}
+          title="Operator audit"
+        />
+        {audit.isLoading ? (
+          <div className="grid min-h-32 place-items-center text-xs text-(--ui-text-tertiary)">
+            Reading metadata-only audit history…
+          </div>
+        ) : audit.error ? (
+          <div className="p-4 text-xs text-destructive">
+            {audit.error instanceof Error ? audit.error.message : String(audit.error)}
+          </div>
+        ) : !audit.data?.events.length ? (
+          <div className="grid min-h-32 place-items-center text-xs text-(--ui-text-tertiary)">
+            No durable operator events recorded yet.
+          </div>
+        ) : (
+          <div className="aos-scrollbar max-h-[24rem] overflow-y-auto p-2.5">
+            <div className="space-y-1">
+              {audit.data.events.map(event => (
+                <div
+                  className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 rounded border border-(--ui-stroke-tertiary) bg-(--ui-bg-secondary) px-2.5 py-2"
+                  key={event.id}
+                >
+                  <div className="min-w-0">
+                    <div className="truncate text-[0.66rem] font-medium text-foreground">{humanize(event.event)}</div>
+                    <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-1 text-[0.56rem] text-(--ui-text-tertiary)">
+                      <span>{event.category}</span>
+                      {event.subject && <span>{event.subject}</span>}
+                      {event.outcome && <span>{event.outcome}</span>}
+                      {event.task_id && <span>task {compactId(event.task_id)}</span>}
+                      {event.run_id != null && <span>run {event.run_id}</span>}
+                      {event.project_id && <span>project {compactId(event.project_id)}</span>}
+                    </div>
+                  </div>
+                  <span className="shrink-0 text-[0.56rem] tabular-nums text-(--ui-text-quaternary)">
+                    {formatDateTime(new Date(event.created_at * 1000).toISOString())}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="border-t border-(--ui-stroke-tertiary) px-3 py-2 text-[0.56rem] leading-relaxed text-(--ui-text-quaternary)">
+          Metadata only · no prompt text, command text, secrets, verification codes, URLs, headers or tool output are stored.
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function FleetView() {
+  const fleet = useLiveFleet()
+  const sessions = fleet.data.sessions
+  const subagents = sessions.reduce((total, session) => total + session.subagents.length, 0)
+  const active = sessions.filter(session => ['working', 'waiting', 'starting'].includes(session.status)).length
+
+  return (
+    <div className="space-y-3">
+      <div className="aos-summary-grid grid grid-cols-2 gap-2 md:grid-cols-4">
+        <MetricCard icon="comment-discussion" label="Live sessions" value={sessions.length} />
+        <MetricCard icon="pulse" label="Active sessions" value={active} />
+        <MetricCard icon="hubot" label="Subagents" value={subagents} />
+        <MetricCard
+          icon="history"
+          label="Snapshot"
+          value={fleet.updatedAt ? formatTime(new Date(fleet.updatedAt).toISOString()) : '—'}
+        />
+      </div>
+
+      <section className="aos-panel overflow-hidden">
+        <SectionHeader icon="type-hierarchy" meta={`${sessions.length} gateway session(s)`} title="Live fleet" />
+        {sessions.length === 0 ? (
+          <div className="grid min-h-48 place-items-center p-6 text-center text-xs text-(--ui-text-tertiary)">
+            No live sessions are currently reported by the active gateway scope.
+          </div>
+        ) : (
+          <div className="aos-scrollbar max-h-[40rem] space-y-2 overflow-y-auto p-3">
+            {sessions.map(session => (
+              <div
+                className="rounded-md border border-(--ui-stroke-tertiary) bg-(--ui-bg-secondary) p-2.5"
+                key={session.id}
+              >
+                <div className="flex min-w-0 items-start justify-between gap-3">
+                  <button
+                    aria-label="Open Hermes session"
+                    className="min-w-0 flex-1 text-left"
+                    onClick={() => openHermesSession(session.id)}
+                    type="button"
+                  >
+                    <div className="truncate text-xs font-medium text-foreground">
+                      {session.title || session.preview || session.session_key}
+                    </div>
+                    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[0.58rem] text-(--ui-text-tertiary)">
+                      {session.model && <span>{session.model}</span>}
+                      <span>{session.message_count} messages</span>
+                      <span>{session.subagents.length} subagent(s)</span>
+                    </div>
+                  </button>
+                  <StateBadge compact state={session.status} />
+                </div>
+
+                {session.subagents.length > 0 && (
+                  <div className="mt-2 grid gap-1.5 border-t border-(--ui-stroke-tertiary) pt-2 md:grid-cols-2">
+                    {session.subagents.map(agent => (
+                      <div
+                        className="rounded border border-(--ui-stroke-tertiary) bg-(--ui-bg-primary) p-2"
+                        key={agent.subagent_id}
+                      >
+                        <div className="flex min-w-0 items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="truncate text-[0.65rem] font-medium text-foreground">
+                              {agent.goal || agent.subagent_id}
+                            </div>
+                            <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-[0.55rem] text-(--ui-text-tertiary)">
+                              {agent.model && <span>{agent.model}</span>}
+                              {agent.last_tool && <span>tool {agent.last_tool}</span>}
+                              {agent.tool_count != null && <span>{agent.tool_count} calls</span>}
+                            </div>
+                          </div>
+                          <StateBadge compact state={agent.status || 'ACTIVE'} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
+  )
+}
+
+function SecurityView() {
+  const computerUse = useComputerUseSecurity()
+  const telemetry = useTelemetrySecurity()
+  const network = useNetworkSecurity()
+
+  const networkRows = network.data
+    ? [
+        ['Model provider', network.data.model_provider.class, network.data.model_provider.provider],
+        ['MCP', network.data.mcp.enabled ? 'mixed' : 'disabled', `${network.data.mcp.enabled}/${network.data.mcp.configured} enabled`],
+        ['Shared metrics', network.data.telemetry.class, network.data.telemetry.transmission_enabled ? 'transmitting' : 'not transmitting'],
+        ['Browser', network.data.browser.class, 'user-directed destinations'],
+        ['Computer use', network.data.computer_use.class, 'controlled apps may have their own egress'],
+        ['Messaging', network.data.messaging.class, 'no narrow runtime authority'],
+        ['Updates', network.data.updates.class, network.data.updates.mode]
+      ]
+    : []
+
+  return (
+    <div className="space-y-3">
+      <div className="aos-panel p-4">
+        <div className="aos-kicker">Security & privacy</div>
+        <div className="mt-1.5 text-lg font-semibold tracking-tight text-foreground">Execution boundary</div>
+        <p className="mt-2 max-w-4xl text-xs leading-relaxed text-(--ui-text-tertiary)">
+          This surface reports sanitized runtime/config authorities only. Unknown means Hermes cannot prove the boundary;
+          it does not mean offline. Raw endpoints, secrets, headers, commands and prompt content are intentionally absent.
+        </p>
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        <section className="aos-panel overflow-hidden">
+          <SectionHeader icon="shield" title="Computer Use" />
+          <div className="grid gap-2 p-3 sm:grid-cols-2">
+            <MetricCard
+              icon="lock"
+              label="Permission mode"
+              value={computerUse.data?.permission_mode?.toUpperCase() ?? (computerUse.isLoading ? '…' : 'UNKNOWN')}
+            />
+            <MetricCard
+              icon="broadcast"
+              label="Driver telemetry"
+              value={computerUse.data ? (computerUse.data.telemetry_enabled ? 'ENABLED' : 'DISABLED') : 'UNKNOWN'}
+            />
+          </div>
+          {computerUse.data && (
+            <div className="border-t border-(--ui-stroke-tertiary) p-3 text-[0.62rem] leading-relaxed text-(--ui-text-tertiary)">
+              Capability manifest · {computerUse.data.manifest.configured ? 'configured' : 'not configured'}
+              {computerUse.data.manifest.configured
+                ? ` · ${computerUse.data.manifest.readable ? 'readable' : 'unreadable'} · v${computerUse.data.manifest.version ?? 'unknown'}`
+                : ''}
+              {computerUse.data.manifest.required ? ' · required by bounded mode' : ''}
+            </div>
+          )}
+          {computerUse.error && <div className="p-3 text-xs text-destructive">{String(computerUse.error)}</div>}
+        </section>
+
+        <section className="aos-panel overflow-hidden">
+          <SectionHeader icon="radio-tower" title="Shared metrics" />
+          <div className="grid gap-2 p-3 sm:grid-cols-2">
+            <MetricCard
+              icon="database"
+              label="Collection"
+              value={telemetry.data ? (telemetry.data.shared_metrics.collection_enabled ? 'ENABLED' : 'DISABLED') : 'UNKNOWN'}
+            />
+            <MetricCard
+              icon="cloud-upload"
+              label="Transmission"
+              value={telemetry.data ? (telemetry.data.shared_metrics.transmission_enabled ? 'ENABLED' : 'DISABLED') : 'UNKNOWN'}
+            />
+          </div>
+          {telemetry.data && (
+            <div className="border-t border-(--ui-stroke-tertiary) p-3 text-[0.62rem] text-(--ui-text-tertiary)">
+              Destination class · {humanize(telemetry.data.shared_metrics.destination)}
+              {telemetry.data.shared_metrics.transmission_requested && !telemetry.data.shared_metrics.transmission_enabled
+                ? ' · transmission requested but not effective'
+                : ''}
+            </div>
+          )}
+          {telemetry.error && <div className="p-3 text-xs text-destructive">{String(telemetry.error)}</div>}
+        </section>
+      </div>
+
+      <section className="aos-panel overflow-hidden">
+        <SectionHeader icon="globe" meta={network.data?.coverage === 'partial' ? 'PARTIAL COVERAGE' : undefined} title="Outbound network inventory" />
+        {network.isLoading ? (
+          <div className="grid min-h-32 place-items-center text-xs text-(--ui-text-tertiary)">Reading sanitized network posture…</div>
+        ) : network.error ? (
+          <div className="p-4 text-xs text-destructive">{String(network.error)}</div>
+        ) : (
+          <div className="grid gap-1 p-3 md:grid-cols-2">
+            {networkRows.map(([label, state, detail]) => (
+              <div className="flex min-w-0 items-center gap-3 rounded border border-(--ui-stroke-tertiary) bg-(--ui-bg-secondary) p-2.5" key={label}>
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-medium text-foreground">{label}</div>
+                  <div className="mt-0.5 truncate text-[0.6rem] text-(--ui-text-tertiary)">{detail}</div>
+                </div>
+                <StateBadge compact state={String(state).toUpperCase()} />
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="border-t border-(--ui-stroke-tertiary) px-3 py-2 text-[0.56rem] leading-relaxed text-(--ui-text-quaternary)">
+          Classification only · no live network probe is performed. Browser destinations and app-driven Computer Use egress remain unknown by design.
         </div>
       </section>
     </div>
@@ -1650,13 +1981,17 @@ export function AgentOSMissionControl() {
   const tabs: Array<{ id: MissionTab; label: string; icon: string }> = [
     { id: 'overview', label: 'Mission Control', icon: 'dashboard' },
     { id: 'tasks', label: 'Tasks', icon: 'checklist' },
+    { id: 'operations', label: 'Operations', icon: 'server-process' },
+    { id: 'projects', label: 'Projects', icon: 'project' },
+    { id: 'fleet', label: 'Fleet', icon: 'hubot' },
     { id: 'memory', label: 'Memory', icon: 'database' },
-    { id: 'connections', label: 'Connections', icon: 'type-hierarchy' }
+    { id: 'connections', label: 'Connections', icon: 'type-hierarchy' },
+    { id: 'security', label: 'Security', icon: 'shield' }
   ]
 
   return (
     <section className="agent-os-page flex min-h-0 flex-col">
-      <header className="shrink-0 border-b border-(--ui-stroke-tertiary) bg-[color-mix(in_srgb,var(--ui-bg-primary)_92%,transparent)] px-4 pb-3 pt-4 backdrop-blur">
+      <header className="aos-mission-header shrink-0 border-b border-(--ui-stroke-tertiary) bg-[color-mix(in_srgb,var(--ui-bg-primary)_92%,transparent)] px-4 pb-3 pt-4 backdrop-blur">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -1690,7 +2025,6 @@ export function AgentOSMissionControl() {
                 void queryClient.invalidateQueries({ queryKey: AGENT_OS_MISSIONS_KEY })
                 void queryClient.invalidateQueries({ queryKey: AGENT_OS_APPROVALS_KEY })
               }}
-              title="Refresh Agent OS state, memory and connections"
               type="button"
             >
               <Codicon className={cn(isFetching && 'animate-spin')} name="refresh" size="0.8rem" />
@@ -1699,11 +2033,12 @@ export function AgentOSMissionControl() {
         </div>
 
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-          <nav className="flex min-w-0 gap-0.5 rounded-md border border-(--ui-stroke-tertiary) bg-(--ui-bg-secondary) p-0.5">
+          <nav aria-label="Agent OS sections" className="aos-primary-nav aos-scrollbar flex min-w-0 max-w-full gap-0.5 overflow-x-auto rounded-md border border-(--ui-stroke-tertiary) bg-(--ui-bg-secondary) p-0.5">
             {tabs.map(item => (
               <button
+                aria-pressed={tab === item.id}
                 className={cn(
-                  'inline-flex h-7 items-center gap-1.5 rounded px-2.5 text-[0.68rem] font-medium text-(--ui-text-tertiary) transition-colors',
+                  'inline-flex h-7 shrink-0 items-center gap-1.5 rounded px-2.5 text-[0.68rem] font-medium text-(--ui-text-tertiary) transition-colors',
                   tab === item.id && 'bg-(--ui-control-active-background) text-foreground'
                 )}
                 key={item.id}
@@ -1720,6 +2055,7 @@ export function AgentOSMissionControl() {
             <div className="relative w-64 max-w-full">
               <Codicon className="absolute left-2 top-1/2 -translate-y-1/2 text-(--ui-text-tertiary)" name="search" size="0.7rem" />
               <input
+                aria-label="Filter Agent OS tasks"
                 className="h-7 w-full rounded-md border border-(--ui-stroke-tertiary) bg-(--ui-bg-secondary) pl-7 pr-2 text-[0.68rem] text-foreground outline-none placeholder:text-(--ui-text-quaternary) focus:border-[color-mix(in_srgb,var(--dt-primary)_45%,var(--ui-stroke-tertiary))]"
                 onChange={event => setQuery(event.target.value)}
                 placeholder="Filter tasks, states, workspaces…"
@@ -1737,8 +2073,7 @@ export function AgentOSMissionControl() {
               <Codicon className="mx-auto text-destructive" name="error" size="1.6rem" />
               <div className="mt-3 text-sm font-semibold text-foreground">Mission Control API unavailable</div>
               <p className="mt-1.5 text-xs leading-relaxed text-(--ui-text-tertiary)">
-                {error instanceof Error ? error.message : String(error)}
-              </p>
+                {error instanceof Error ? error.message : String(error)}              </p>
               <button
                 className="mt-4 rounded-md border border-(--ui-stroke-tertiary) bg-(--ui-bg-secondary) px-3 py-1.5 text-xs font-medium text-foreground hover:bg-(--ui-control-hover-background)"
                 onClick={() => void refetch()}
@@ -1789,8 +2124,12 @@ export function AgentOSMissionControl() {
                 snapshot={snapshot}
               />
             )}
+            {tab === 'operations' && <OperationsView />}
+            {tab === 'projects' && <ProjectsView />}
+            {tab === 'fleet' && <FleetView />}
             {tab === 'memory' && <MemoryView snapshot={snapshot} />}
             {tab === 'connections' && <ConnectionsView snapshot={snapshot} />}
+            {tab === 'security' && <SecurityView />}
           </>
         )}
       </div>
@@ -1822,10 +2161,10 @@ export function AgentOSStatusChip() {
 
   return (
     <button
+      aria-label={`Agent OS · ${data.summary.active_tasks} active tasks · ${data.summary.active_agents} active agents`}
       className="aos-state inline-flex h-full items-center gap-1.5 rounded-none px-1.5 text-[0.6875rem] text-(--ui-text-tertiary) transition-colors hover:bg-(--chrome-action-hover) hover:text-foreground"
       data-state={state}
       onClick={() => host.navigate('/agent-os')}
-      title={`Agent OS · ${data.summary.active_tasks} active tasks · ${data.summary.active_agents} active agents`}
       type="button"
     >
       <span className="aos-state-dot" />

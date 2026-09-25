@@ -457,6 +457,37 @@ def test_nested_unflagged_binary_path_passes_through(cdp_server):
 # ---------------------------------------------------------------------------
 
 
+def test_cdp_send_is_bounded_by_overall_timeout(monkeypatch):
+    class SlowSocket:
+        async def send(self, _payload):
+            await asyncio.sleep(1.0)
+
+        async def recv(self):
+            return json.dumps({"id": 1, "result": {}})
+
+    class Connection:
+        async def __aenter__(self):
+            return SlowSocket()
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(browser_cdp_tool.websockets, "connect", lambda *args, **kwargs: Connection())
+
+    started = time.monotonic()
+    with pytest.raises(TimeoutError):
+        asyncio.run(
+            browser_cdp_tool._cdp_call(
+                "ws://127.0.0.1:9222/devtools/browser/mock",
+                "Target.getTargets",
+                {},
+                None,
+                0.05,
+            )
+        )
+    assert time.monotonic() - started < 0.5
+
+
 # ---------------------------------------------------------------------------
 # Timeout clamping
 # ---------------------------------------------------------------------------

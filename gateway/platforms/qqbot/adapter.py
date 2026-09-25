@@ -703,7 +703,11 @@ class QQAdapter(OwnAccessPolicyMixin, BasePlatformAdapter):
                 return
             try:
                 from tools.approval import resolve_gateway_approval  # lazy: keep adapter light
-                count = resolve_gateway_approval(session_key, choice)
+                count = resolve_gateway_approval(
+                    session_key,
+                    choice,
+                    actor_user_id=str(event.operator_openid or ""),
+                )
                 logger.info(
                     "[%s] Button resolved %d approval(s) for session %s (choice=%s, operator=%s)",
                     self._log_tag, count, session_key, choice, event.operator_openid)

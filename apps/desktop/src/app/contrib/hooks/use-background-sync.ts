@@ -7,6 +7,12 @@ import { preserveLocalAssistantErrors, sealOpenToolParts, toChatMessages } from 
 import { createClientSessionState } from '@/lib/chat-runtime'
 import { sessionMessagesSignature } from '@/lib/session-signatures'
 import { $sidebarShowArchived } from '@/store/layout'
+import {
+  clearLiveSessionSnapshot,
+  liveSessionScopeKey,
+  type LiveSessionStatusResponse,
+  publishLiveSessionSnapshot
+} from '@/store/live-sessions'
 import { $changeEventsAvailable, $cronChangeTick, $sessionsChangeTick } from '@/store/live-sync'
 import { $onBattery, batteryPollInterval } from '@/store/power'
 import { refreshActiveProfile } from '@/store/profile'
@@ -341,22 +347,10 @@ const SESSIONS_LIST_TICK_GAP_MS = 10_000
 // list reconciliation.
 const TYPING_BURST_QUIET_MS = 1_500
 
-interface LiveSessionStatusItem {
-  id?: string
-  last_active?: number
-  session_key?: string
-  status?: 'idle' | 'starting' | 'waiting' | 'working'
-}
-
-interface LiveSessionStatusResponse {
-  sessions?: LiveSessionStatusItem[]
-}
-
-// Runtime ids this poll has seen live, per gateway profile. A profile only
-// ever reaps what its OWN snapshot previously reported: background profiles are
-// served by different gateways and never appear in this profile's active_list,
-// so an unscoped reap would dark out every other profile's running rows.
-const liveRuntimeIdsByProfile = new Map<string, Set<string>>()
+// Runtime ids this poll has seen live, per exact gateway connection+profile
+// scope. Two registered connections may both expose a profile named "default";
+// a profile-only key would let one socket reap the other's live runtimes.
+const liveRuntimeIdsByScope = new Map<string, Set<string>>()
 
 // Renderer-wide keyboard warmth, tracked at module scope like the live-runtime
 // bookkeeping above: any keydown anywhere in the window marks activity, and a
@@ -400,7 +394,7 @@ export function resetTypingActivityTracking(): void {
 export function rehydrateLiveSessionStatuses(
   response: LiveSessionStatusResponse,
   nowMs = Date.now(),
-  profileKey = 'default',
+  scopeKey = 'default',
   stateAtRequest = $sessionStates.get()
 ): void {
   const seen = new Set<string>()
@@ -480,7 +474,7 @@ export function rehydrateLiveSessionStatuses(
   // path so the busy→idle transition fires — that edge is what clears the
   // spinner AND marks the row unread ("your turn"). Only ids this profile
   // previously saw are eligible, so another profile's live rows are untouched.
-  const previouslyLive = liveRuntimeIdsByProfile.get(profileKey)
+  const previouslyLive = liveRuntimeIdsByScope.get(scopeKey)
 
   if (previouslyLive) {
     for (const runtimeSessionId of previouslyLive) {
@@ -515,7 +509,7 @@ export function rehydrateLiveSessionStatuses(
     }
   }
 
-  liveRuntimeIdsByProfile.set(profileKey, seen)
+  liveRuntimeIdsByScope.set(scopeKey, seen)
 
   // Completions the reconnect reconcile downgraded blind: this snapshot is the
   // terminal fact it lacked. Every parked session not reported working is
@@ -528,7 +522,7 @@ export function rehydrateLiveSessionStatuses(
  *  drops the session states these ids point at, so a carried-over set would
  *  only reap runtimes that no longer exist. */
 export function resetLiveRuntimeTracking(): void {
-  liveRuntimeIdsByProfile.clear()
+  liveRuntimeIdsByScope.clear()
 }
 
 interface BackgroundSyncParams {
@@ -749,7 +743,14 @@ export function useBackgroundSync({
         const response = await requestGateway<LiveSessionStatusResponse>('session.active_list', {})
 
         if (!cancelled) {
-          rehydrateLiveSessionStatuses(response, Date.now(), activeGatewayProfile, stateAtRequest)
+          const scopeKey = liveSessionScopeKey(activeConnectionId, activeGatewayProfile)
+          publishLiveSessionSnapshot(
+            activeConnectionId,
+            activeGatewayProfile,
+            response.sessions ?? [],
+            Date.now()
+          )
+          rehydrateLiveSessionStatuses(response, Date.now(), scopeKey, stateAtRequest)
         }
       } catch {
         // Older gateways may not expose session.active_list. Live stream events
@@ -783,6 +784,7 @@ export function useBackgroundSync({
       cancelled = true
       unsubscribe()
       dispose()
+      clearLiveSessionSnapshot(activeConnectionId, activeGatewayProfile)
     }
     // Keep the in-flight guard alive across change ticks; a slow response must
     // not create a new request (and invalidate the old result) on every tick.

@@ -312,9 +312,9 @@ jobs:
           $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory -Force -Path qualification | Out-Null
           $hermes = Join-Path $env:AGENT_OS_INSTALL_ROOT 'venv\Scripts\hermes.exe'
-          $health = & $hermes agent-os status --require-full --json
+          $health = & $hermes agent-os status --require-full --require-production-security --json
           if ($LASTEXITCODE -ne 0) {
-            throw "Installed Agent OS did not satisfy full_ready"
+            throw "Installed Agent OS did not satisfy full_ready + production_security_ready"
           }
           $health | Set-Content -Encoding utf8 qualification/agent-os-health.json
 
@@ -379,8 +379,8 @@ jobs:
           }
 
           $hermes = Join-Path $env:AGENT_OS_INSTALL_ROOT 'venv\Scripts\hermes.exe'
-          $repairHealth = & $hermes agent-os status --require-full --json
-          if ($LASTEXITCODE -ne 0) { throw "Agent OS lost full readiness after repair" }
+          $repairHealth = & $hermes agent-os status --require-full --require-production-security --json
+          if ($LASTEXITCODE -ne 0) { throw "Agent OS lost full/security readiness after repair" }
           $repairHealth | Set-Content -Encoding utf8 qualification/agent-os-repair-health.json
 
           $python = Join-Path $env:AGENT_OS_INSTALL_ROOT 'venv\Scripts\python.exe'
@@ -438,6 +438,7 @@ jobs:
             durable_state_preserved = $true
             full_uninstall = $true
             full_ready = $true
+            production_security_ready = $true
             windows_golden = "GT-12,GT-13"
             golden_tasks = "20/20"
           } | ConvertTo-Json | Set-Content -Encoding utf8 qualification/qualification-metadata.json
@@ -500,6 +501,7 @@ jobs:
             -or -not $qualification.durable_state_preserved `
             -or -not $qualification.full_uninstall `
             -or -not $qualification.full_ready `
+            -or -not $qualification.production_security_ready `
             -or $qualification.windows_golden -ne "GT-12,GT-13" `
             -or $qualification.golden_tasks -ne "20/20"
           ) {

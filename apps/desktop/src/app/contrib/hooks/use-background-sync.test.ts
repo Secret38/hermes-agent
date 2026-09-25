@@ -925,6 +925,7 @@ describe('rehydrateLiveSessionStatuses', () => {
       sessions: [
         { id: 'runtime-idle', session_key: 'idle-session', status: 'idle' },
         { id: 'runtime-starting', session_key: 'starting-session', status: 'starting' },
+        // @ts-expect-error intentionally malformed backend row: the runtime decoder must ignore a missing session_key.
         { id: 'runtime-malformed', status: 'working' }
       ]
     })

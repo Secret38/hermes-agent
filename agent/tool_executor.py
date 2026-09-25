@@ -646,6 +646,66 @@ def _blocked_tool_result(agent, ref: _ToolCallRef, *, block_message: Optional[st
     return result
 
 
+_PRODUCTION_EXACT_APPROVAL_TOOLS = frozenset({
+    # Host filesystem / processes / durable agent state.
+    "write_file", "patch", "process_manage", "process", "cronjob_manage", "cronjob",
+    "skill_manage", "memory",
+    # Broad browser automation. computer_use owns an action-aware exact gate.
+    "browser_exec",
+    # Credential-bearing browser vault operations.
+    "browser_vault_unlock", "browser_vault_fill", "browser_vault_save_login",
+    "browser_vault_enter_code",
+    # External systems and connector authorization.
+    "ha_call_service", "manage_connections", "send_message",
+    # Persistent project/workflow mutation.
+    "kanban_complete", "kanban_block", "kanban_request_review",
+    "kanban_request_changes", "kanban_comment", "kanban_create", "kanban_link",
+    "kanban_unblock", "kanban_attach", "kanban_attach_url",
+})
+
+
+def _production_mutation_approval_block(ref: _ToolCallRef) -> str | None:
+    """Ask for exact consent before high-impact non-terminal host mutations.
+
+    Terminal and execute_code own richer in-tool approval gates and are excluded
+    here to avoid duplicate prompts. The switch is opt-in via the Agent OS
+    production profile, so ordinary Hermes behavior is unchanged.
+    """
+    if ref.name not in _PRODUCTION_EXACT_APPROVAL_TOOLS:
+        return None
+    try:
+        from tools.approval_context import _confirm_host_mutations
+        if not _confirm_host_mutations():
+            return None
+        from tools.approval import request_tool_approval
+        from agent.redact import redact_sensitive_text
+
+        raw = json.dumps(ref.args, ensure_ascii=False, sort_keys=True, default=str)
+        display = redact_sensitive_text(raw)
+        if len(display) > 8000:
+            display = display[:8000] + "... [arguments truncated for approval display]"
+        digest = __import__("hashlib").sha256(raw.encode("utf-8")).hexdigest()[:16]
+        decision = request_tool_approval(
+            ref.name,
+            "Agent OS production policy requires exact consent for this host/persistent mutation",
+            rule_key=f"production_host_mutation:{ref.name}:{digest}",
+            display_target=f"<{ref.name}> {display}",
+            exact_once=True,
+            non_bypassable=True,
+        )
+        if decision.get("approved") is True:
+            return None
+        return decision.get("message") or (
+            "BLOCKED: Agent OS production host-mutation approval was not granted."
+        )
+    except Exception as exc:
+        logger.warning("Production host-mutation approval failed closed: %s", exc)
+        return (
+            "BLOCKED: Agent OS production host-mutation approval could not be resolved; "
+            "the action did not run."
+        )
+
+
 def _pre_tool_block(agent, ref: _ToolCallRef):
     """Run ``pre_tool_call`` plugin hooks; returns ``(block_message, final_args)`` with any
     hook-modified args applied. Hook failures never block."""
@@ -692,6 +752,15 @@ def _dispatch_authorized_once(
         resolve = lambda: _pre_tool_block(agent, ref)  # noqa: E731
         block_message, ref.args = resolve() if authorization_gate is None else authorization_gate.run(resolve)
         state.args = ref.args
+
+    if block_message is None:
+        block_error_type = "production_host_mutation_approval"
+        resolve_mutation = lambda: _production_mutation_approval_block(ref)  # noqa: E731
+        block_message = (
+            resolve_mutation()
+            if authorization_gate is None
+            else authorization_gate.run(resolve_mutation)
+        )
 
     guardrail_decision = None
     if block_message is None:

@@ -376,6 +376,9 @@ export default function App() {
   const { manifests, loading: pluginsLoading } = usePlugins();
   const { theme } = useTheme();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [desktopSidebar, setDesktopSidebar] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(min-width: 1024px)").matches : false,
+  );
   const closeMobile = useCallback(() => setMobileOpen(false), []);
 
   const [collapsed, setCollapsed] = useState(() => {
@@ -504,8 +507,10 @@ export default function App() {
   useEffect(() => {
     const mql = window.matchMedia("(min-width: 1024px)");
     const onChange = (e: MediaQueryListEvent) => {
+      setDesktopSidebar(e.matches);
       if (e.matches) setMobileOpen(false);
     };
+    setDesktopSidebar(mql.matches);
     mql.addEventListener("change", onChange);
     return () => mql.removeEventListener("change", onChange);
   }, []);
@@ -582,6 +587,8 @@ export default function App() {
           <aside
             id="app-sidebar"
             aria-label={t.app.navigation}
+            aria-hidden={!desktopSidebar && !mobileOpen}
+            inert={!desktopSidebar && !mobileOpen ? true : undefined}
             className={cn(
               "fixed top-0 left-0 z-50 flex h-dvh max-h-dvh w-64 min-h-0 flex-col font-sans",
               "border-r border-current/20",

@@ -7,6 +7,7 @@ import type {
   AgentOSMcpConnection,
   AgentOSMemoryProviderConnection
 } from './types'
+import { SemanticKnowledgeCanvas } from './visual-intelligence'
 
 function LoadingPanel({ label }: { label: string }) {
   return (
@@ -53,6 +54,20 @@ function Stat({
   )
 }
 
+function formatMemoryTimestamp(value: null | number | undefined): string {
+  if (!value) {return 'unknown'}
+
+  const milliseconds = value < 10_000_000_000 ? value * 1000 : value
+  const date = new Date(milliseconds)
+
+  if (Number.isNaN(date.getTime())) {return 'unknown'}
+
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  }).format(date)
+}
+
 function memoryCardForNode(
   node: AgentOSLearningNode | undefined,
   cards: Array<{ source: string; title: string; body: string }>
@@ -76,6 +91,7 @@ export function SemanticMemorySection() {
     queryKey: AGENT_OS_CONTEXT_KEY,
     refetchInterval: 60_000
   })
+
   const [selectedId, setSelectedId] = useState<string>()
 
   if (error) {
@@ -87,12 +103,14 @@ export function SemanticMemorySection() {
   }
 
   const graph = data.learning
+
   const orderedNodes = [...graph.nodes].sort(
     (a, b) =>
       Number(b.kind === 'memory') - Number(a.kind === 'memory') ||
       (b.useCount ?? 0) - (a.useCount ?? 0) ||
       a.label.localeCompare(b.label)
   )
+
   const selected = selectedId ? graph.nodes.find(node => node.id === selectedId) : orderedNodes[0]
   const selectedCard = memoryCardForNode(selected, graph.memory)
   const edgeCountByNode = new Map<string, number>()
@@ -126,50 +144,12 @@ export function SemanticMemorySection() {
         </div>
 
         <div className="grid gap-3 p-3 xl:grid-cols-[minmax(0,1.45fr)_minmax(17rem,0.55fr)]">
-          <div className="relative min-h-64 overflow-hidden rounded-lg border border-(--ui-stroke-tertiary) bg-(--ui-bg-primary) p-4">
-            <div className="pointer-events-none absolute inset-0 opacity-50 [background-image:radial-gradient(circle_at_center,color-mix(in_srgb,var(--ui-text-tertiary)_20%,transparent)_1px,transparent_1px)] [background-size:18px_18px]" />
-            <div className="relative mx-auto mb-4 w-fit rounded-full border border-[color-mix(in_srgb,var(--dt-primary)_40%,var(--ui-stroke-tertiary))] bg-[color-mix(in_srgb,var(--dt-primary)_9%,var(--ui-bg-secondary))] px-4 py-2 text-center">
-              <div className="aos-kicker">Hermes knowledge</div>
-              <div className="mt-1 text-xs font-semibold text-foreground">
-                {graph.nodes.length} nodes · {graph.edges.length} links
-              </div>
-            </div>
-
-            <div className="relative grid grid-cols-2 gap-2 md:grid-cols-3 2xl:grid-cols-4">
-              {orderedNodes.slice(0, 28).map(node => {
-                const selectedNode = selected?.id === node.id
-                const connections = edgeCountByNode.get(node.id) ?? 0
-
-                return (
-                  <button
-                    className={cn(
-                      'min-w-0 rounded-md border p-2.5 text-left transition-colors',
-                      selectedNode
-                        ? 'border-[color-mix(in_srgb,var(--dt-primary)_55%,var(--ui-stroke-tertiary))] bg-[color-mix(in_srgb,var(--dt-primary)_10%,var(--ui-bg-secondary))]'
-                        : 'border-(--ui-stroke-tertiary) bg-(--ui-bg-secondary) hover:bg-(--ui-control-hover-background)'
-                    )}
-                    key={node.id}
-                    onClick={() => setSelectedId(node.id)}
-                    type="button"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <Codicon
-                        className="shrink-0 text-(--ui-text-tertiary)"
-                        name={node.kind === 'memory' ? 'note' : 'sparkle'}
-                        size="0.72rem"
-                      />
-                      <span className="text-[0.56rem] tabular-nums text-(--ui-text-tertiary)">{connections} links</span>
-                    </div>
-                    <div className="mt-2 line-clamp-2 text-[0.68rem] font-medium leading-relaxed text-foreground">
-                      {node.label || node.id}
-                    </div>
-                    <div className="mt-1 truncate text-[0.58rem] uppercase tracking-[0.06em] text-(--ui-text-tertiary)">
-                      {node.kind === 'memory' ? node.memorySource || 'memory' : node.category || 'skill'}
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
+          <div className="min-h-64 overflow-hidden rounded-lg border border-(--ui-stroke-tertiary) bg-(--ui-bg-primary)">
+            <SemanticKnowledgeCanvas
+              graph={graph}
+              onSelect={setSelectedId}
+              selectedId={selected?.id}
+            />
           </div>
 
           <aside className="rounded-lg border border-(--ui-stroke-tertiary) bg-(--ui-bg-secondary) p-3">
@@ -187,28 +167,47 @@ export function SemanticMemorySection() {
                   />
                 </div>
 
-                {selectedCard ? (
+                <div className="mt-3 grid grid-cols-2 gap-1.5 text-[0.58rem]">
+                  <div className="rounded border border-(--ui-stroke-tertiary) bg-(--ui-bg-primary) p-2">
+                    <div className="aos-kicker">Source</div>
+                    <div className="mt-1 truncate text-(--ui-text-secondary)">
+                      {selected.kind === 'memory' ? selected.memorySource || selectedCard?.source || 'memory' : selected.createdBy || 'profile'}
+                    </div>
+                  </div>
+                  <div className="rounded border border-(--ui-stroke-tertiary) bg-(--ui-bg-primary) p-2">
+                    <div className="aos-kicker">Created</div>
+                    <div className="mt-1 truncate text-(--ui-text-secondary)">{formatMemoryTimestamp(selected.timestamp)}</div>
+                  </div>
+                  <div className="rounded border border-(--ui-stroke-tertiary) bg-(--ui-bg-primary) p-2">
+                    <div className="aos-kicker">Usage</div>
+                    <div className="mt-1 tabular-nums text-(--ui-text-secondary)">{selected.useCount ?? 0} uses</div>
+                  </div>
+                  <div className="rounded border border-(--ui-stroke-tertiary) bg-(--ui-bg-primary) p-2">
+                    <div className="aos-kicker">Graph</div>
+                    <div className="mt-1 tabular-nums text-(--ui-text-secondary)">{edgeCountByNode.get(selected.id) ?? 0} links</div>
+                  </div>
+                </div>
+
+                <div className="mt-2 flex flex-wrap gap-1">
+                  <span className="rounded border border-(--ui-stroke-tertiary) px-1.5 py-0.5 text-[0.54rem] text-(--ui-text-tertiary)">
+                    {selected.category || selected.memorySource || 'general'}
+                  </span>
+                  {selected.state && (
+                    <span className="rounded border border-(--ui-stroke-tertiary) px-1.5 py-0.5 text-[0.54rem] uppercase tracking-[0.05em] text-(--ui-text-tertiary)">
+                      {selected.state}
+                    </span>
+                  )}
+                  {selected.pinned && (
+                    <span className="inline-flex items-center gap-1 rounded border border-(--ui-stroke-tertiary) px-1.5 py-0.5 text-[0.54rem] text-(--ui-text-tertiary)">
+                      <Codicon name="pinned" size="0.56rem" />
+                      pinned
+                    </span>
+                  )}
+                </div>
+
+                {selectedCard && (
                   <div className="aos-scrollbar mt-3 max-h-72 overflow-y-auto whitespace-pre-wrap rounded-md border border-(--ui-stroke-tertiary) bg-(--ui-bg-primary) p-2.5 text-[0.65rem] leading-relaxed text-(--ui-text-secondary)">
                     {selectedCard.body}
-                  </div>
-                ) : (
-                  <div className="mt-3 space-y-2 text-[0.64rem] text-(--ui-text-tertiary)">
-                    <div className="flex justify-between gap-3">
-                      <span>Category</span>
-                      <span className="text-right text-(--ui-text-secondary)">{selected.category || 'general'}</span>
-                    </div>
-                    <div className="flex justify-between gap-3">
-                      <span>Use count</span>
-                      <span className="tabular-nums text-(--ui-text-secondary)">{selected.useCount ?? 0}</span>
-                    </div>
-                    <div className="flex justify-between gap-3">
-                      <span>Created by</span>
-                      <span className="text-(--ui-text-secondary)">{selected.createdBy || 'profile'}</span>
-                    </div>
-                    <div className="flex justify-between gap-3">
-                      <span>Connections</span>
-                      <span className="tabular-nums text-(--ui-text-secondary)">{edgeCountByNode.get(selected.id) ?? 0}</span>
-                    </div>
                   </div>
                 )}
 
@@ -224,10 +223,10 @@ export function SemanticMemorySection() {
 
                         return (
                           <button
+                            aria-label={node?.label || other}
                             className="max-w-full truncate rounded border border-(--ui-stroke-tertiary) px-1.5 py-1 text-[0.58rem] text-(--ui-text-secondary) hover:bg-(--ui-control-hover-background)"
                             key={`${edge.source}->${edge.target}`}
                             onClick={() => setSelectedId(other)}
-                            title={node?.label || other}
                             type="button"
                           >
                             {node?.label || other}

@@ -16,6 +16,10 @@ def _collect(*, fix: bool):
 def _render_human(report) -> None:
     print(f"Agent OS core: {'READY' if report.core_ready else 'NOT READY'}")
     print(f"Full automation: {'READY' if report.full_ready else 'DEGRADED'}")
+    print(
+        "Production security: "
+        f"{'READY' if report.production_security_ready else 'NOT READY'}"
+    )
     print(f"Store: {report.store_path}")
     print("")
     for check in report.checks:
@@ -37,7 +41,12 @@ def _run_health(args, *, fix: bool) -> int:
         _render_human(report)
 
     require_full = bool(getattr(args, "require_full", False))
+    require_production_security = bool(
+        getattr(args, "require_production_security", False)
+    )
     ready = report.full_ready if require_full else report.core_ready
+    if require_production_security:
+        ready = ready and report.production_security_ready
     return 0 if ready else 1
 
 
@@ -55,6 +64,9 @@ def _provision(args) -> int:
     report = provision_agent_os_runtime(
         include_browser=not bool(getattr(args, "skip_browser", False)),
         include_computer_use=not bool(getattr(args, "skip_computer_use", False)),
+        include_production_security=bool(
+            getattr(args, "production_security", False)
+        ),
     )
     for component in report.components:
         state = "OK" if component.ready else "FAIL"
@@ -73,6 +85,14 @@ def _add_common_flags(parser) -> None:
         help=(
             "Fail unless the complete desktop automation substrate is ready "
             "(core + browser + computer use)."
+        ),
+    )
+    parser.add_argument(
+        "--require-production-security",
+        action="store_true",
+        help=(
+            "Fail unless approval and scanner policy is fail-closed for "
+            "remote/content-driven production use."
         ),
     )
 
@@ -128,6 +148,14 @@ def build_agent_os_parser(subparsers) -> None:
         "--skip-computer-use",
         action="store_true",
         help="Do not provision or require the computer-use runtime.",
+    )
+    provision.add_argument(
+        "--production-security",
+        action="store_true",
+        help=(
+            "Apply the Agent OS fail-closed production profile and provision "
+            "the Tirith scanner. Ordinary Hermes installs are unchanged."
+        ),
     )
     provision.set_defaults(func=_provision)
 

@@ -8,6 +8,7 @@ from __future__ import annotations
 import atexit
 import base64
 import contextlib
+import contextvars
 import hashlib
 import json
 import logging
@@ -31,6 +32,11 @@ logger = logging.getLogger(__name__)
 # in-tree hosts never call this. Same contract as that callback: ``cb(command, description, **kw)`` ->
 # "once" | "session" | "always" | "deny" | "timeout".
 _approval_callback = None
+
+_capture_observer: contextvars.ContextVar[Optional[Callable[..., None]]] = contextvars.ContextVar(
+    "computer_use_capture_observer",
+    default=None,
+)
 
 def set_approval_callback(cb) -> None:
     global _approval_callback
@@ -310,8 +316,12 @@ def handle_computer_use(args: Dict[str, Any], **kwargs) -> Any:
     try:
         with _backend_lock:
             call_lock = _backend_call_locks.setdefault(session_id, threading.RLock())
-        with call_lock:
-            return _dispatch(backend, action, args, session_id=session_id or None)
+        observer_token = _capture_observer.set(kwargs.get("capture_callback"))
+        try:
+            with call_lock:
+                return _dispatch(backend, action, args, session_id=session_id or None)
+        finally:
+            _capture_observer.reset(observer_token)
     except Exception as e:
         logger.exception("computer_use %s failed", action)
         return json.dumps({"error": f"{action} failed: {e}"})
@@ -333,6 +343,8 @@ def _request_approval(
         approval_callback = _approval_callback
     mode = "foreground" if args.get("delivery_mode") == "foreground" else "background"
     description = f"Allow computer_use to perform `{action}`?"
+    from tools.approval_context import _confirm_host_mutations
+    production_exact = _confirm_host_mutations()
     result = _run_approval_gate(
         pattern_key=f"cua:{action}:{mode}", description=description,
         display_target=f"computer_use: {_summarize_action(action, args)}", approval_callback=approval_callback,
@@ -342,6 +354,9 @@ def _request_approval(
         fail_closed_when_no_human=True,
         no_human_block_message=(f"BLOCKED: computer_use `{action}` requires approval but no interactive user or "
                                 "gateway is present to approve it."),
+        bypass_capable=not production_exact,
+        session_capable=not production_exact,
+        permanent_capable=not production_exact,
     )
     if result.get("approved"):
         return None
@@ -604,6 +619,16 @@ def _capture_digest(cap: CaptureResult) -> str:
 def _capture_response(cap: CaptureResult, max_elements: int = _DEFAULT_MAX_ELEMENTS,
                       session_id: Optional[str] = None) -> Any:
     v = _capture_view(cap, max_elements)
+    if v.has_image and (observer := _capture_observer.get()) is not None:
+        try:
+            observer(
+                mime_type=_capture_image_format(cap)[0],
+                image_b64=cap.png_b64,
+                width=v.width,
+                height=v.height,
+            )
+        except Exception as exc:  # capture observers are non-authoritative UI taps
+            logger.debug("computer_use: capture observer failed: %s", exc)
     lines = _capture_summary_lines(v)
     summary, extra = "\n".join(lines), None  # multimodal/aux paths use this; text paths append notes and rebuild
     if v.has_image and session_id and _screenshot_dedup_check(

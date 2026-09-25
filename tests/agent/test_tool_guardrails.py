@@ -412,3 +412,102 @@ def test_a_real_tool_error_is_still_a_failure():
     assert _detect_tool_failure("read_file", real)[0] is True
     # The marker is only honoured as the literal boolean, never as truthy prose.
     assert classify_tool_failure("read_file", '{"error": "x", "guardrail_refusal": "yes"}')[0] is True
+
+
+
+def test_production_mutation_gate_requires_exact_non_bypassable_approval(monkeypatch):
+    from types import SimpleNamespace
+    from agent.tool_executor import _production_mutation_approval_block
+    from tools import approval_context
+    import tools.approval as approval_module
+
+    monkeypatch.setattr(approval_context, "_confirm_host_mutations", lambda: True)
+    calls = []
+
+    def approve(tool_name, reason, **kwargs):
+        calls.append((tool_name, reason, kwargs))
+        return {"approved": True, "message": None}
+
+    monkeypatch.setattr(approval_module, "request_tool_approval", approve)
+    ref = SimpleNamespace(
+        name="write_file",
+        args={"path": "C:/Users/example/file.txt", "content": "hello"},
+    )
+
+    assert _production_mutation_approval_block(ref) is None
+    assert len(calls) == 1
+    assert calls[0][0] == "write_file"
+    assert calls[0][2]["exact_once"] is True
+    assert calls[0][2]["non_bypassable"] is True
+    assert "write_file" in calls[0][2]["rule_key"]
+
+
+def test_production_mutation_gate_fails_closed_on_denial(monkeypatch):
+    from types import SimpleNamespace
+    from agent.tool_executor import _production_mutation_approval_block
+    from tools import approval_context
+    import tools.approval as approval_module
+
+    monkeypatch.setattr(approval_context, "_confirm_host_mutations", lambda: True)
+    monkeypatch.setattr(
+        approval_module,
+        "request_tool_approval",
+        lambda *_a, **_k: {"approved": False, "message": "BLOCKED: user denied"},
+    )
+
+    ref = SimpleNamespace(name="process_manage", args={"action": "kill", "pid": 1234})
+    assert _production_mutation_approval_block(ref) == "BLOCKED: user denied"
+
+
+def test_production_mutation_gate_is_opt_in_and_terminal_owns_its_gate(monkeypatch):
+    from types import SimpleNamespace
+    from agent.tool_executor import _production_mutation_approval_block
+    from tools import approval_context
+
+    monkeypatch.setattr(approval_context, "_confirm_host_mutations", lambda: False)
+    assert _production_mutation_approval_block(
+        SimpleNamespace(name="write_file", args={"path": "x", "content": "y"})
+    ) is None
+
+    monkeypatch.setattr(approval_context, "_confirm_host_mutations", lambda: True)
+    assert _production_mutation_approval_block(
+        SimpleNamespace(name="terminal", args={"command": "echo hi"})
+    ) is None
+    assert _production_mutation_approval_block(
+        SimpleNamespace(name="execute_code", args={"code": "print(1)"})
+    ) is None
+
+
+
+def test_production_mutation_gate_covers_persistent_external_tool_names(monkeypatch):
+    from types import SimpleNamespace
+    from agent.tool_executor import _production_mutation_approval_block
+    from tools import approval_context
+    import tools.approval as approval_module
+
+    monkeypatch.setattr(approval_context, "_confirm_host_mutations", lambda: True)
+    seen = []
+
+    def approve(tool_name, reason, **kwargs):
+        seen.append((tool_name, kwargs))
+        return {"approved": True, "message": None}
+
+    monkeypatch.setattr(approval_module, "request_tool_approval", approve)
+
+    mutation_tools = (
+        "process", "cronjob",
+        "ha_call_service", "manage_connections", "browser_exec",
+        "browser_vault_unlock", "browser_vault_fill",
+        "browser_vault_save_login", "browser_vault_enter_code",
+        "kanban_complete", "kanban_block", "kanban_request_review",
+        "kanban_request_changes", "kanban_comment", "kanban_create",
+        "kanban_link", "kanban_unblock", "kanban_attach", "kanban_attach_url",
+    )
+    for name in mutation_tools:
+        assert _production_mutation_approval_block(
+            SimpleNamespace(name=name, args={"action": "test"})
+        ) is None
+
+    assert [name for name, _ in seen] == list(mutation_tools)
+    assert all(kwargs["exact_once"] is True for _, kwargs in seen)
+    assert all(kwargs["non_bypassable"] is True for _, kwargs in seen)

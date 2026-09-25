@@ -7,6 +7,7 @@ import pytest
 _REPO = Path(__file__).resolve().parents[2]
 _WORKFLOW = _REPO / ".github" / "workflows" / "agent-os-release.yml"
 _PREFLIGHT = _REPO / ".github" / "workflows" / "agent-os-release-preflight.yml"
+_VISUAL_QA = _REPO / ".github" / "workflows" / "agent-os-windows-visual-qa.yml"
 
 
 def _yaml(path: Path) -> dict:
@@ -83,6 +84,7 @@ def test_release_publication_is_blocked_on_every_v1_qualification_invariant():
         "durable_state_preserved",
         "full_uninstall",
         "full_ready",
+        "production_security_ready",
         'windows_golden -ne "GT-12,GT-13"',
         'golden_tasks -ne "20/20"',
     ):
@@ -104,6 +106,9 @@ def test_release_qualification_still_requires_runtime_repair_state_and_uninstall
     names = {step.get("name") for step in qualify.get("steps", [])}
 
     assert "Require full readiness from the installed runtime" in names
+    readiness = _step(qualify, "Require full readiness from the installed runtime")["run"]
+    assert "--require-full" in readiness
+    assert "--require-production-security" in readiness
     assert "Prove native Windows GT-12 and GT-13 from the installed checkout" in names
     assert "Prove canonical Agent OS V1 20/20 from the installed checkout" in names
     assert "Seed durable Agent OS state before repair" in names
@@ -137,7 +142,34 @@ def test_release_preflight_requires_protected_source_gui_runner_and_signing_iden
 
     smoke = _step(signing, "Smoke-test Authenticode signing and trusted timestamp")["run"]
     assert "signtool" in smoke
+    assert r"signtool\.exe$' }" in smoke
     assert 'sign /fd SHA256 /tr "http://timestamp.digicert.com" /td SHA256' in smoke
     assert "verify /pa /all /v" in smoke
     assert "Get-AuthenticodeSignature" in smoke
     assert "TimeStamperCertificate" in smoke
+    assert smoke.count("signtool.FullName sign") == 1
+    assert smoke.count("signtool.FullName verify") == 1
+    assert smoke.count("Get-AuthenticodeSignature") == 1
+    assert smoke.count("TimeStamperCertificate") == 1
+    assert smoke.count("try {") == 1
+    assert smoke.count("finally {") == 1
+    assert "} } |" not in smoke
+    assert smoke.rstrip().endswith("}")
+
+def test_windows_visual_qa_covers_all_release_dpi_scales():
+    workflow = _yaml(_VISUAL_QA)
+    visual = workflow["jobs"]["visual"]
+
+    matrix = visual["strategy"]["matrix"]["include"]
+    assert {(str(item["scale"]), item["scale_label"]) for item in matrix} == {
+        ("1", "100%"),
+        ("1.25", "125%"),
+        ("1.5", "150%"),
+        ("2", "200%"),
+    }
+    assert visual["runs-on"] == "windows-latest"
+
+    names = {step.get("name") for step in visual.get("steps", [])}
+    assert "Build desktop" in names
+    assert "Run Agent OS Windows visual QA" in names
+    assert "Upload Windows visual evidence" in names
