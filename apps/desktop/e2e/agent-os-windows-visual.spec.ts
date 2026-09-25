@@ -84,7 +84,7 @@ store.append_event(EventRecord.create(
 `
 
   const repoRoot = path.resolve(import.meta.dirname, '..', '..', '..')
-  execFileSync('uv', ['run', '--python', '3.11', 'python', '-c', script], {
+  execFileSync('uv', ['run', '--python', '3.14', 'python', '-c', script], {
     cwd: repoRoot,
     env: { ...process.env, HERMES_HOME: sandbox.hermesHome },
     stdio: 'inherit',
