@@ -247,7 +247,11 @@ async def events(ws: WebSocket):
 
 
 @router.websocket("/live/{task_id}")
-async def live_runtime_frames_socket(ws: WebSocket, task_id: str):
+async def live_runtime_frames_socket(
+    ws: WebSocket,
+    task_id: str,
+    session_id: str | None = None,
+):
     """Stream the newest in-memory CUA frame for one exact Agent OS task.
 
     Opening this socket is the opt-in. The endpoint never triggers a capture,
@@ -259,7 +263,13 @@ async def live_runtime_frames_socket(ws: WebSocket, task_id: str):
         return
 
     task_key = str(task_id).strip()
-    if not task_key or len(task_key) > 512:
+    session_key = str(session_id or "").strip()
+    if (
+        not task_key
+        or len(task_key) > 512
+        or not session_key
+        or len(session_key) > 512
+    ):
         await ws.close(code=4400)
         return
 
@@ -269,7 +279,7 @@ async def live_runtime_frames_socket(ws: WebSocket, task_id: str):
 
     try:
         while True:
-            frame = live_runtime_frames.latest(task_key)
+            frame = live_runtime_frames.latest(task_key, session_id=session_key)
             if frame is None:
                 if last_token is not None:
                     last_token = None
