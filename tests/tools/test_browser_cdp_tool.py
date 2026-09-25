@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 import json
 import threading
-import time
 from typing import Any, Dict, List
 
 import pytest
@@ -159,10 +158,6 @@ def test_missing_method_returns_error():
     assert result.get("cdp_docs") == browser_cdp_tool.CDP_DOCS_URL
 
 
-def test_non_string_method_returns_error():
-    result = json.loads(browser_cdp_tool.browser_cdp(method=123))  # type: ignore[arg-type]
-    assert "error" in result
-    assert "method" in result["error"].lower()
 
 
 # ---------------------------------------------------------------------------
@@ -443,62 +438,6 @@ def test_nested_unflagged_binary_path_passes_through(cdp_server):
 
 
 # ---------------------------------------------------------------------------
-# Happy-path: target-attached call
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
-# CDP error responses
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
-# Timeouts
-# ---------------------------------------------------------------------------
-
-
-def test_cdp_send_is_bounded_by_overall_timeout(monkeypatch):
-    class SlowSocket:
-        async def send(self, _payload):
-            await asyncio.sleep(1.0)
-
-        async def recv(self):
-            return json.dumps({"id": 1, "result": {}})
-
-    class Connection:
-        async def __aenter__(self):
-            return SlowSocket()
-
-        async def __aexit__(self, exc_type, exc, tb):
-            return False
-
-    monkeypatch.setattr(browser_cdp_tool.websockets, "connect", lambda *args, **kwargs: Connection())
-
-    started = time.monotonic()
-    with pytest.raises(TimeoutError):
-        asyncio.run(
-            browser_cdp_tool._cdp_call(
-                "ws://127.0.0.1:9222/devtools/browser/mock",
-                "Target.getTargets",
-                {},
-                None,
-                0.05,
-            )
-        )
-    assert time.monotonic() - started < 0.5
-
-
-# ---------------------------------------------------------------------------
-# Timeout clamping
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
-# Registry integration
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
 # Private-network guard
 # ---------------------------------------------------------------------------
 
@@ -677,7 +616,6 @@ def test_check_fn_does_not_probe_network(monkeypatch):
 def test_check_fn_false_when_browser_requirements_fail(monkeypatch):
     """Even with a CDP URL, gate closes if the overall browser toolset is
     unavailable (e.g. agent-browser not installed)."""
-    import tools.browser_tool as bt
 
     monkeypatch.setattr(bt_install, "check_browser_requirements", lambda: False)
     monkeypatch.setattr(

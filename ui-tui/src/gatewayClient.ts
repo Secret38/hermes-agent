@@ -1,6 +1,5 @@
 import { type ChildProcess, spawn } from 'node:child_process'
 import { EventEmitter } from 'node:events'
-import { existsSync } from 'node:fs'
 import { delimiter, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 
@@ -67,25 +66,24 @@ const resolveSidecarUrl = () => {
   return raw ? raw : null
 }
 
-const resolvePython = (root: string) => {
-  const configured = process.env.HERMES_PYTHON?.trim() || process.env.PYTHON?.trim()
+const resolvePython = () => {
+  // Trust HERMES_PYTHON only. The launcher guarantees it: hermes_cli/main.py
+  // validates it and falls back to its own sys.executable, and the Nix
+  // wrapper sets it too. So a TUI started the normal way already knows its
+  // interpreter, and scanning VIRTUAL_ENV / .venv here can only find a
+  // DIFFERENT python than the parent process runs on — with the pm store,
+  // a stale venv path is actively dangerous (the interpreter a gateway
+  // child gets must match the one that spawned it).
+  const configured = process.env.HERMES_PYTHON?.trim()
 
   if (configured) {
     return configured
   }
 
-  const venv = process.env.VIRTUAL_ENV?.trim()
-
-  const hit = [
-    venv && resolve(venv, 'bin/python'),
-    venv && resolve(venv, 'Scripts/python.exe'),
-    resolve(root, '.venv/bin/python'),
-    resolve(root, '.venv/bin/python3'),
-    resolve(root, 'venv/bin/python'),
-    resolve(root, 'venv/bin/python3')
-  ].find(p => p && existsSync(p))
-
-  return hit || (process.platform === 'win32' ? 'python' : 'python3')
+  // The one case with no launcher above it: `npm run dev` / `npm start`
+  // straight out of ui-tui/. A developer doing that runs inside their own
+  // activated environment, so PATH is the right question there.
+  return process.platform === 'win32' ? 'python' : 'python3'
 }
 
 // Matches `<scheme>://user:pass@host…` style user-info segments in
@@ -133,6 +131,11 @@ export class GatewayClient extends EventEmitter {
   // only owns the two transports (child stdio, attached socket) and the
   // buffered-event replay that Ink's mount order needs.
   private readonly channel = new JsonRpcRequestChannel({
+    // A mid-turn socket streams deltas every second; killing the only
+    // transport that carried live traffic split sessions that completed
+    // server-side (#115251). Count any inbound frame as liveness, exactly
+    // like the desktop/web client; a silent drop still trips the deadline.
+    heartbeatLiveness: 'any-inbound',
     onEvent: ev => this.publish(ev as AnyGatewayEvent),
     onHeartbeatFailure: () => this.onHeartbeatFailure(),
     onRequestHandlerError: (error, req) =>
@@ -436,7 +439,7 @@ export class GatewayClient extends EventEmitter {
   }
 
   private startSpawnedGateway(root: string) {
-    const python = resolvePython(root)
+    const python = resolvePython()
     const cwd = process.env.HERMES_CWD || root
     const env = { ...process.env }
     const pyPath = env.PYTHONPATH?.trim()

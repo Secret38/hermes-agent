@@ -7,20 +7,24 @@
  * (the app's standard, via the SDK). This module owns the query keys, the REST
  * calls, and the selected-board atom — every call passes `?board=<slug>` so the
  * desktop's selection never flips the server-wide current-board pointer.
+ *
+ * Every query key and the persisted board selection are scoped by the ACTIVE
+ * CONNECTION (`host.state.connectionId`): a board lives on ONE gateway, so a
+ * connection switch must be a clean cache miss (the hermes-bots roster
+ * pattern), and each gateway remembers its own selected board instead of
+ * pinning a slug the next gateway 404s on.
  */
 
 import {
   atom,
-  type OperationsCaptureInput,
-  type OperationsRunInspection,
-  type OperationsTaskExecution,
-  type OperationsTaskLog,
-  type OperationsTaskSnapshot,
+  captureGatewayFileDownload,
+  host,
   type PluginOs,
   type PluginRestOptions,
   type PluginStorage,
   type PluginTranslate,
-  queryClient
+  queryClient,
+  useValue
 } from '@hermes/plugin-sdk'
 
 // Native completion notification.
@@ -60,27 +64,121 @@ export const $lanesByProfile = atom<boolean>(false)
  *  auto: empty lanes collapse to a rail, occupied lanes expand. Persisted. */
 export const $collapsedLanes = atom<Record<string, boolean>>({})
 
+/** Cache scope of the local pool — the SDK atom's own spelling. */
+const LOCAL_SCOPE = 'local'
+
+const KANBAN_KEY_ROOT = ['kanban'] as const
+
 const BOARD_SLUG_KEY = 'boardSlug'
 const INTRO_KEY = 'introDismissed'
 const LANES_KEY = 'lanesByProfile'
 const COLLAPSED_KEY = 'collapsedLanes'
 
+// Last frame cursor per (connection, board) this plugin bind. The socket
+// reopens on every board switch and connection change; resuming from the last
+// frame replays only what was missed. Keyed by connection so one gateway's
+// cursor cannot resume another's stream. Cleared on bind/unbind — events that
+// land while the plugin is unloaded are not replayed.
+const eventCursorByBoard = new Map<string, number>()
+
+function cursorKey(scope: string, slug: string): string {
+  return `${scope}\0${slug}`
+}
+
+function snapshotCursor(scope: string, slug: string): number | undefined {
+  for (const archived of [false, true]) {
+    const board = queryClient.getQueryData<KanbanBoard>(boardKey(scope, slug, archived))
+
+    if (typeof board?.latest_event_id === 'number') {
+      return board.latest_event_id
+    }
+  }
+
+  return undefined
+}
+
+/** Cursor a fresh socket starts from: the last frame this connection saw, else
+ *  the cached board snapshot's tail. Undefined means nothing is known yet —
+ *  fetch the snapshot before opening, never open at since=0. */
+function eventsSince(scope: string, slug: string): number | undefined {
+  const seen = eventCursorByBoard.get(cursorKey(scope, slug))
+
+  if (typeof seen === 'number') {
+    return seen
+  }
+
+  return snapshotCursor(scope, slug)
+}
+
+function eventsUrl(slug: string, since: number | undefined): string {
+  const params = new URLSearchParams()
+
+  if (slug) {
+    params.set('board', slug)
+  }
+
+  if (since !== undefined) {
+    params.set('since', String(since))
+  }
+
+  const query = params.toString()
+
+  return query ? `/events?${query}` : '/events'
+}
+
+function boardSnapshotPath(slug: string): string {
+  return slug ? `/board?board=${encodeURIComponent(slug)}` : '/board'
+}
+
+/** Cache-scope id for the active connection — the segment every query key
+ *  embeds. `'local'` covers the pre-descriptor null; the SDK atom already
+ *  reports 'local' for the local pool. For NON-rendering code (mutations,
+ *  socket frames); rendering components use `useKanbanScope` so the keys they
+ *  build during render recompute when the connection changes. */
+export function kanbanConnectionScope(): string {
+  return host.state.connectionId.get() ?? LOCAL_SCOPE
+}
+
+export function useKanbanScope(): string {
+  return useValue(host.state.connectionId) ?? LOCAL_SCOPE
+}
+
+/** Where a request issued NOW is routed, as a cache scope. The request tag
+ *  moves before the connection descriptor publishes, and React re-keys the
+ *  observers later still — so between the two an observer can sit on the
+ *  outgoing scope's key while a fetch would land on the incoming backend. */
+const routedScope = (): string => host.activeConnectionId() ?? LOCAL_SCOPE
+
+/** `enabled` for every kanban query: only fetch while the key's scope is the
+ *  routed one. A switch's app-wide invalidation then leaves the outgoing
+ *  observers alone (the incoming keys are already a cache miss) instead of
+ *  writing the new gateway's payload under the old connection's key — which
+ *  would paint on the way back. Installed as the `['kanban']` query default in
+ *  `bindApi`; sites with their own `enabled` compose it. */
+export const routedToScope = (query: { queryKey: readonly unknown[] }): boolean => query.queryKey[2] === routedScope()
+
 /** One live `task_events` frame → precise cache invalidation: the board, plus
  *  each touched task's detail. The polls (8s board / 4s drawer) stay as the
  *  fallback — the socket just makes the board feel instant. */
-function onEventsFrame(slug: string, data: unknown): void {
-  const events = (data as { events?: CompletionEvent[] })?.events
+function onEventsFrame(scope: string, slug: string, data: unknown): void {
+  const frame = data as { cursor?: unknown; events?: CompletionEvent[] }
+
+  if (typeof frame?.cursor === 'number') {
+    eventCursorByBoard.set(cursorKey(scope, slug), frame.cursor)
+  }
+
+  const events = frame?.events
 
   if (!events?.length) {
     return
   }
 
-  void queryClient.invalidateQueries({ queryKey: ['kanban', 'board'] })
+  void queryClient.invalidateQueries({ queryKey: boardKeyPrefix(scope) })
   // Any event can change a board's card count — keep the switcher badge honest.
-  void queryClient.invalidateQueries({ queryKey: BOARDS_KEY })
+  void queryClient.invalidateQueries({ queryKey: boardsKey(scope) })
 
   for (const taskId of new Set(events.map(event => event.task_id).filter(Boolean))) {
-    void queryClient.invalidateQueries({ queryKey: taskKey(slug, taskId!) })
+    void queryClient.invalidateQueries({ queryKey: taskKey(scope, slug, taskId!) })
   }
 
   // Completion notification (after invalidation so notify failure
@@ -111,28 +209,106 @@ export function bindApi(
   bindCompletionNotify(r, notifyDoors?.t, notifyDoors?.os)
   const unsubs: Array<() => void> = []
 
+  queryClient.setQueryDefaults(KANBAN_KEY_ROOT, { enabled: routedToScope })
+  unsubs.push(() => queryClient.setQueryDefaults(KANBAN_KEY_ROOT, {}))
+
   // Hydrate an atom from storage and keep storage in sync with it.
   const persist = <T>(atom: Persisted<T>, key: string, fallback: T) => {
     atom.set(storage.get(key, fallback))
     unsubs.push(atom.listen(value => storage.set(key, value)))
   }
 
-  persist($boardSlug, BOARD_SLUG_KEY, '')
   persist($introDismissed, INTRO_KEY, false)
   persist($lanesByProfile, LANES_KEY, false)
   persist($collapsedLanes, COLLAPSED_KEY, {})
 
+  eventCursorByBoard.clear()
+
   let close: (() => void) | null = null
+  let socketGeneration = 0
+
+  const dial = (scope: string, slug: string, since: number | undefined) =>
+    socket(eventsUrl(slug, since), data => onEventsFrame(scope, slug, data))
 
   const open = (slug: string) => {
+    const generation = ++socketGeneration
+    const scope = kanbanConnectionScope()
+
     close?.()
-    close = socket(slug ? `/events?board=${encodeURIComponent(slug)}` : '/events', data => onEventsFrame(slug, data))
+    close = null
+
+    const since = eventsSince(scope, slug)
+
+    if (since !== undefined) {
+      close = dial(scope, slug, since)
+
+      return
+    }
+
+    // No cached tail yet. Wait for the snapshot and open at its
+    // latest_event_id. A board switch or unload bumps the generation so a
+    // late snapshot cannot open a stale socket. A failed fetch still opens
+    // with no since — the server starts at the tail rather than replaying.
+    void queryClient
+      .fetchQuery({
+        queryFn: () => r<KanbanBoard>(boardSnapshotPath(slug)),
+        queryKey: boardKey(scope, slug, false)
+      })
+      .then(board => {
+        if (generation !== socketGeneration) {
+          return
+        }
+
+        const tail = typeof board?.latest_event_id === 'number' ? board.latest_event_id : undefined
+
+        close = dial(scope, slug, tail)
+      })
+      .catch(() => {
+        if (generation !== socketGeneration) {
+          return
+        }
+
+        close = dial(scope, slug, undefined)
+      })
   }
 
+  // The local connection keeps the BARE key (the bare-local rule of
+  // lib/connection-scoped: byte-identical storage for single-backend users, and
+  // the slug picked before per-connection keys existed survives the upgrade).
+  // Remotes are suffixed by registry id.
+  const slugStorageKey = () => {
+    const scope = kanbanConnectionScope()
+
+    return scope === LOCAL_SCOPE ? BOARD_SLUG_KEY : `${BOARD_SLUG_KEY}.${scope}`
+  }
+
+  $boardSlug.set(storage.get(slugStorageKey(), ''))
+  unsubs.push($boardSlug.listen(slug => storage.set(slugStorageKey(), slug)))
   open($boardSlug.get())
   unsubs.push($boardSlug.listen(open))
+  unsubs.push(
+    host.state.connectionId.listen((next, prev) => {
+      // Query keys embed the scope, so the new connection is already a cache
+      // miss; only the LIVE bindings (socket, slug) follow it. The boot-time
+      // null → 'local' publish is the same scope, not a switch. A changed slug
+      // reopens the socket through the $boardSlug listener above; an unchanged
+      // slug still needs a dial because the backend behind it changed.
+      if ((next ?? LOCAL_SCOPE) === (prev ?? LOCAL_SCOPE)) {
+        return
+      }
+
+      const previous = $boardSlug.get()
+      $boardSlug.set(storage.get(slugStorageKey(), ''))
+
+      if ($boardSlug.get() === previous) {
+        open(previous)
+      }
+    })
+  )
 
   return () => {
+    socketGeneration += 1
+    eventCursorByBoard.clear()
     unsubs.forEach(unsub => unsub())
     close?.()
     rest = null
@@ -148,9 +324,10 @@ function call<T>(path: string, opts?: PluginRestOptions): Promise<T> {
   return rest ? rest<T>(path, opts) : Promise.reject(new Error('kanban api not ready'))
 }
 
-/** Append an explicit board scope (and other params) to a path. */
-function withBoardScope(path: string, slug: null | string | undefined, params: Record<string, string> = {}): string {
+/** Append the selected board (and other params) to a path. */
+function withBoard(path: string, params: Record<string, string> = {}): string {
   const search = new URLSearchParams(params)
+  const slug = $boardSlug.get()
 
   if (slug) {
     search.set('board', slug)
@@ -161,147 +338,34 @@ function withBoardScope(path: string, slug: null | string | undefined, params: R
   return qs ? `${path}?${qs}` : path
 }
 
-function withBoard(path: string, params: Record<string, string> = {}): string {
-  return withBoardScope(path, $boardSlug.get(), params)
-}
+// ── query keys (connection- and board-scoped; scope is always segment [2]) ────
 
-// ── query keys (all board-scoped so switching boards is a clean cache miss) ──
-
-export const boardKey = (slug: string, archived: boolean) => ['kanban', 'board', slug, archived] as const
-export const taskKey = (slug: string, id: string) => ['kanban', 'task', slug, id] as const
-export const logKey = (slug: string, id: string) => ['kanban', 'log', slug, id] as const
-export const BOARDS_KEY = ['kanban', 'boards'] as const
-export const PROFILES_KEY = ['kanban', 'profiles'] as const
-export const PROJECTS_KEY = ['kanban', 'projects'] as const
-export const ORCHESTRATION_KEY = ['kanban', 'orchestration'] as const
+/** Prefix matching every board query on one connection (all slugs, both
+ *  archived views) — the mutation-settled invalidation target. */
+export const boardKeyPrefix = (scope: string) => ['kanban', 'board', scope] as const
+export const boardKey = (scope: string, slug: string, archived: boolean) =>
+  [...boardKeyPrefix(scope), slug, archived] as const
+export const taskKey = (scope: string, slug: string, id: string) => ['kanban', 'task', scope, slug, id] as const
+export const logKey = (scope: string, slug: string, id: string) => ['kanban', 'log', scope, slug, id] as const
+export const boardsKey = (scope: string) => ['kanban', 'boards', scope] as const
+export const profilesKey = (scope: string) => ['kanban', 'profiles', scope] as const
+export const projectsKey = (scope: string) => ['kanban', 'projects', scope] as const
+export const orchestrationKey = (scope: string) => ['kanban', 'orchestration', scope] as const
 
 // ── reads ─────────────────────────────────────────────────────────────────────
 
 export const fetchBoard = (archived: boolean) =>
   call<KanbanBoard>(withBoard('/board', archived ? { include_archived: 'true' } : {}))
 
-export const fetchTask = (id: string) => call<KanbanTaskDetail>(withBoard(`/tasks/${id}`))
-const fetchTaskInScope = (id: string, scopeKey?: null | string) =>
-  call<KanbanTaskDetail>(withBoardScope(`/tasks/${id}`, scopeKey))
+export const fetchTask = async (id: string) => {
+  const downloadAttachment = captureGatewayFileDownload()
+  const detail = await call<KanbanTaskDetail>(withBoard(`/tasks/${id}`))
 
-export const fetchRunInspection = (id: number | string) =>
-  call<{
-    run_id: number | string
-    alive: boolean
-    reason?: null | string
-    pid?: null | number
-    status?: null | string
-    cpu_percent?: null | number
-    memory_rss_bytes?: null | number
-    num_threads?: null | number
-  }>(withBoard(`/runs/${id}/inspect`))
-
-const fetchRunInspectionInScope = (id: number | string, scopeKey?: null | string) =>
-  call<{
-    run_id: number | string
-    alive: boolean
-    reason?: null | string
-    pid?: null | number
-    status?: null | string
-    cpu_percent?: null | number
-    memory_rss_bytes?: null | number
-    num_threads?: null | number
-  }>(withBoardScope(`/runs/${id}/inspect`, scopeKey))
-
-export function toOperationsTaskExecution(detail: KanbanTaskDetail): OperationsTaskExecution {
-  return {
-    taskId: detail.task.id,
-    result: detail.task.result,
-    lastFailureError: detail.task.last_failure_error,
-    workspacePath: detail.task.workspace_path,
-    branchName: detail.task.branch_name,
-    artifacts: (detail.attachments ?? []).map(attachment => ({
-      id: attachment.id,
-      name: attachment.filename,
-      sizeBytes: attachment.size
-    })),
-    events: detail.events.map(event => ({
-      id: event.id,
-      kind: event.kind,
-      createdAt: event.created_at,
-      detail:
-        typeof event.payload === 'string'
-          ? event.payload
-          : event.payload == null
-            ? null
-            : JSON.stringify(event.payload)
-    })),
-    runs: detail.runs.map(run => ({
-      id: run.id,
-      status: run.status,
-      outcome: run.outcome,
-      profile: run.profile,
-      workerSessionId: run.worker_session_id,
-      workerPid: run.worker_pid,
-      startedAt: run.started_at,
-      endedAt: run.ended_at,
-      summary: run.summary,
-      error: run.error
-    }))
-  }
-}
-
-export async function fetchOperationsTaskExecution(
-  id: string,
-  snapshot: OperationsTaskSnapshot
-): Promise<OperationsTaskExecution> {
-  return toOperationsTaskExecution(await fetchTaskInScope(id, snapshot.scopeKey))
-}
-
-export function toOperationsRunInspection(inspection: {
-  run_id: number | string
-  alive: boolean
-  reason?: null | string
-  pid?: null | number
-  status?: null | string
-  cpu_percent?: null | number
-  memory_rss_bytes?: null | number
-  num_threads?: null | number
-}): OperationsRunInspection {
-  return {
-    runId: inspection.run_id,
-    alive: inspection.alive,
-    reason: inspection.reason,
-    pid: inspection.pid,
-    status: inspection.status,
-    cpuPercent: inspection.cpu_percent,
-    memoryRssBytes: inspection.memory_rss_bytes,
-    numThreads: inspection.num_threads
-  }
-}
-
-export async function fetchOperationsRunInspection(
-  id: number | string,
-  snapshot: OperationsTaskSnapshot
-): Promise<OperationsRunInspection> {
-  return toOperationsRunInspection(await fetchRunInspectionInScope(id, snapshot.scopeKey))
-}
-
-export function toOperationsTaskLog(log: WorkerLog): OperationsTaskLog {
-  return {
-    exists: log.exists,
-    sizeBytes: log.size_bytes,
-    content: log.content,
-    truncated: log.truncated
-  }
-}
-
-export async function fetchOperationsTaskLog(
-  id: string,
-  snapshot: OperationsTaskSnapshot
-): Promise<OperationsTaskLog> {
-  return toOperationsTaskLog(await fetchLogInScope(id, snapshot.scopeKey))
+  return { ...detail, downloadAttachment }
 }
 
 /** Worker stdout/stderr tail (last 16 KiB — plenty for the drawer). */
 export const fetchLog = (id: string) => call<WorkerLog>(withBoard(`/tasks/${id}/log`, { tail: '16384' }))
-const fetchLogInScope = (id: string, scopeKey?: null | string) =>
-  call<WorkerLog>(withBoardScope(`/tasks/${id}/log`, scopeKey, { tail: '16384' }))
 
 export const fetchBoards = () => call<BoardsResponse>('/boards')
 
@@ -311,85 +375,6 @@ export const fetchProfiles = () => call<{ profiles: KanbanProfile[] }>('/profile
 export const fetchProjects = () => call<{ projects: KanbanProject[] }>('/projects')
 
 export const fetchOrchestration = () => call<OrchestrationSettings>('/orchestration')
-
-/** Read-only normalized projection for Agent OS and other operational surfaces.
- * Kanban remains authoritative for persistence and workflow rules. */
-export function toOperationsSnapshot(
-  board: KanbanBoard,
-  boards: BoardsResponse,
-  projects: readonly KanbanProject[],
-  scopeKey?: null | string
-): OperationsTaskSnapshot {
-  const current = boards.boards.find(item => item.slug === boards.current)
-  const projectById = new Map(projects.map(project => [project.id, project]))
-  const boardProject = current?.project_id ? projectById.get(current.project_id) : undefined
-
-  return {
-    sourceId: 'kanban',
-    sourceLabel: 'Kanban',
-    scopeKey: scopeKey || boards.current || null,
-    scopeLabel: current?.name || current?.slug || boards.current || 'Current board',
-    observedAt: board.now * 1000,
-    projects: projects.map(project => ({
-      id: project.id,
-      name: project.name,
-      slug: project.slug,
-      path: project.primary_path
-    })),
-    tasks: board.columns.flatMap(column =>
-      column.tasks.map(task => {
-        const project = task.project_id ? projectById.get(task.project_id) : boardProject
-
-        return {
-          id: task.id,
-          title: task.title,
-          status: task.status || column.name,
-          assignee: task.assignee,
-          priority: task.priority,
-          projectId: task.project_id || current?.project_id,
-          projectName: project?.name || current?.project_name,
-          originSessionId: task.session_id,
-          runId: task.current_run_id,
-          workerSessionId: task.worker_session_id,
-          startedAt: task.started_at,
-          lastHeartbeatAt: task.last_heartbeat_at,
-          warning: task.warnings
-            ? {
-                count: task.warnings.count,
-                severity: task.warnings.highest_severity,
-                kinds: task.warnings.kinds,
-                latestAt: task.warnings.latest_at
-              }
-            : null
-        }
-      })
-    )
-  }
-}
-
-export async function fetchOperationsSnapshot(): Promise<OperationsTaskSnapshot> {
-  const scopeKey = $boardSlug.get()
-  const [board, boards, projects] = await Promise.all([fetchBoard(false), fetchBoards(), fetchProjects()])
-
-  return toOperationsSnapshot(board, boards, projects.projects, scopeKey || boards.current)
-}
-
-/** Normalize a future Mission Control capture into Kanban's non-executing
- * triage intake shape. Keeping this mapper pure lets the control plane test the
- * producer contract without registering a write capability yet. */
-export function toMissionCaptureTaskBody(input: OperationsCaptureInput): Record<string, unknown> {
-  const title = input.title.trim()
-  if (!title) {
-    throw new Error('A title is required.')
-  }
-
-  return {
-    title,
-    body: input.body?.trim() || undefined,
-    triage: true,
-    ...(input.projectId ? { project_id: input.projectId } : {})
-  }
-}
 
 // ── writes ────────────────────────────────────────────────────────────────────
 
