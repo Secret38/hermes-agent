@@ -60,6 +60,7 @@ class LiveRuntimeFrameBroker:
         self._ttl_seconds = float(ttl_seconds)
         self._max_frame_bytes = int(max_frame_bytes)
         self._frames: dict[str, LiveRuntimeFrame] = {}
+        self._timers: dict[str, threading.Timer] = {}
         self._lock = threading.RLock()
 
     def publish_multimodal(
@@ -106,7 +107,18 @@ class LiveRuntimeFrameBroker:
 
         with self._lock:
             self._purge_locked(timestamp)
+            previous = self._timers.pop(frame.task_id, None)
+            if previous is not None:
+                previous.cancel()
             self._frames[frame.task_id] = frame
+            timer = threading.Timer(
+                self._ttl_seconds,
+                self._expire_frame,
+                args=(frame.task_id, frame.captured_at),
+            )
+            timer.daemon = True
+            self._timers[frame.task_id] = timer
+            timer.start()
         return frame
 
     def latest(
@@ -131,16 +143,34 @@ class LiveRuntimeFrameBroker:
             return frame
 
     def clear_task(self, task_id: str) -> bool:
+        key = str(task_id).strip()
         with self._lock:
-            return self._frames.pop(str(task_id).strip(), None) is not None
+            timer = self._timers.pop(key, None)
+            if timer is not None:
+                timer.cancel()
+            return self._frames.pop(key, None) is not None
 
     def clear(self) -> None:
         with self._lock:
+            for timer in self._timers.values():
+                timer.cancel()
+            self._timers.clear()
             self._frames.clear()
+
+    def _expire_frame(self, task_id: str, captured_at: float) -> None:
+        with self._lock:
+            frame = self._frames.get(task_id)
+            if frame is None or frame.captured_at != captured_at:
+                return
+            self._frames.pop(task_id, None)
+            self._timers.pop(task_id, None)
 
     def _purge_locked(self, now: float) -> None:
         stale = [task_id for task_id, frame in self._frames.items() if frame.expires_at <= now]
         for task_id in stale:
+            timer = self._timers.pop(task_id, None)
+            if timer is not None:
+                timer.cancel()
             self._frames.pop(task_id, None)
 
 
