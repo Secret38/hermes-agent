@@ -14,6 +14,7 @@ from tools.computer_use.tool import (
 from agent_os.contracts import ActionRecord
 from agent_os.execution_context import current_authorized_execution
 from agent_os.kernel import ExecutionResult
+from agent_os.live_frames import live_runtime_frames
 from agent_os.verification.gate import VerificationResult, VerificationVerdict
 
 
@@ -51,11 +52,18 @@ class HermesComputerUseExecutor:
                 return "once"
             return "deny"
 
+        computer_session_id = action.task_id
         raw = handle_computer_use(
             payload,
             task_id=action.task_id,
-            session_id=action.task_id,
+            session_id=computer_session_id,
             approval_callback=bridge_approval,
+        )
+        live_runtime_frames.publish_multimodal(
+            task_id=action.task_id,
+            session_id=computer_session_id,
+            action_id=action.id,
+            raw=raw,
         )
         result = self._normalize(raw)
         if result.get("error") or result.get("ok") is False:
@@ -89,6 +97,7 @@ class HermesComputerUseExecutor:
 
     @staticmethod
     def cleanup(task_id: str) -> bool:
+        live_runtime_frames.clear_task(task_id)
         return bool(release_computer_use_session(task_id))
 
 
