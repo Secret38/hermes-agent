@@ -1,0 +1,57 @@
+name: Agent OS upstream conflict probe
+
+on:
+  push:
+    branches:
+      - agent-os-v1-upstream-sync
+    paths:
+      - ".github/workflows/agent-os-upstream-conflict-probe.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Fetch local upstream mirror
+        run: git fetch origin upstream-main-2026-09-25
+
+      - name: Probe three-way merge
+        shell: bash
+        run: |
+          set +e
+          git merge --no-commit --no-ff origin/upstream-main-2026-09-25
+          merge_status=$?
+          set -e
+
+          mkdir -p merge-evidence/conflicts
+          git status --porcelain=v1 > merge-evidence/status.txt
+          git diff --name-only --diff-filter=U > merge-evidence/conflict-files.txt
+          git ls-files -u > merge-evidence/unmerged-index.txt
+          printf '%s\n' "$merge_status" > merge-evidence/merge-status.txt
+
+          while IFS= read -r file; do
+            [ -n "$file" ] || continue
+            safe="$(printf '%s' "$file" | tr '/' '_')"
+            git show ":1:$file" > "merge-evidence/conflicts/$safe.base" 2>/dev/null || true
+            git show ":2:$file" > "merge-evidence/conflicts/$safe.ours" 2>/dev/null || true
+            git show ":3:$file" > "merge-evidence/conflicts/$safe.theirs" 2>/dev/null || true
+            cp "$file" "merge-evidence/conflicts/$safe.merged" 2>/dev/null || true
+          done < merge-evidence/conflict-files.txt
+
+          git diff --cc > merge-evidence/conflicts.patch || true
+          git merge --abort || true
+
+      - name: Upload merge evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: agent-os-upstream-conflicts-${{ github.sha }}
+          path: merge-evidence
+          retention-days: 2
