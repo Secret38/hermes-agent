@@ -59,8 +59,11 @@ jobs:
             exit 1
           fi
 
-          # Remove temporary probe/apply workflows from the resulting product tree.
-          git rm -f --ignore-unmatch             .github/workflows/agent-os-upstream-conflict-probe.yml             .github/workflows/agent-os-upstream-port-probe.yml             .github/workflows/agent-os-upstream-merge-apply.yml
+          # The GitHub Actions installation token cannot push workflow-file
+          # changes. Keep this subtree byte-for-byte on the merge commit;
+          # workflows are synchronized separately through the GitHub connector.
+          git checkout "$ours" -- .github/workflows
+          git add .github/workflows
 
           git status --short
           git commit -m "chore(agent-os): merge current Hermes upstream"
