@@ -1051,7 +1051,7 @@ export function RuntimeObservatory({ task }: { task: AgentOSTask }) {
       return
     }
 
-    return subscribeAgentOSLiveFrame(task.id, message => {
+    return subscribeAgentOSLiveFrame(task.id, task.session_id || task.id, message => {
       if (message.task_id !== task.id) {
         return
       }
@@ -1063,7 +1063,7 @@ export function RuntimeObservatory({ task }: { task: AgentOSTask }) {
       setLiveFrame(undefined)
       setLiveStatus('waiting')
     })
-  }, [liveEnabled, task.id])
+  }, [liveEnabled, task.id, task.session_id])
 
   return (
     <section className="aos-panel overflow-hidden">
