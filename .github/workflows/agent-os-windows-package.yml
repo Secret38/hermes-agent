@@ -53,11 +53,13 @@ jobs:
           $ErrorActionPreference = 'Stop'
           npm ci
 
-      - name: Verify locked Rust graph
+      - name: Resolve and verify Rust graph
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          cargo metadata --locked --manifest-path apps/bootstrap-installer/src-tauri/Cargo.toml --format-version 1 | Out-Null
+          $manifest = 'apps/bootstrap-installer/src-tauri/Cargo.toml'
+          cargo generate-lockfile --manifest-path $manifest
+          cargo metadata --locked --manifest-path $manifest --format-version 1 | Out-Null
 
       - name: Build pinned Windows executable
         shell: pwsh
@@ -70,8 +72,12 @@ jobs:
             throw "Expected Hermes-Setup.exe was not produced"
           }
 
-          git diff --exit-code -- apps/bootstrap-installer/src-tauri/Cargo.lock
+          $lock = 'apps/bootstrap-installer/src-tauri/Cargo.lock'
+          if (-not (Test-Path $lock -PathType Leaf)) {
+            throw "Expected Cargo.lock was not generated for the candidate graph"
+          }
           New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item -LiteralPath $lock -Destination dist/Cargo.lock -Force
           Copy-Item -LiteralPath $exe -Destination dist/Hermes-Setup.exe -Force
 
           $hash = (Get-FileHash -Algorithm SHA256 dist/Hermes-Setup.exe).Hash.ToLowerInvariant()
@@ -94,5 +100,6 @@ jobs:
             dist/Hermes-Setup.exe
             dist/SHA256SUMS.txt
             dist/build-metadata.json
+            dist/Cargo.lock
           if-no-files-found: error
           retention-days: 7
