@@ -1,6 +1,7 @@
 import { cn, Codicon } from '@hermes/plugin-sdk'
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { subscribeAgentOSLiveFrame, type AgentOSLiveFrameMessage } from './api'
 import type {
   AgentOSAction,
   AgentOSAgent,
@@ -1039,6 +1040,30 @@ function ObservatoryLane({
 export function RuntimeObservatory({ task }: { task: AgentOSTask }) {
   const browser = latestActionForTool(task, ['browser'])
   const computer = latestActionForTool(task, ['computer_use', 'computer-use'])
+  const [liveEnabled, setLiveEnabled] = useState(false)
+  const [liveFrame, setLiveFrame] = useState<Extract<AgentOSLiveFrameMessage, { type: 'runtime.frame' }>>()
+  const [liveStatus, setLiveStatus] = useState<'idle' | 'live' | 'waiting'>('idle')
+
+  useEffect(() => {
+    setLiveFrame(undefined)
+    setLiveStatus(liveEnabled ? 'waiting' : 'idle')
+    if (!liveEnabled) {
+      return
+    }
+
+    return subscribeAgentOSLiveFrame(task.id, message => {
+      if (message.task_id !== task.id) {
+        return
+      }
+      if (message.type === 'runtime.frame') {
+        setLiveFrame(message)
+        setLiveStatus('live')
+        return
+      }
+      setLiveFrame(undefined)
+      setLiveStatus('waiting')
+    })
+  }, [liveEnabled, task.id])
 
   return (
     <section className="aos-panel overflow-hidden">
@@ -1052,7 +1077,23 @@ export function RuntimeObservatory({ task }: { task: AgentOSTask }) {
             </div>
           </div>
         </div>
-        <span className="text-[0.54rem] uppercase tracking-[0.08em] text-(--ui-text-quaternary)">safe metadata</span>
+        <div className="flex items-center gap-2">
+          <span className="text-[0.54rem] uppercase tracking-[0.08em] text-(--ui-text-quaternary)">
+            {liveEnabled ? 'RAM-only live' : 'safe metadata'}
+          </span>
+          <button
+            aria-pressed={liveEnabled}
+            className={cn(
+              'inline-flex h-7 items-center gap-1.5 rounded border border-(--ui-stroke-tertiary) px-2 text-[0.56rem] font-medium text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground',
+              liveEnabled && 'bg-(--ui-control-active-background) text-foreground'
+            )}
+            onClick={() => setLiveEnabled(value => !value)}
+            type="button"
+          >
+            <Codicon name={liveEnabled ? 'eye-closed' : 'eye'} size="0.66rem" />
+            {liveEnabled ? 'Stop live view' : 'Start live view'}
+          </button>
+        </div>
       </div>
       <div className="grid gap-0 lg:grid-cols-2">
         <ObservatoryLane
@@ -1065,9 +1106,51 @@ export function RuntimeObservatory({ task }: { task: AgentOSTask }) {
           action={computer}
           icon="device-desktop"
           label="Computer use"
-          pixelNote="CUA captures are runtime-ephemeral. A future opt-in live viewport should stream them directly rather than storing desktop pixels in the Agent OS ledger."
+          pixelNote="CUA captures remain runtime-ephemeral. Live view subscribes to the latest RAM-only frame and never writes pixels into the Agent OS ledger."
         />
       </div>
+
+      {liveEnabled ? (
+        <div className="border-t border-(--ui-stroke-tertiary) bg-(--ui-bg-primary) p-3">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <div>
+              <div className="aos-kicker">Live computer use</div>
+              <div className="mt-0.5 text-[0.56rem] text-(--ui-text-tertiary)">
+                Current task only · RAM-only · expires automatically
+              </div>
+            </div>
+            <span
+              className={cn(
+                'rounded border border-(--ui-stroke-tertiary) px-1.5 py-0.5 text-[0.52rem] uppercase tracking-[0.06em]',
+                liveStatus === 'live' ? 'text-(--dt-success)' : 'text-(--ui-text-tertiary)'
+              )}
+            >
+              {liveStatus}
+            </span>
+          </div>
+
+          {liveFrame ? (
+            <div className="aos-live-runtime-frame overflow-hidden rounded-md border border-(--ui-stroke-tertiary) bg-black">
+              <img
+                alt="Live Computer Use frame for the current Agent OS task"
+                className="block max-h-[28rem] w-full object-contain"
+                draggable={false}
+                src={`data:${liveFrame.mime_type};base64,${liveFrame.image_b64}`}
+              />
+            </div>
+          ) : (
+            <div className="grid min-h-52 place-items-center rounded-md border border-dashed border-(--ui-stroke-tertiary) bg-(--ui-bg-secondary) px-4 text-center">
+              <div>
+                <Codicon className="mx-auto text-(--ui-text-quaternary)" name="device-desktop" size="1.1rem" />
+                <div className="mt-2 text-[0.64rem] font-medium text-foreground">Waiting for a fresh CUA frame</div>
+                <div className="mt-1 max-w-md text-[0.56rem] leading-relaxed text-(--ui-text-tertiary)">
+                  The viewport appears only while this task produces a valid capture. Expired frames are removed instead of replayed.
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : null}
     </section>
   )
 }
