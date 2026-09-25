@@ -215,3 +215,48 @@ def test_executor_binds_live_frame_to_origin_session(monkeypatch):
     assert frame is not None
     assert frame.session_id == "origin-session"
     assert "image_b64" not in result.actual_state
+
+
+
+def test_executor_capture_callback_survives_text_only_result(monkeypatch):
+    current = action("capture")
+    encoded = base64.b64encode(b"frame").decode("ascii")
+    monkeypatch.setattr(
+        "agent_os.adapters.hermes_computer.AgentOSStore",
+        lambda: SimpleNamespace(
+            get_task=lambda task_id: SimpleNamespace(session_id="origin-session")
+        ),
+    )
+
+    def fake_handle(args, **kwargs):
+        kwargs["capture_callback"](
+            mime_type="image/png",
+            image_b64=encoded,
+            width=800,
+            height=600,
+        )
+        return json.dumps(
+            {
+                "ok": True,
+                "action": "capture",
+                "vision_analysis": "text-only routed result",
+            }
+        )
+
+    monkeypatch.setattr(
+        "agent_os.adapters.hermes_computer.handle_computer_use",
+        fake_handle,
+    )
+    live_runtime_frames.clear()
+
+    result = HermesComputerUseExecutor().execute(current)
+
+    frame = live_runtime_frames.latest(
+        current.task_id,
+        session_id="origin-session",
+    )
+    assert frame is not None
+    assert frame.image_b64 == encoded
+    assert frame.width == 800
+    assert result.actual_state["vision_analysis"] == "text-only routed result"
+    assert "image_b64" not in result.actual_state
