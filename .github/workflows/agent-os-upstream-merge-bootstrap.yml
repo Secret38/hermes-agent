@@ -1,0 +1,95 @@
+name: Agent OS upstream merge bootstrap
+
+on:
+  push:
+    branches:
+      - agent-os-v1-upstream-resolved-20260925
+    paths:
+      - ".github/workflows/agent-os-upstream-merge-bootstrap.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout upstream-based resolution branch
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          ref: agent-os-v1-upstream-resolved-20260925
+
+      - name: Fetch validated convergence branch
+        run: git fetch origin agent-os-v1-security-convergence
+
+      - name: Merge and preserve current upstream on known conflict surfaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "agent-os-upstream-bootstrap"
+          git config user.email "agent-os-upstream-bootstrap@users.noreply.github.com"
+
+          set +e
+          git merge --no-commit --no-ff origin/agent-os-v1-security-convergence
+          merge_status=$?
+          set -e
+
+          if [ "$merge_status" -eq 0 ]; then
+            echo "::error::Expected the audited integration conflicts, but merge was clean. Refusing an unreviewed topology change."
+            exit 1
+          fi
+
+          cat > /tmp/expected-conflicts.txt <<'EOF'
+.github/workflows/ci.yaml
+.github/workflows/installer-tests.yml
+.github/workflows/tests-os.yml
+apps/desktop/e2e/fixtures.ts
+apps/desktop/src/plugins/kanban/api.ts
+apps/desktop/src/plugins/kanban/plugin.tsx
+apps/desktop/src/sdk/index.ts
+apps/shared/src/gateway-contract.openrpc.json
+cli.py
+scripts/install.ps1
+scripts/install.sh
+tests/agent/test_tool_dispatch_helpers.py
+tests/ci/test_classify_changes.py
+tests/tools/test_approval.py
+tests/tools/test_browser_cdp_tool.py
+tests/tools/test_computer_use_capture_routing.py
+tests/tools/test_tirith_security.py
+tools/browser_tool_install.py
+tools/computer_use/cua_backend.py
+tools/computer_use/permissions.py
+tools/computer_use/tool.py
+tools/tirith_security.py
+ui-tui/src/__tests__/appChromeBlockedTimers.test.tsx
+ui-tui/src/__tests__/virtualHistoryOffsetCache.test.ts
+EOF
+
+          git diff --name-only --diff-filter=U | sort > /tmp/actual-conflicts.txt
+          if ! diff -u /tmp/expected-conflicts.txt /tmp/actual-conflicts.txt; then
+            echo "::error::Conflict set changed from the audited 24 files; refusing automatic bootstrap."
+            git merge --abort || true
+            exit 1
+          fi
+
+          while IFS= read -r file; do
+            if [ "$file" = ".github/workflows/installer-tests.yml" ]; then
+              git rm -f -- "$file"
+            else
+              git checkout --ours -- "$file"
+              git add -- "$file"
+            fi
+          done < /tmp/expected-conflicts.txt
+
+          if git diff --name-only --diff-filter=U | grep -q .; then
+            echo "::error::Unresolved merge conflicts remain."
+            git diff --name-only --diff-filter=U
+            exit 1
+          fi
+
+          git add -A
+          git commit -m "chore(agent-os): merge current upstream baseline"
+          git push origin HEAD:agent-os-v1-upstream-resolved-20260925
