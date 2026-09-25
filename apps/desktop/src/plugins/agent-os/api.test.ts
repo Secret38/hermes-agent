@@ -8,6 +8,7 @@ import {
 
 describe('Agent OS live frame subscription', () => {
   let dispose: undefined | (() => void)
+  const rest = async <T>() => ({} as T)
 
   afterEach(() => {
     dispose?.()
@@ -21,10 +22,7 @@ describe('Agent OS live frame subscription', () => {
       calls.push({ path, onMessage })
       return () => closed.push(path)
     })
-    dispose = bindAgentOSApi(
-      vi.fn(async () => ({})),
-      socket
-    )
+    dispose = bindAgentOSApi(rest, socket)
 
     const seen: AgentOSLiveFrameMessage[] = []
     const closeLive = subscribeAgentOSLiveFrame(
@@ -52,10 +50,7 @@ describe('Agent OS live frame subscription', () => {
 
   it('does not open a live socket without both identities', () => {
     const socket = vi.fn(() => () => undefined)
-    dispose = bindAgentOSApi(
-      vi.fn(async () => ({})),
-      socket
-    )
+    dispose = bindAgentOSApi(rest, socket)
 
     subscribeAgentOSLiveFrame('task', '', vi.fn())
     expect(socket).toHaveBeenCalledTimes(1)
@@ -64,10 +59,7 @@ describe('Agent OS live frame subscription', () => {
 
   it('stops opening live sockets after API disposal', () => {
     const socket = vi.fn(() => () => undefined)
-    dispose = bindAgentOSApi(
-      vi.fn(async () => ({})),
-      socket
-    )
+    dispose = bindAgentOSApi(rest, socket)
     dispose()
     dispose = undefined
 
