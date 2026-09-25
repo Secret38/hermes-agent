@@ -90,6 +90,13 @@ jobs:
             exit 1
           fi
 
+          # GITHUB_TOKEN cannot update workflow files. Keep the complete
+          # current-upstream workflow tree in this bootstrap merge; Agent OS
+          # release/visual workflows are re-applied afterward through the
+          # repository-authorized connector and reviewed independently.
+          git rm -rf -- .github/workflows
+          git checkout HEAD -- .github/workflows
+          git add .github/workflows
           git add -A
           git commit -m "chore(agent-os): merge current upstream baseline"
           git push origin HEAD:agent-os-v1-upstream-resolved-20260925
