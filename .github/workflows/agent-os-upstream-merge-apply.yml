@@ -31,6 +31,7 @@ jobs:
           git clean -fdx
 
           git fetch origin upstream-main-2026-09-25
+          ours="$(git rev-parse HEAD)"
           upstream="$(git rev-parse origin/upstream-main-2026-09-25)"
 
           set +e
