@@ -307,3 +307,41 @@ class TestBugReproductionAnchor:
         # main provider in #24015.
         assert "data:image" not in resp
         assert "image_url" not in resp
+
+
+
+def test_capture_observer_fires_before_aux_routing(tmp_cache_dir):
+    from tools.computer_use import tool as cu_tool
+
+    cap = _make_capture(mode="som")
+    seen = {}
+
+    def observer(**payload):
+        seen.update(payload)
+
+    def _fake_run_async(_coro):
+        return _stub_aux_analysis("Visible desktop frame")
+
+    fake_vat = MagicMock(return_value="<coro>")
+    token = cu_tool._capture_observer.set(observer)
+    try:
+        with patch.object(
+            cu_tool,
+            "_should_route_through_aux_vision",
+            return_value=True,
+        ), patch(
+            "model_tools._run_async",
+            side_effect=_fake_run_async,
+        ), patch(
+            "tools.vision_tools.vision_analyze_tool",
+            new_callable=lambda: fake_vat,
+        ):
+            resp = cu_tool._capture_response(cap)
+    finally:
+        cu_tool._capture_observer.reset(token)
+
+    assert isinstance(resp, str)
+    assert seen["mime_type"] == "image/png"
+    assert seen["image_b64"] == _PNG_B64
+    assert seen["width"] > 0
+    assert seen["height"] > 0
