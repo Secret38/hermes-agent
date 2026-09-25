@@ -25,7 +25,7 @@ from acp.schema import (
 )
 
 from acp_adapter.auth import TERMINAL_SETUP_AUTH_METHOD_ID, build_auth_methods, detect_provider
-from acp_adapter.commands import HERMES_VERSION, SlashCommandsMixin, _estimate_tokens
+from acp_adapter.commands import SlashCommandsMixin, _estimate_tokens
 from acp_adapter.content import PromptBlock, _content_blocks_to_openai_user_content, _extract_text
 from acp_adapter.events import (
     AssistantMessageIdAllocator, _build_plan_update_from_todo_result, _send_update, flush_open_tool_calls,
@@ -447,7 +447,7 @@ class HermesACPAgent(SlashCommandsMixin, acp.Agent):
 
             agent = state.agent
             agent.enabled_toolsets = _expand_acp_enabled_toolsets(
-                getattr(agent, "enabled_toolsets", None) or ["hermes-acp"],
+                getattr(agent, "enabled_toolsets", None),
                 mcp_server_names=[s.name for s in mcp_servers],
             )
             agent.tools = get_tool_definitions(
@@ -524,6 +524,8 @@ class HermesACPAgent(SlashCommandsMixin, acp.Agent):
         self, protocol_version: int | None = None, client_capabilities: ClientCapabilities | None = None,
         client_info: Implementation | None = None, **kwargs: Any,
     ) -> InitializeResponse:
+        from hermes_cli.version_info import get_version_info
+
         auth_methods = build_auth_methods()
         logger.info(
             "Initialize from %s (protocol v%s)", client_info.name if client_info else "unknown",
@@ -532,7 +534,7 @@ class HermesACPAgent(SlashCommandsMixin, acp.Agent):
 
         return InitializeResponse(
             protocol_version=acp.PROTOCOL_VERSION,
-            agent_info=Implementation(name="hermes-agent", version=HERMES_VERSION),
+            agent_info=Implementation(name="hermes-agent", version=get_version_info().base_version),
             agent_capabilities=AgentCapabilities(
                 load_session=True,
                 prompt_capabilities=PromptCapabilities(image=True),
@@ -728,11 +730,12 @@ class HermesACPAgent(SlashCommandsMixin, acp.Agent):
         """Mark the session running; if a turn is active, redirect it (text-only, supported
         runtime) or queue it. Returns the client message when absorbed, else None."""
         with state.runtime_lock:
-            if not state.is_running:
+            if not state.is_running and not state.command_op:
                 state.is_running = True
                 state.current_prompt_text = user_text or "[Image attachment]"
                 return None
-            if text_only and isinstance(user_content, str) and hasattr(state.agent, "redirect") and (
+            # Redirect steers a live turn; a state-mutating command (command_op) has none.
+            if state.is_running and text_only and isinstance(user_content, str) and hasattr(state.agent, "redirect") and (
                 getattr(state.agent, "_supports_active_turn_redirect", False) is True
             ):
                 try:
@@ -831,6 +834,8 @@ class HermesACPAgent(SlashCommandsMixin, acp.Agent):
                 if self._conn:
                     await self._conn.session_update(session_id, acp.update_agent_message_text(response_text))
                     await self._send_usage_update(state)
+                # A mutating command held command_op; prompts that arrived mid-op are queued.
+                await self._drain_queued_prompts(state, session_id, self._conn)
                 return PromptResponse(stop_reason="end_turn")
 
         absorbed = self._claim_turn_or_queue(state, session_id, user_text, user_content, text_only_prompt)
@@ -983,14 +988,7 @@ class HermesACPAgent(SlashCommandsMixin, acp.Agent):
             with state.runtime_lock:
                 state.is_running = False
                 state.current_prompt_text = ""
-            while True:
-                with state.runtime_lock:
-                    if not state.queued_prompts:
-                        break
-                    next_prompt = state.queued_prompts.pop(0)
-                if conn:
-                    await conn.session_update(session_id, acp.update_user_message_text(next_prompt))
-                await self.prompt(prompt=[TextContentBlock(type="text", text=next_prompt)], session_id=session_id)
+            await self._drain_queued_prompts(state, session_id, conn)
 
         usage = None
         if any(result.get(k) is not None for k in ("prompt_tokens", "completion_tokens", "total_tokens")):
@@ -1002,12 +1000,34 @@ class HermesACPAgent(SlashCommandsMixin, acp.Agent):
         await self._send_usage_update(state)
         return PromptResponse(stop_reason="cancelled" if cancelled else "end_turn", usage=usage)
 
+    async def _drain_queued_prompts(self, state: SessionState, session_id: str, conn: Any) -> None:
+        """Run queued prompts while the session is idle. Reached from ``_finish_turn`` and
+        from the slash path after a state-mutating command releases ``command_op``."""
+        while True:
+            with state.runtime_lock:
+                if state.is_running or state.command_op or not state.queued_prompts:
+                    return
+                next_prompt = state.queued_prompts.pop(0)
+            if conn:
+                await conn.session_update(session_id, acp.update_user_message_text(next_prompt))
+            await self.prompt(prompt=[TextContentBlock(type="text", text=next_prompt)], session_id=session_id)
+
     # ---- Session settings (ACP protocol methods) -----------------------------
 
     async def set_session_model(self, model_id: str, session_id: str, **kwargs: Any) -> SetSessionModelResponse | None:
         """Switch the model for a session (called by ACP protocol)."""
         state = await asyncio.to_thread(self.session_manager.get_session, session_id)
-        if state:
+        if state is None:
+            logger.warning("Session %s: model switch requested for missing session", session_id)
+            return None
+        # The picker swaps state.agent wholesale; mid-turn that strands the running agent and
+        # makes _finish_turn emit a spurious compression-rotation update. Same exclusion as
+        # the /model slash command.
+        with state.runtime_lock:
+            if state.is_running or state.command_op:
+                raise acp.RequestError(-32603, "Session is busy; switch models while the session is idle")
+            state.command_op = True
+        try:
             # switch_model() does synchronous network I/O (models.dev, custom-endpoint probes,
             # ~10 s cold) — off the loop, like the gateway, so other ACP sessions keep flowing.
             try:
@@ -1020,12 +1040,17 @@ class HermesACPAgent(SlashCommandsMixin, acp.Agent):
                 # (disabled provider, context window below the floor) stays on the -32603 path.
                 from acp.exceptions import RequestError
                 raise RequestError.invalid_params({"details": str(exc)}) from exc
-            logger.info(
-                "Session %s: model switched to %s via provider %s", session_id, resolved_model, requested_provider
-            )
-            return SetSessionModelResponse()
-        logger.warning("Session %s: model switch requested for missing session", session_id)
-        return None
+        finally:
+            with state.runtime_lock:
+                state.command_op = False
+            # Drain AFTER this response is queued, never inside it: a prompt that arrived
+            # mid-switch would otherwise run a whole turn before the client sees the
+            # (possibly failed) switch result.
+            self._schedule_soon(lambda: self._drain_queued_prompts(state, session_id, self._conn))
+        logger.info(
+            "Session %s: model switched to %s via provider %s", session_id, resolved_model, requested_provider
+        )
+        return SetSessionModelResponse()
 
     async def set_session_mode(self, mode_id: str, session_id: str, **kwargs: Any) -> SetSessionModeResponse | None:
         """Persist the editor-requested mode so ACP clients do not fail on mode switches."""
