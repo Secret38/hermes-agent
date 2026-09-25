@@ -11,6 +11,10 @@ export interface KanbanTask {
   assignee?: null | string
   priority?: number
   tenant?: null | string
+  project_id?: null | string
+  session_id?: null | string
+  current_run_id?: null | number
+  worker_session_id?: null | string
   created_at?: number
   latest_summary?: null | string
   comment_count?: number
@@ -18,7 +22,12 @@ export interface KanbanTask {
   /** N-of-M child completion, or null when the task has no children. */
   progress?: null | { done: number; total: number }
   /** Compact diagnostics rollup — present only when a card has warnings. */
-  warnings?: null | { count: number; highest_severity?: null | string }
+  warnings?: null | {
+    count: number
+    highest_severity?: null | string
+    kinds?: Record<string, number>
+    latest_at?: null | number
+  }
   /** Worker liveness (present on running cards) — drives the arc + run clock. */
   started_at?: null | number
   worker_pid?: null | number
@@ -67,6 +76,7 @@ export interface KanbanRun {
   error?: null | string
   metadata?: null | Record<string, unknown> | string
   worker_pid?: null | number
+  worker_session_id?: null | string
   started_at?: null | number
   ended_at?: null | number
 }
@@ -88,7 +98,17 @@ export interface KanbanEvent {
 export interface KanbanAttachment {
   id: number | string
   filename: string
+  stored_path?: null | string
   size?: null | number
+}
+
+/** GET /tasks/:id `link_tasks` — one resolved row per linked task, so the UI
+ *  renders titles instead of raw ids. Additive: older backends omit it and
+ *  the drawer falls back to shortId chips. */
+export interface KanbanLinkTask {
+  id: string
+  title: string
+  status: string
 }
 
 /** Fields present only on the detail endpoint (beyond the card's KanbanTask).
@@ -122,6 +142,7 @@ export interface KanbanTaskDetail {
    *  section instead of offering uploads the backend would 404 on. */
   attachments?: KanbanAttachment[] | null
   links: { parents: string[]; children: string[] }
+  link_tasks?: KanbanLinkTask[] | null
   runs: KanbanRun[]
 }
 

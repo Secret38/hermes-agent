@@ -181,6 +181,9 @@ def detect_hardline_command(command: str) -> tuple:
     """Check hardline patterns (NEVER bypassable, even in YOLO) -> (is_hardline, description)."""
     if _command_parser_limit_exceeded(command):
         return (True, _PARSER_LIMIT_DESCRIPTION)
+    structural = _structural_hardline_description(command)
+    if structural:
+        return (True, structural)
     # The malformed-quoting verdict needs the author's quote state. Normalization strips escapes
     # (`\"` -> `"`), so a shell-valid pattern like `grep -o "[^\"]*"` lexed as unterminated and was
     # reported as a hardline block (118 of 125 hardline blocks in one week of real use, every one a
@@ -415,7 +418,12 @@ DANGEROUS_PATTERNS = [
     (r'\bgit\s+push\b.*--forc[a-z]*\b', "git force push (rewrites remote history)"),
     (r'\bgit\s+push\b.*-f\b', "git force push short flag (rewrites remote history)"),
     (r'\bgit\s+clean\s+-[^\s]*f', "git clean with force (deletes untracked files)"),
-    (r'\bgit\s+branch\s+-D\b', "git branch force delete"),
+    # `-D` = `-d --force`: only the capital short flag is force-delete, so the group opts out of
+    # the module-wide re.IGNORECASE and relies on _lower_preserving_flags keeping dash-prefixed
+    # tokens' case in the detection input (every other pattern matches case-insensitively and is
+    # unaffected). The safe merged-only -d / --delete stays ungated by design — git itself refuses
+    # to delete a branch that is not fully merged.
+    (r'\bgit\s+branch\s+(?-i:-D)\b', "git branch force delete"),
     # `-D` = `-d --force`; the long spellings are different tokens, so match delete+force in either order, bounded to
     # one command segment (no `;`/`|`/`&`/newline) so an unrelated later command isn't contaminated.
     (r'\bgit\s+branch\b[^;|&\n]*?(?:-d\b|--delete\b)[^;|&\n]*?(?:-f\b|--force\b)', "git branch force delete (long flags)"),
@@ -467,6 +475,12 @@ for _canonical_key, _legacy_key in [
     _PATTERN_KEY_ALIASES.setdefault(_canonical_key, set()).update({_canonical_key, _legacy_key})
     _PATTERN_KEY_ALIASES.setdefault(_legacy_key, set()).update({_legacy_key, _canonical_key})
 
+# Scoping the force-delete flag to (?-i:-D) changed this pattern's regex-derived legacy key;
+# keep the pre-change spelling resolvable so approvals stored under it still match.
+_old_branch_key = r"git\s+branch\s+-D"
+_PATTERN_KEY_ALIASES.setdefault("git branch force delete", set()).add(_old_branch_key)
+_PATTERN_KEY_ALIASES.setdefault(_old_branch_key, set()).add("git branch force delete")
+
 
 def _approval_key_aliases(pattern_key: str) -> set[str]:
     """All approval keys for this pattern: the description plus the historical regex-derived key
@@ -496,6 +510,15 @@ def _normalize_command_for_detection(command: str) -> str:
     # Collapse $IFS / ${IFS...} (incl. `${IFS:0:1}`) to a space: IFS defaults to whitespace, so `rm${IFS}-rf${IFS}/`
     # runs as `rm -rf /`, and every pattern — incl. the hardline floor — anchors on literal \s between tokens.
     return re.sub(r'\$\{IFS\b[^}]*\}|\$IFS\b', ' ', command)
+
+
+def _lower_preserving_flags(command: str) -> str:
+    """Lowercase a detection variant for the pattern pass while keeping dash-prefixed tokens
+    byte-for-byte, so case-dependent flags keep their distinction. All dangerous patterns are
+    compiled case-insensitively, so preserved flag case is invisible to them except where a
+    pattern explicitly scopes a case-sensitive group. Non-flag tokens (command words, quoted
+    prose, paths) are lowercased exactly as before; separators and whitespace are untouched."""
+    return ''.join(t if t.startswith('-') else t.lower() for t in re.split(r'(\s+)', command))
 
 
 # Shell metacharacters, quotes, and whitespace that terminate a path token.
@@ -596,10 +619,10 @@ _INTERPRETER_WITH_ARG = {
     "php": {"-c", "-d", "-z"},
     "powershell": {"-configurationname", "-custompipename", "-executionpolicy", "-inputformat", "-outputformat",
                    "-settingsfile", "-version", "-windowstyle", "-workingdirectory"},
-    # Deno deliberately maps to no value-taking globals: its inline-script entry is the
-    # bare `eval` subcommand (first-arg fast path below), and its dash flags that precede
-    # `eval` (--ext, --no-check, ...) never swallow the next token as a value.
-    "bun": {"--config", "--cwd", "--env-file", "--preload", "--require"}, "deno": set(),
+    # Deno's inline-script entry is the bare `eval` subcommand; the only global option that
+    # may precede it and take a separate value is `-L/--log-level <level>` (`--env-file[=v]`
+    # binds with `=`; the `--unstable-*` and `--ext` flags belong after `eval`).
+    "bun": {"--config", "--cwd", "--env-file", "--preload", "--require"}, "deno": {"-L", "--log-level"},
 }
 _READ_TOOL_EXEC_FLAGS = {
     "sort": {"--compress-program"}, "rg": {"--pre", "--hostname-bin"}, "ag": {"--pager"},
@@ -846,10 +869,6 @@ def _iter_top_level_shell_segments(command: str):
 def _interpreter_exec_flag(family: str, args: list[str]) -> str | None:
     """Return an execution-bearing interpreter option, if present."""
     flags, with_arg = _INTERPRETER_EXEC_FLAGS[family], _INTERPRETER_WITH_ARG[family]
-    # Deno evaluates inline scripts via a bare `eval` subcommand rather than a dash flag, and
-    # only as the first argument; a later positional `eval` stays data.
-    if family == "deno" and args and args[0].lower() == "eval":
-        return "eval"
     powershell = family == "powershell"
     skip_value = False
     for token in args:
@@ -857,6 +876,11 @@ def _interpreter_exec_flag(family: str, args: list[str]) -> str | None:
             skip_value = False
             continue
         if token == "--" or (not powershell and not token.startswith("-")):
+            # Deno evaluates inline scripts via a bare `eval` subcommand rather than a dash
+            # flag: the FIRST positional token, after any global options (`deno -q eval ...`);
+            # a later positional `eval` (`deno run eval.ts`) stays data.
+            if family == "deno" and token.lower() == "eval":
+                return "eval"
             break
         option, equals, _ = token.partition("=")
         comparable = option.lower() if powershell else option
@@ -1241,6 +1265,274 @@ def _iter_shell_command_word_spans(command: str):
             positionals = _COMMAND_WRAPPER_POSITIONAL_ARGS.get(name, 0)
 
 
+def _executable_word_is_opaque(word: str) -> bool:
+    """True when shell expansion can change the executable identity at runtime.
+
+    Parameter and command substitution remain executable inside double quotes;
+    glob/brace expansion is relevant only while unquoted. Single-quoted markers
+    are literal data and do not make the command identity opaque.
+    """
+    for kind, i, _, quote in _scan_shell(word, subst="q", comments=False):
+        if kind == "subst":
+            return True
+        if kind != "char" or quote == "'":
+            continue
+        ch = word[i]
+        if ch == "$":
+            return True
+        if quote is None and ch in "*?[{":
+            return True
+    return False
+
+
+_SECRET_ENV_SOURCES = frozenset({"env", "printenv", "set", "export"})
+_STDIN_EGRESS_CLIENTS = frozenset({"curl", "wget", "nc", "ncat", "socat"})
+_SENSITIVE_READERS = frozenset({
+    "cat", "head", "tail", "less", "more", "grep", "awk", "sed",
+    "cp", "scp", "rsync", "tar", "base64", "xxd", "strings",
+})
+_CURL_STDIN_UPLOAD_RE = re.compile(
+    r"(?:^|\s)(?:-d|--data(?:-ascii|-binary|-raw|-urlencode)?)"
+    r"(?:=|\s+)@-(?=\s|$)"
+    r"|(?:^|\s)(?:-T|--upload-file)(?:=|\s+)-(?=\s|$)",
+    re.IGNORECASE,
+)
+_WGET_STDIN_UPLOAD_RE = re.compile(
+    r"(?:^|\s)(?:--post-file|--body-file)=-?(?=\s|$)",
+    re.IGNORECASE,
+)
+
+
+
+_NETWORK_ARGUMENT_EGRESS_CLIENTS = frozenset({"curl", "wget"})
+_CURL_DATA_FILE_FLAGS = ("--data", "--data-ascii", "--data-binary", "--data-urlencode")
+_CURL_INLINE_EGRESS_FLAGS = (
+    "--data", "--data-ascii", "--data-binary", "--data-raw", "--data-urlencode",
+    "--form", "--form-string", "--json", "--url-query", "--header",
+)
+_CURL_UPLOAD_FILE_FLAGS = ("--upload-file",)
+_CURL_FORM_FILE_FLAGS = ("--form",)
+_WGET_LOCAL_FILE_FLAGS = ("--post-file", "--body-file")
+_WGET_INLINE_EGRESS_FLAGS = ("--post-data", "--body-data", "--header")
+
+
+def _iter_option_values(args: list[str], *, long_flags: tuple[str, ...] = (),
+                        short_flags: tuple[str, ...] = ()):
+    """Yield (flag, value) for options that own a value, including attached forms.
+
+    Stops at the end-of-options marker so data that merely looks like an option
+    never becomes a security finding. Short options support curl's attached-value
+    spellings such as -d@file and -Tfile.
+    """
+    index = 0
+    while index < len(args):
+        token = args[index]
+        if token == "--":
+            return
+
+        matched = False
+        for flag in long_flags:
+            if token == flag:
+                if index + 1 < len(args):
+                    yield flag, args[index + 1]
+                index += 2
+                matched = True
+                break
+            prefix = flag + "="
+            if token.startswith(prefix):
+                yield flag, token[len(prefix):]
+                index += 1
+                matched = True
+                break
+        if matched:
+            continue
+
+        for flag in short_flags:
+            if token == flag:
+                if index + 1 < len(args):
+                    yield flag, args[index + 1]
+                index += 2
+                matched = True
+                break
+            if token.startswith(flag) and len(token) > len(flag):
+                yield flag, token[len(flag):]
+                index += 1
+                matched = True
+                break
+        if not matched:
+            index += 1
+
+
+def _network_local_file_inputs(command: str) -> list[str]:
+    """Return local file operands that curl/wget will read for network upload.
+
+    This is syntax classification only: paths are never opened or resolved.
+    Dynamic paths are deliberately retained so the normal approval gate can
+    still require consent even when the exact file is not knowable statically.
+    """
+    inputs: list[str] = []
+    for start, _, _, name in _command_words(command):
+        if name not in _NETWORK_ARGUMENT_EGRESS_CLIENTS:
+            continue
+        segment = _shell_command_segment(command, start)
+        tokens = _shell_segment_tokens(segment, 0)
+        if not tokens:
+            continue
+        args = tokens[1:]
+
+        if name == "curl":
+            for _, value in _iter_option_values(
+                args, long_flags=_CURL_UPLOAD_FILE_FLAGS, short_flags=("-T",)
+            ):
+                if value and value != "-":
+                    inputs.append(value)
+
+            for flag, value in _iter_option_values(
+                args, long_flags=_CURL_DATA_FILE_FLAGS, short_flags=("-d",)
+            ):
+                if not value:
+                    continue
+                # curl --data*/-d reads @file, except --data-raw (not listed).
+                # --data-urlencode additionally accepts name@file.
+                if value.startswith("@") and value != "@-":
+                    inputs.append(value[1:])
+                elif flag == "--data-urlencode" and "@" in value:
+                    path = value.split("@", 1)[1]
+                    if path and path != "-":
+                        inputs.append(path)
+
+            for _, value in _iter_option_values(
+                args, long_flags=_CURL_FORM_FILE_FLAGS, short_flags=("-F",)
+            ):
+                if "=" not in value:
+                    continue
+                payload = value.split("=", 1)[1]
+                if payload.startswith(("@", "<")):
+                    path = payload[1:].split(";", 1)[0]
+                    if path and path != "-":
+                        inputs.append(path)
+
+        elif name == "wget":
+            for _, value in _iter_option_values(args, long_flags=_WGET_LOCAL_FILE_FLAGS):
+                if value and value != "-":
+                    inputs.append(value)
+    return inputs
+
+
+def _is_system_shadow_path(path: str) -> bool:
+    """True for a statically spelled /etc/shadow path, including dot-segment collapses."""
+    normalized = _normalize_command_for_detection(path).strip().strip("\"'")
+    if not normalized.startswith("/") or any(ch in normalized for ch in "$*?[{") or chr(96) in normalized:
+        return False
+    import posixpath
+    return posixpath.normpath(normalized) == "/etc/shadow"
+
+
+def _value_executes_secret_env_source(value: str) -> bool:
+    """Whether an option value executes env/printenv/set/export via shell substitution."""
+    return any(
+        start > 0 and name in _SECRET_ENV_SOURCES
+        for start, _, _, name in _command_words(value)
+    )
+
+
+def _network_argument_exfiltration_description(command: str) -> str | None:
+    """Block environment/secret command substitutions in network-bound argument values."""
+    for start, _, _, name in _command_words(command):
+        if name not in _NETWORK_ARGUMENT_EGRESS_CLIENTS:
+            continue
+        segment = _shell_command_segment(command, start)
+        tokens = _shell_segment_tokens(segment, 0)
+        if not tokens:
+            continue
+        args = tokens[1:]
+        if name == "curl":
+            values = _iter_option_values(
+                args,
+                long_flags=_CURL_INLINE_EGRESS_FLAGS,
+                short_flags=("-d", "-F", "-H"),
+            )
+        else:
+            values = _iter_option_values(args, long_flags=_WGET_INLINE_EGRESS_FLAGS)
+        if any(_value_executes_secret_env_source(value) for _, value in values):
+            return "environment/secret data embedded in network egress argument"
+    return None
+
+
+def _command_words(command: str) -> list[tuple[int, int, str, str]]:
+    """Executable-position words as (start, end, raw, basename)."""
+    rows: list[tuple[int, int, str, str]] = []
+    for start, end, word in _iter_shell_command_word_spans(command):
+        resolved = _deobfuscate_shell_word_for_detection(word)
+        rows.append((start, end, word, os.path.basename(resolved).lower()))
+    return rows
+
+
+def _unquoted_pipe_positions(command: str) -> list[int]:
+    """Positions of real shell pipelines, excluding || and quoted data."""
+    positions: list[int] = []
+    for kind, i, _, quote in _scan_shell(command, subst="uq", comments=True):
+        if kind != "char" or quote is not None or command[i] != "|":
+            continue
+        before = command[i - 1] if i else ""
+        after = command[i + 1] if i + 1 < len(command) else ""
+        if before == "|" or after == "|":
+            continue
+        positions.append(i)
+    return positions
+
+
+def _pipeline_exfiltration_description(command: str) -> str | None:
+    """Block obvious environment-to-network stdin exfiltration pipelines."""
+    words = _command_words(command)
+    for pipe in _unquoted_pipe_positions(command):
+        left = [row for row in words if row[1] <= pipe]
+        right = [row for row in words if row[0] > pipe]
+        if not left or not right:
+            continue
+        source = max(left, key=lambda row: row[1])
+        sink = min(right, key=lambda row: row[0])
+        if source[3] not in _SECRET_ENV_SOURCES or sink[3] not in _STDIN_EGRESS_CLIENTS:
+            continue
+        sink_segment = _shell_command_segment(command, sink[0])
+        if sink[3] == "curl" and not _CURL_STDIN_UPLOAD_RE.search(sink_segment):
+            continue
+        if sink[3] == "wget" and not _WGET_STDIN_UPLOAD_RE.search(sink_segment):
+            continue
+        return "environment/secret data piped to network egress"
+    return None
+
+
+def _structural_hardline_description(command: str) -> str | None:
+    """Non-bypassable ambiguity and confidentiality floors."""
+    for start, _, raw, name in _command_words(command):
+        if _executable_word_is_opaque(raw):
+            return "dynamic executable expansion is not allowed"
+        if name in _SENSITIVE_READERS and re.search(
+            r"(?<![A-Za-z0-9_.-])/etc/shadow(?![A-Za-z0-9_.-])",
+            _shell_command_segment(command, start),
+            re.IGNORECASE,
+        ):
+            return "read of system password hashes (/etc/shadow)"
+
+    if any(_is_system_shadow_path(path) for path in _network_local_file_inputs(command)):
+        return "network upload of system password hashes (/etc/shadow)"
+
+    argument_exfiltration = _network_argument_exfiltration_description(command)
+    if argument_exfiltration:
+        return argument_exfiltration
+    return _pipeline_exfiltration_description(command)
+
+
+def _structural_dangerous_description(command: str) -> str | None:
+    """Recoverable structural risks that require the normal approval gate."""
+    if any(name == "sudo" for _, _, _, name in _command_words(command)):
+        return "privileged command via sudo"
+    if _network_local_file_inputs(command):
+        return "network upload reads local file"
+    return None
+
+
 def _shell_command_segment(command: str, start: int) -> str:
     """Bound a candidate to its command, preserving quoted argument bytes."""
     end = len(command)
@@ -1496,15 +1788,20 @@ def detect_dangerous_command(command: str) -> tuple:
     """Check dangerous patterns -> (is_dangerous, pattern_key, description)."""
     if _command_parser_limit_exceeded(command):
         return (True, _PARSER_LIMIT_DESCRIPTION, _PARSER_LIMIT_DESCRIPTION)
+    structural = _structural_dangerous_description(command)
+    if structural:
+        return (True, structural, structural)
     if _is_verification_artifact_cleanup(command):
         return (False, None, None)
     for command_variant in _command_detection_variants(command):
-        command_lower = command_variant.lower()
+        command_lower = _lower_preserving_flags(command_variant)
         masked_lower: str | None = None
         for pattern_re, description in DANGEROUS_PATTERNS_COMPILED:
             if description in _QUOTE_MASKED_DANGEROUS_DESCRIPTIONS:
                 if masked_lower is None:
-                    masked_lower = _mask_quoted_prose(command_variant).lower()
+                    masked_lower = _lower_preserving_flags(
+                        _mask_quoted_prose(command_variant)
+                    )
                 if pattern_re.search(masked_lower):
                     return (True, description, description)
             elif pattern_re.search(command_lower):

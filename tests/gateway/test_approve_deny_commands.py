@@ -39,6 +39,20 @@ def _make_event(text: str) -> MessageEvent:
     )
 
 
+def _make_group_source(user_id: str = "u1") -> SessionSource:
+    return SessionSource(
+        platform=Platform.TELEGRAM,
+        user_id=user_id,
+        chat_id="group-1",
+        user_name=user_id,
+        chat_type="group",
+    )
+
+
+def _make_group_event(text: str, user_id: str = "u1") -> MessageEvent:
+    return MessageEvent(text=text, source=_make_group_source(user_id), message_id=f"m-{user_id}")
+
+
 def _make_runner():
     from gateway.run import GatewayRunner
 
@@ -135,6 +149,65 @@ class TestBlockingGatewayApproval:
         unregister_gateway_notify(session_key)
 
 
+    def test_bound_group_approval_rejects_missing_or_wrong_actor(self):
+        from tools.approval import (
+            _gateway_queues,
+            bind_gateway_approval_principal,
+            resolve_gateway_approval,
+        )
+        from tools.approval_gateway_wait import _ApprovalEntry
+
+        session_key = "group-session"
+        entry = _ApprovalEntry({"command": "rm -rf /important", "request_id": "req-1"})
+        _gateway_queues[session_key] = [entry]
+        assert bind_gateway_approval_principal(
+            session_key,
+            "req-1",
+            user_id="owner",
+            chat_id="group-1",
+            chat_type="group",
+        )
+
+        assert resolve_gateway_approval(session_key, "once") == 0
+        assert resolve_gateway_approval(
+            session_key, "once", actor_user_id="participant"
+        ) == 0
+        assert entry.event.is_set() is False
+        assert entry.result is None
+
+        assert resolve_gateway_approval(
+            session_key, "once", actor_user_id="owner"
+        ) == 1
+        assert entry.event.is_set() is True
+        assert entry.result == "once"
+
+    def test_explicit_admin_can_settle_bound_group_approval(self):
+        from tools.approval import (
+            _gateway_queues,
+            bind_gateway_approval_principal,
+            resolve_gateway_approval,
+        )
+        from tools.approval_gateway_wait import _ApprovalEntry
+
+        session_key = "group-session-admin"
+        entry = _ApprovalEntry({"command": "sudo true", "request_id": "req-admin"})
+        _gateway_queues[session_key] = [entry]
+        assert bind_gateway_approval_principal(
+            session_key,
+            "req-admin",
+            user_id="owner",
+            chat_id="group-1",
+            chat_type="group",
+        )
+
+        assert resolve_gateway_approval(
+            session_key,
+            "session",
+            actor_user_id="admin",
+            actor_is_explicit_admin=True,
+        ) == 1
+        assert entry.result == "session"
+
     def test_resolve_single_pops_oldest_fifo(self):
         """resolve_gateway_approval without resolve_all resolves oldest first."""
         from tools.approval import resolve_gateway_approval, _gateway_queues
@@ -200,6 +273,118 @@ class TestApproveCommand:
         assert "session" in result.lower()
         assert e1.result == "session"
         assert e2.result == "session"
+
+
+class TestGroupApprovalAuthorization:
+
+    def setup_method(self):
+        _clear_approval_state()
+
+    @pytest.mark.asyncio
+    async def test_group_participant_cannot_approve_another_users_turn(self):
+        from tools.approval import _gateway_queues
+        from tools.approval_gateway_wait import _ApprovalEntry
+
+        runner = _make_runner()
+        session_key = runner._session_key_for_source(_make_group_source("owner"))
+        entry = _ApprovalEntry({"command": "rm -rf /important"})
+        _gateway_queues[session_key] = [entry]
+        runner._pending_approvals[session_key] = {
+            "command": "rm -rf /important",
+            "_approval_owner_user_id": "owner",
+        }
+
+        result = await runner._handle_approve_command(
+            _make_group_event("/approve always", "participant")
+        )
+
+        assert "Only the user who initiated" in result
+        assert entry.event.is_set() is False
+        assert entry.result is None
+
+    @pytest.mark.asyncio
+    async def test_group_turn_owner_can_approve(self):
+        from tools.approval import _gateway_queues
+        from tools.approval_gateway_wait import _ApprovalEntry
+
+        runner = _make_runner()
+        session_key = runner._session_key_for_source(_make_group_source("owner"))
+        entry = _ApprovalEntry({"command": "rm -rf /important"})
+        _gateway_queues[session_key] = [entry]
+        runner._pending_approvals[session_key] = {
+            "command": "rm -rf /important",
+            "_approval_owner_user_id": "owner",
+        }
+
+        result = await runner._handle_approve_command(
+            _make_group_event("/approve", "owner")
+        )
+
+        assert entry.event.is_set() is True
+        assert entry.result == "once"
+        assert "approved" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_explicit_group_admin_can_approve_another_users_turn(self):
+        from tools.approval import _gateway_queues
+        from tools.approval_gateway_wait import _ApprovalEntry
+
+        runner = _make_runner()
+        runner.config = GatewayConfig(
+            platforms={
+                Platform.TELEGRAM: PlatformConfig(
+                    enabled=True,
+                    token="***",
+                    extra={"group_allow_admin_from": ["admin"]},
+                )
+            }
+        )
+        session_key = runner._session_key_for_source(_make_group_source("owner"))
+        entry = _ApprovalEntry({"command": "rm -rf /important"})
+        _gateway_queues[session_key] = [entry]
+        runner._pending_approvals[session_key] = {
+            "command": "rm -rf /important",
+            "_approval_owner_user_id": "owner",
+        }
+
+        result = await runner._handle_approve_command(
+            _make_group_event("/approve session", "admin")
+        )
+
+        assert entry.event.is_set() is True
+        assert entry.result == "session"
+        assert "session" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_group_user_without_identity_cannot_deny(self):
+        from tools.approval import _gateway_queues
+        from tools.approval_gateway_wait import _ApprovalEntry
+
+        runner = _make_runner()
+        session_key = runner._session_key_for_source(_make_group_source("owner"))
+        entry = _ApprovalEntry({"command": "rm -rf /important"})
+        _gateway_queues[session_key] = [entry]
+        runner._pending_approvals[session_key] = {
+            "command": "rm -rf /important",
+            "_approval_owner_user_id": "owner",
+        }
+        event = MessageEvent(
+            text="/deny",
+            source=SessionSource(
+                platform=Platform.TELEGRAM,
+                user_id=None,
+                chat_id="group-1",
+                chat_type="group",
+            ),
+            message_id="anon",
+        )
+
+        result = await runner._handle_deny_command(event)
+
+        assert "Only the user who initiated" in result
+        assert entry.event.is_set() is False
+        assert entry.result is None
+
 
 
 # ------------------------------------------------------------------
@@ -324,45 +509,35 @@ class TestBlockingApprovalE2E:
     def test_blocking_approval_uses_canonical_timeout(self, approval_config, monkeypatch):
         """Gateway waits use approvals.timeout, without a second timeout knob."""
         from tools import approval as approval_module
-        from tools.approval import check_all_command_guards, register_gateway_notify, resolve_gateway_approval, unregister_gateway_notify
+        from tools.approval import check_all_command_guards, register_gateway_notify, unregister_gateway_notify
         from tools.approval_context import reset_current_session_key, set_current_session_key
 
         monkeypatch.setattr(approval_module, "_YOLO_MODE_FROZEN", False)
         session_key = "e2e-timeout"
-        register_gateway_notify(session_key, lambda d: None)
+        notified = []
+        register_gateway_notify(session_key, notified.append)
+        monkeypatch.setenv("HERMES_GATEWAY_SESSION", "1")
+        monkeypatch.setenv("HERMES_EXEC_ASK", "1")
+        monkeypatch.setenv("HERMES_SESSION_KEY", session_key)
+        token = set_current_session_key(session_key)
+        try:
+            # Zero expires in the real poll loop. A timed join followed by /deny
+            # races pre-approval hooks and changes the outcome being tested.
+            with patch(
+                "tools.approval_context._get_approval_config",
+                return_value=approval_config,
+            ):
+                result = check_all_command_guards("rm -rf /important", "local")
 
-        result_holder = [None]
-
-        def agent_thread():
-            token = set_current_session_key(session_key)
-            os.environ["HERMES_GATEWAY_SESSION"] = "1"
-            os.environ["HERMES_EXEC_ASK"] = "1"
-            os.environ["HERMES_SESSION_KEY"] = session_key
-            try:
-                with patch(
-                    "tools.approval_context._get_approval_config",
-                    return_value=approval_config,
-                ):
-                    result_holder[0] = check_all_command_guards(
-                        "rm -rf /important", "local"
-                    )
-            finally:
-                os.environ.pop("HERMES_GATEWAY_SESSION", None)
-                os.environ.pop("HERMES_EXEC_ASK", None)
-                os.environ.pop("HERMES_SESSION_KEY", None)
-                reset_current_session_key(token)
-
-        t = threading.Thread(target=agent_thread)
-        t.start()
-        t.join(timeout=1)
-        if t.is_alive():
-            resolve_gateway_approval(session_key, "deny")
-            t.join(timeout=5)
-
-        assert result_holder[0]["approved"] is False
-        assert result_holder[0]["outcome"] == "timeout"
-        assert "timed out" in result_holder[0]["message"]
-        unregister_gateway_notify(session_key)
+            assert len(notified) == 1
+            assert result["approved"] is False
+            assert result["user_consent"] is False
+            assert result["outcome"] == "timeout"
+            assert "timed out" in result["message"]
+            assert approval_module.list_gateway_approvals(session_key) == []
+        finally:
+            reset_current_session_key(token)
+            unregister_gateway_notify(session_key)
 
     def test_parallel_subagent_approvals(self):
         """Multiple threads can block concurrently and be resolved independently."""

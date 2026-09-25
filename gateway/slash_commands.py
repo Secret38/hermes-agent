@@ -25,6 +25,7 @@ from gateway.platforms.base import EphemeralReply
 from gateway.platforms.event import MessageEvent
 from gateway.session import AsyncSessionStore
 from gateway.session_transcript import TranscriptReadError
+from gateway.slash_access import policy_for_source
 from gateway.slash_commands_goals import GatewayGoalCommandsMixin
 from gateway.slash_commands_model import GatewayModelCommandsMixin
 from gateway.slash_commands_session import GatewaySessionCommandsMixin
@@ -90,6 +91,16 @@ def _nested_dict(root: dict, *keys: str) -> dict:
             root[k] = {}
         root = root[k]
     return root
+
+
+def _write_raw_config_leaf(config_path: Path, keys: tuple, value) -> None:
+    """Set one leaf through a strict raw round-trip. The behavioral read is fail-open (``{}``) and
+    expanded, so writing it back wipes the file after a read error and persists ``${VAR}`` values."""
+    from hermes_cli.config import read_user_config_raw
+    raw = read_user_config_raw(config_path)
+    *parents, leaf = keys
+    _nested_dict(raw, *parents)[leaf] = value
+    atomic_config_write(config_path, raw)
 
 
 def _preview(text: str, limit: int = 60) -> str:
@@ -585,14 +596,29 @@ class GatewaySlashCommandsMixin(
         """Handle /version — show the running Hermes Agent version."""
         return _execute("version").text
 
+    def _catalog_options(self, event: MessageEvent) -> dict:
+        """``allowed_commands`` for /help and /commands when the caller is a gated non-admin:
+        the slash-access floor + ``user_allowed_commands`` (mirrors /whoami), so the catalog
+        never advertises commands ``_check_slash_access`` would refuse. Admins / ungated -> {}."""
+        from gateway.slash_access import policy_for_source
+        source = event.source
+        # ``getattr``: partially-constructed runners (``GatewayRunner.__new__`` in tests) have
+        # no ``config``; policy_for_source treats None as ungated.
+        policy = policy_for_source(getattr(self, "config", None), source)
+        if policy.enabled and not policy.is_admin(source.user_id if source else None):
+            return {"allowed_commands": {"help", "whoami", *policy.user_allowed_commands}}
+        return {}
+
     async def _handle_help_command(self, event: MessageEvent) -> str:
         """Handle /help command - list available commands."""
-        return self._telegramized_command_reply(event, _execute("help").text)
+        return self._telegramized_command_reply(
+            event, _execute("help", options=self._catalog_options(event)).text)
 
     async def _handle_commands_command(self, event: MessageEvent) -> str:
         # Page size is a surface parameter (Telegram messages are shorter).
         page_size = 15 if event.source.platform == Platform.TELEGRAM else 20
-        reply = _execute("commands", args=event.get_command_args(), options={"page_size": page_size})
+        options = {"page_size": page_size, **self._catalog_options(event)}
+        reply = _execute("commands", args=event.get_command_args(), options=options)
         return self._telegramized_command_reply(event, reply.text)
 
     async def _handle_set_home_command(self, event: MessageEvent) -> str:
@@ -954,8 +980,7 @@ class GatewaySlashCommandsMixin(
         new_mode = cycle[(cycle.index(current if current in cycle else "all") + 1) % len(cycle)]
         description = t(f"gateway.verbose.mode_{new_mode}")
         try:
-            _nested_dict(user_config, "display", "platforms", platform_key)["tool_progress"] = new_mode
-            atomic_config_write(config_path, user_config)
+            _write_raw_config_leaf(config_path, ("display", "platforms", platform_key, "tool_progress"), new_mode)
             return f"{description}\n" + t("gateway.verbose.saved_suffix", platform=platform_key)
         except Exception as e:
             logger.warning("Failed to save tool_progress mode: %s", e)
@@ -1022,8 +1047,7 @@ class GatewaySlashCommandsMixin(
             return t("gateway.footer.usage")
         new_state = _FOOTER_STATE_BY_ARG[arg] if arg else not effective["enabled"]
         try:
-            _nested_dict(user_config, "display", "runtime_footer")["enabled"] = new_state
-            atomic_config_write(config_path, user_config)
+            _write_raw_config_leaf(config_path, ("display", "runtime_footer", "enabled"), new_state)
         except Exception as e:
             logger.warning("Failed to save runtime_footer.enabled: %s", e)
             return t("gateway.config_save_failed", error=e)
@@ -1161,6 +1185,46 @@ class GatewaySlashCommandsMixin(
             return session_key, t(stale_key)
         return session_key, t(none_key)
 
+    def _approval_response_authorized(self, event: MessageEvent, session_key: str) -> bool:
+        """Consent is stricter than ordinary slash-command access.
+
+        DMs are already principal-scoped by the platform/chat authorization layer. Shared group
+        sessions are not: many participants resolve to the same session key. In a group, only the
+        user who initiated the turn that produced the pending approval, or an explicitly configured
+        group admin, may resolve it. A missing user id therefore never becomes group consent.
+        """
+        source = event.source
+        chat_type = str(getattr(source, "chat_type", "") or "").strip().lower()
+        if chat_type in {"", "dm", "direct", "private", "c2c"}:
+            return True
+
+        user_id = str(getattr(source, "user_id", "") or "").strip()
+        if not user_id:
+            return False
+
+        pending = self._pending_approvals.get(session_key) or {}
+        owner_id = str(pending.get("_approval_owner_user_id", "") or "").strip()
+        if owner_id and user_id == owner_id:
+            return True
+
+        # SlashAccessPolicy intentionally treats "no admin list configured" as unrestricted for
+        # backward compatibility. Security consent must not inherit that behavior: admin authority
+        # counts only when this scope has an explicit admin list.
+        return self._approval_actor_is_explicit_admin(event)
+
+    def _approval_actor_is_explicit_admin(self, event: MessageEvent) -> bool:
+        user_id = str(getattr(event.source, "user_id", "") or "").strip()
+        if not user_id:
+            return False
+        policy = policy_for_source(getattr(self, "config", None), event.source)
+        return bool(policy.enabled and policy.is_admin(user_id))
+
+    def _approval_response_denied_text(self) -> str:
+        return (
+            "⛔ Only the user who initiated this run or an explicitly configured "
+            "group admin may approve or deny its security prompt."
+        )
+
     async def _handle_approve_command(self, event: MessageEvent) -> Optional[str]:
         """Handle /approve — unblock waiting agent thread(s). They block inside tools/approval.py;
         signalling the event resumes them so the command executes inline (same flow as the CLI)."""
@@ -1169,11 +1233,23 @@ class GatewaySlashCommandsMixin(
                                                               "gateway.approve.no_pending")
         if stale:
             return stale
+        if not self._approval_response_authorized(event, session_key):
+            logger.warning(
+                "Rejected unauthorized /approve for session %s (user=%s)",
+                session_key, getattr(event.source, "user_id", None),
+            )
+            return self._approval_response_denied_text()
         # Args: "all", "all session", "all always", "session", "always" ("always" beats "session").
         args = event.get_command_args().strip().lower().split()
         choices = {_APPROVE_CHOICE_BY_ARG[a] for a in args if a in _APPROVE_CHOICE_BY_ARG}
         choice = "always" if "always" in choices else "session" if "session" in choices else "once"
-        count = resolve_gateway_approval(session_key, choice, resolve_all="all" in args)
+        count = resolve_gateway_approval(
+            session_key,
+            choice,
+            resolve_all="all" in args,
+            actor_user_id=getattr(event.source, "user_id", None),
+            actor_is_explicit_admin=self._approval_actor_is_explicit_admin(event),
+        )
         if not count:
             return t("gateway.approve.no_pending")
         confirmation_text = t(f"gateway.approve.{choice}_{'plural' if count > 1 else 'singular'}", count=count)
@@ -1192,13 +1268,26 @@ class GatewaySlashCommandsMixin(
                                                               "gateway.deny.no_pending")
         if stale:
             return stale
+        if not self._approval_response_authorized(event, session_key):
+            logger.warning(
+                "Rejected unauthorized /deny for session %s (user=%s)",
+                session_key, getattr(event.source, "user_id", None),
+            )
+            return self._approval_response_denied_text()
         # A leading "all" denies every pending command; the rest (or the whole arg string without
         # "all") is the optional deny reason relayed to the agent, capped to a sane one-liner.
         raw_args = event.get_command_args().strip()
         tokens = raw_args.split()
         resolve_all = bool(tokens) and tokens[0].lower() == "all"
         reason = (raw_args[len(tokens[0]):].strip() if resolve_all else raw_args)[:280].strip()
-        count = resolve_gateway_approval(session_key, "deny", resolve_all=resolve_all, reason=reason or None)
+        count = resolve_gateway_approval(
+            session_key,
+            "deny",
+            resolve_all=resolve_all,
+            reason=reason or None,
+            actor_user_id=getattr(event.source, "user_id", None),
+            actor_is_explicit_admin=self._approval_actor_is_explicit_admin(event),
+        )
         if not count:
             return t("gateway.deny.no_pending")
         logger.info("User denied %d dangerous command(s) via /deny%s", count,
@@ -1256,7 +1345,30 @@ class GatewaySlashCommandsMixin(
                 return t("gateway.update.platform_not_messaging")
         if is_managed():
             return f"✗ {format_managed_message('update Hermes Agent')}"
-        if not (Path(__file__).parent.parent.resolve() / '.git').exists():
+
+        project_root = Path(__file__).parent.parent.resolve()
+
+        # Not a git-managed install (docker/nix/desktop-app/source): refuse
+        # with the steward's own update mechanism instead of git-pulling a
+        # tree `hermes update` does not own.
+        try:
+            from hermes_cli.config import (
+                detect_install_method,
+                recommended_update_command_for_method,
+            )
+
+            method = detect_install_method(project_root)
+            if method not in {"git", "unknown"}:
+                return (
+                    f"✗ `hermes update` does not apply to this install ({method}).\n"
+                    f"Update with: {recommended_update_command_for_method(method)}"
+                )
+        except Exception:
+            pass  # config unreadable — fall through to the .git check below
+
+        git_dir = project_root / '.git'
+
+        if not git_dir.exists():
             return t("gateway.update.not_git_repo")
         hermes_cmd = _resolve_hermes_bin()
         if not hermes_cmd:

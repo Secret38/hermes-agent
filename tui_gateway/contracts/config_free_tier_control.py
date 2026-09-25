@@ -15,7 +15,6 @@ from pydantic import Field
 
 from .base import JsonValue, Params, Result, WireEnum
 from .common import OpenModel, ProfileParams, SessionLiveInfo
-from .connectors_operation import ConnectionOperationStatus
 from .registry import method
 
 # ── config.get ────────────────────────────────────────────────────────────────────────────────
@@ -39,6 +38,57 @@ class ConfigProviderRef(OpenModel):
     authenticated: bool = False
 
 
+class ComputerUseManifestSecurity(Result):
+    configured: bool
+    readable: bool
+    version: int | None = None
+    mode_independent: bool
+    required: bool
+
+
+class ComputerUseSecuritySummary(Result):
+    permission_mode: str
+    telemetry_enabled: bool
+    manifest: ComputerUseManifestSecurity
+
+
+class SharedMetricsSecuritySummary(Result):
+    collection_enabled: bool
+    transmission_requested: bool
+    transmission_enabled: bool
+    destination: str
+
+
+class NetworkClassCounts(Result):
+    disabled: int
+    external: int
+    loopback: int
+    process: int
+    unknown: int
+
+
+class ModelProviderNetworkSummary(Result):
+    class_: str = Field(alias="class")
+    provider: str
+    model_configured: bool
+    coverage: str
+    subprocess_may_egress: bool
+
+
+class McpNetworkSummary(Result):
+    configured: int
+    enabled: int
+    classes: NetworkClassCounts
+    subprocess_may_egress: bool
+
+
+class SimpleNetworkSummary(Result):
+    class_: str = Field(alias="class")
+    reason: str | None = None
+    mode: str | None = None
+    transmission_enabled: bool | None = None
+
+
 class ConfigGetResult(Result):
     """Union of every getter's payload: ``value`` for the simple words, ``config`` for ``full``,
     ``mtime`` / ``mcp_rev`` for the poller, ``model`` / ``provider`` / ``providers`` for ``provider``,
@@ -57,6 +107,18 @@ class ConfigGetResult(Result):
     prompt: str | None = None
     mtime: float | None = None
     mcp_rev: str | None = None
+    permission_mode: str | None = None
+    telemetry_enabled: bool | None = None
+    manifest: ComputerUseManifestSecurity | None = None
+    shared_metrics: SharedMetricsSecuritySummary | None = None
+    coverage: str | None = None
+    model_provider: ModelProviderNetworkSummary | None = None
+    mcp: McpNetworkSummary | None = None
+    telemetry: SimpleNetworkSummary | None = None
+    browser: SimpleNetworkSummary | None = None
+    computer_use: SimpleNetworkSummary | None = None
+    messaging: SimpleNetworkSummary | None = None
+    updates: SimpleNetworkSummary | None = None
 
 
 method("config.get", params=ConfigGetParams, result=ConfigGetResult,
@@ -149,6 +211,63 @@ class SetupRuntimeCheckResult(Result):
 
 method("setup.runtime_check", params=SetupRuntimeCheckParams, result=SetupRuntimeCheckResult,
        doc="Strict provider check through the same runtime resolution the agent uses on session creation.")
+
+
+# ── operator audit / emergency stop ───────────────────────────────────────────────────────────
+
+
+class AuditListParams(ProfileParams):
+    limit: int | None = None
+    before_id: int | None = None
+    session_id: str | None = None
+    task_id: str | None = None
+    run_id: int | None = None
+    project_id: str | None = None
+
+
+class AuditEventRow(Result):
+    id: int
+    event: str
+    category: str
+    session_id: str | None = None
+    request_id: str | None = None
+    subject: str | None = None
+    outcome: str | None = None
+    task_id: str | None = None
+    run_id: int | None = None
+    project_id: str | None = None
+    created_at: float
+
+
+class AuditListResult(Result):
+    events: list[AuditEventRow]
+
+
+method("audit.list", params=AuditListParams, result=AuditListResult,
+       doc="Metadata-only durable operator/security events for the selected profile.")
+
+
+class EstopGetParams(Params):
+    pass
+
+
+class EstopState(Result):
+    engaged: bool
+    reason: str | None = None
+    engaged_at: str | None = None
+
+
+method("system.estop.get", params=EstopGetParams, result=EstopState,
+       doc="Read the backend-global emergency stop used by gateway, cron and Kanban new-work gates.")
+
+
+class EstopSetParams(Params):
+    engaged: bool
+    reason: str | None = None
+
+
+method("system.estop.set", params=EstopSetParams, result=EstopState,
+       doc="Engage or disengage the backend-global emergency stop; in-flight work is not killed.")
 
 
 # ── diagnostics.share_nous ────────────────────────────────────────────────────────────────────
@@ -279,53 +398,6 @@ class ModelOptionsResult(Result):
 
 method("model.options", params=ModelOptionsParams, result=ModelOptionsResult,
        doc="Provider/model inventory for the picker, layered over the session's live provider when given.")
-
-
-# ── connectors ────────────────────────────────────────────────────────────────────────────────
-
-
-class ConnectorsListParams(ProfileParams):
-    session_id: str
-
-
-class ConnectorRow(OpenModel):
-    """One ``manage_connections`` status entry after ``connector_ui_payload`` redaction; the
-    connector service owns the closed key set, so unknown metadata passes through."""
-
-    connector: str = ""
-    connected: bool | None = None
-    enabled: bool | None = None
-    connectionStatus: str | None = None
-    name: str | None = None
-    description: str | None = None
-
-
-class ConnectorsListResult(Result):
-    available: bool
-    connectors: list[ConnectorRow]
-
-
-method("connectors.list", params=ConnectorsListParams, result=ConnectorsListResult,
-       doc="Connector catalog + connection state for one owned session (``available=False`` when the toolset is off).")
-
-
-class ConnectorsConnectParams(ProfileParams):
-    session_id: str
-    connectors: list[str]
-    reconnect: bool = False
-
-
-class ConnectorsConnectResult(ConnectionOperationStatus):
-    """The operation the connect opened (or re-minted on): ``tools/connectors/managed.py``
-    ``_off_desktop_result`` / ``methods_connectors._reissue``. ``status``/``note`` ride along from
-    the tool result when the call ran through ``manage_connections``."""
-
-    status: str | None = None
-    note: str | None = None
-
-
-method("connectors.connect", params=ConnectorsConnectParams, result=ConnectorsConnectResult,
-       doc="Start (or re-initiate) authorization for named connectors on the session's connection operation.")
 
 
 # ── image.generate ────────────────────────────────────────────────────────────────────────────

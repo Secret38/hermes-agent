@@ -43,7 +43,10 @@ function keyedPromptStore<T extends KeyedPrompt>(): PromptStore<T> {
   const idOf = (value: T): string | undefined => (value as { requestId?: string }).requestId
 
   return {
-    $active: computed([$all, $activeSessionId], (all, activeId) => all[keyFor(activeId)] ?? null),
+    // An app-level prompt (sessionId null: the Bot Screen install card) is not about any chat, so it is
+    // shown in whichever chat is active rather than only while the chat that happened to be open at
+    // request time stays open.
+    $active: computed([$all, $activeSessionId], (all, activeId) => all[keyFor(activeId)] ?? all[keyFor(null)] ?? null),
     $all,
     reset: () => $all.set({}),
     set: request => $all.set({ ...$all.get(), [keyFor(request.sessionId)]: request }),
@@ -81,13 +84,19 @@ function keyedPromptStore<T extends KeyedPrompt>(): PromptStore<T> {
 export interface ApprovalRequest extends KeyedPrompt {
   // false when the backend won't honor a permanent allow (tirith warning) → hide "Always allow".
   allowPermanent?: boolean
+  allowSession?: boolean
   choices?: string[]
   command: string
   description: string
+  patternKey?: string
+  patternKeys?: string[]
   requestId?: string
   serverRequestId?: string
   smartDenied?: boolean
+  toolName?: string
 }
+
+export type ApprovalChoice = 'always' | 'deny' | 'once' | 'session'
 
 interface ApprovalGateway {
   request: (method: string, params: Record<string, unknown>) => Promise<unknown>
@@ -95,16 +104,24 @@ interface ApprovalGateway {
 
 interface PendingApprovalPayload {
   allow_permanent?: boolean
+  allow_session?: boolean
   choices?: unknown
   command?: unknown
   description?: unknown
+  pattern_key?: unknown
+  pattern_keys?: unknown
   request_id?: unknown
   smart_denied?: boolean
+  tool_name?: unknown
 }
 
 export interface SudoRequest extends KeyedPrompt {
   command?: string
   requestId: string
+  /** Description override so the card can say WHAT the password is for (the Bot Screen install).
+   *  The reply travels as a JSON-RPC response on the socket the request arrived on, so a password
+   *  typed for host A can never reach host B without any origin bookkeeping here. */
+  description?: string
 }
 
 export interface SecretRequest extends KeyedPrompt {
@@ -220,6 +237,7 @@ export interface VaultCodeRequest extends KeyedPrompt {
 
 const vaultCode = keyedPromptStore<VaultCodeRequest>()
 
+export const $approvalRequestQueues = computed($approvalQueues, queues => queues)
 export const $approvalRequests = approval.$all
 export const $approvalRequest = computed(
   [approval.$all, $activeSessionId],
@@ -317,14 +335,20 @@ export async function replayPendingApproval(gateway: ApprovalGateway | null, ses
 
       return receiveApprovalRequest(gateway, {
         allowPermanent: pending.allow_permanent !== false,
+        allowSession: pending.allow_session !== false,
         choices: Array.isArray(pending.choices)
           ? pending.choices.filter(choice => typeof choice === 'string')
           : undefined,
         command: typeof pending.command === 'string' ? pending.command : '',
         description: typeof pending.description === 'string' ? pending.description : 'dangerous command',
+        patternKey: typeof pending.pattern_key === 'string' ? pending.pattern_key : undefined,
+        patternKeys: Array.isArray(pending.pattern_keys)
+          ? pending.pattern_keys.filter(key => typeof key === 'string')
+          : undefined,
         requestId: pending.request_id,
         sessionId,
-        smartDenied: pending.smart_denied === true
+        smartDenied: pending.smart_denied === true,
+        toolName: typeof pending.tool_name === 'string' ? pending.tool_name : undefined
       })
     })
   )
@@ -359,6 +383,27 @@ export async function answerApproval(
   })
 }
 
+/** Resolve one queued approval through the same stale-check / owner-routing /
+ * replay sequence used by every approval surface. Returns false when the
+ * request was already answered or withdrawn. */
+export async function resolveApprovalRequest(
+  gateway: ApprovalGateway | null,
+  request: ApprovalRequest,
+  choice: ApprovalChoice
+): Promise<boolean> {
+  const pending = sessionApprovalRequests(request.sessionId).get()
+
+  if (!pending.some(item => item.requestId === request.requestId)) {
+    return false
+  }
+
+  await answerApproval(gateway, request, choice)
+  clearApprovalRequest(request.sessionId, request.requestId)
+  void replayPendingApproval(gateway, request.sessionId).catch(() => undefined)
+
+  return true
+}
+
 /** The prompt request for one specific session — the tile counterpart of the
  *  active-session `$*Request` views (same map, fixed key). */
 export const sessionApprovalStackSize = (sessionId: string | null) =>
@@ -367,8 +412,10 @@ export const sessionApprovalRequests = (sessionId: string | null) =>
   computed($approvalQueues, all => all[keyFor(sessionId)] ?? EMPTY_APPROVALS)
 export const sessionApprovalRequest = (sessionId: string | null) =>
   computed(approval.$all, all => all[keyFor(sessionId)] ?? null)
+/** A session's sudo card, else the app-level one (a Bot Screen package install is raised with no
+ *  session: it belongs to the connection, not to a turn, so whichever chat is focused shows it). */
 export const sessionSudoRequest = (sessionId: string | null) =>
-  computed(sudo.$all, all => all[keyFor(sessionId)] ?? null)
+  computed(sudo.$all, all => all[keyFor(sessionId)] ?? (sessionId ? (all[keyFor(null)] ?? null) : null))
 export const sessionSecretRequest = (sessionId: string | null) =>
   computed(secret.$all, all => all[keyFor(sessionId)] ?? null)
 

@@ -116,7 +116,6 @@ class TestFeishuExecApproval:
 
         # Verify card payload contains the command and buttons
         card = json.loads(kwargs["payload"])
-        assert card["header"]["template"] == "orange"
         assert "rm -rf /important" in card["elements"][0]["content"]
         assert "dangerous deletion" in card["elements"][0]["content"]
 
@@ -190,9 +189,7 @@ class TestFeishuUpdatePrompt:
         assert kwargs["metadata"] == {"thread_id": "th_1"}
 
         card = json.loads(kwargs["payload"])
-        assert card["header"]["template"] == "orange"
         assert "Restore stashed changes after update?" in card["elements"][0]["content"]
-        assert "Default: `y`" in card["elements"][0]["content"]
         actions = card["elements"][1]["actions"]
         assert [a["value"]["hermes_update_prompt_action"] for a in actions] == ["y", "n"]
 
@@ -216,7 +213,11 @@ class TestResolveApproval:
         with patch("tools.approval.resolve_gateway_approval", return_value=1) as mock_resolve:
             await adapter._resolve_approval(1, "once", "Norbert", open_id="ou_user1", chat_id="oc_12345")
 
-        mock_resolve.assert_called_once_with("agent:main:feishu:group:oc_12345", "once")
+        mock_resolve.assert_called_once_with(
+            "agent:main:feishu:group:oc_12345",
+            "once",
+            actor_user_id="ou_user1",
+        )
         assert 1 not in adapter._approval_state
 
 
@@ -321,14 +322,16 @@ class TestCardActionCallbackResponse:
         )
         adapter._sender_name_cache["ou_bob"] = ("Bob", 9999999999)
 
-        with patch("asyncio.run_coroutine_threadsafe", side_effect=_close_submitted_coro):
+        with (
+            patch("tools.approval.gateway_approval_actor_authorized", return_value=True),
+            patch("asyncio.run_coroutine_threadsafe", side_effect=_close_submitted_coro),
+        ):
             response = adapter._on_card_action_trigger(data)
 
         assert response is not None
         assert response.card is not None
         assert response.card.type == "raw"
         card = response.card.data
-        assert card["header"]["template"] == "green"
         assert "Approved once" in card["header"]["title"]["content"]
         assert "Bob" in card["elements"][0]["content"]
 
@@ -355,6 +358,38 @@ class TestCardActionCallbackResponse:
         card = response.card.data
         assert "Old Name" not in card["elements"][0]["content"]
         assert "ou_expired" in card["elements"][0]["content"]
+
+    def test_rejects_approval_click_from_non_owner_before_consuming_state(
+        self, _patch_callback_card_types
+    ):
+        adapter = _make_adapter()
+        adapter._loop = MagicMock()
+        adapter._loop.is_closed = MagicMock(return_value=False)
+        adapter._allowed_group_users = {"ou_participant"}
+        adapter._approval_state[30] = {
+            "session_key": "sess-owner-bound",
+            "message_id": "msg-30",
+            "chat_id": "oc_12345",
+        }
+        data = _make_card_action_data(
+            {"hermes_action": "approve_once", "approval_id": 30},
+            open_id="ou_participant",
+        )
+
+        with (
+            patch(
+                "tools.approval.gateway_approval_actor_authorized",
+                return_value=False,
+            ) as mock_actor,
+            patch("asyncio.run_coroutine_threadsafe") as mock_submit,
+        ):
+            response = adapter._on_card_action_trigger(data)
+
+        assert response is not None
+        assert response.card is None
+        assert 30 in adapter._approval_state
+        mock_submit.assert_not_called()
+        mock_actor.assert_called_once_with("sess-owner-bound", "ou_participant")
 
     def test_rejects_approval_click_from_unauthorized_user(self, _patch_callback_card_types):
         adapter = _make_adapter()

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { buildToolView } from '@/components/assistant-ui/tool/fallback-model'
 import { createClientSessionState } from '@/lib/chat-runtime'
+import { liveSessionScopeKey } from '@/store/live-sessions'
 import { $activeSessionId, $selectedStoredSessionId, $unreadFinishedSessionIds } from '@/store/session'
 import {
   $attentionSessionIds,
@@ -65,7 +66,11 @@ describe('rehydrateLiveSessionStatuses — reaping vanished runtimes', () => {
   // and the first fresh snapshot that does not report it working is the
   // terminal fact that lights the dot.
   it('confirms a parked reconnect completion the poll never saw live', () => {
-    publishSessionState('runtime-p', { ...createClientSessionState('stored-p'), busy: true, storedSessionId: 'stored-p' })
+    publishSessionState('runtime-p', {
+      ...createClientSessionState('stored-p'),
+      busy: true,
+      storedSessionId: 'stored-p'
+    })
     reconcileBusyStatesOnReconnect()
     expect($unreadFinishedSessionIds.get()).toEqual([])
 
@@ -99,6 +104,26 @@ describe('rehydrateLiveSessionStatuses — reaping vanished runtimes', () => {
     rehydrateLiveSessionStatuses({ sessions: [] }, Date.now(), 'default')
 
     expect($workingSessionIds.get()).toEqual(['stored-other'])
+  })
+
+  it('does not cross-reap two connections that share the same profile name', () => {
+    const scopeA = liveSessionScopeKey('conn-a', 'default')
+    const scopeB = liveSessionScopeKey('conn-b', 'default')
+
+    rehydrateLiveSessionStatuses(
+      { sessions: [{ id: 'runtime-a', session_key: 'stored-a', status: 'working' }] },
+      Date.now(),
+      scopeA
+    )
+    rehydrateLiveSessionStatuses(
+      { sessions: [{ id: 'runtime-b', session_key: 'stored-b', status: 'working' }] },
+      Date.now(),
+      scopeB
+    )
+
+    rehydrateLiveSessionStatuses({ sessions: [] }, Date.now(), scopeA)
+
+    expect($workingSessionIds.get()).toEqual(['stored-b'])
   })
 
   it('seals open tool parts and clears awaitingResponse when a session vanishes', () => {

@@ -272,8 +272,9 @@ from gateway.platforms.base import (
 from gateway.platforms.event import MessageEvent, MessageType, ProcessingOutcome
 from tools.url_safety import is_safe_url
 from gateway.platforms._shared import (
-    env_is_connected as _env_is_connected, extra_or_secret as _extra_or_secret,
-    platform_gate_env as _scoped_gate_env, send_error, yaml_env_setter as _yaml_env_setter
+    decode_json_list_literal as _decode_json_list_literal, env_is_connected as _env_is_connected,
+    extra_or_secret as _extra_or_secret, platform_gate_env as _scoped_gate_env, send_error,
+    yaml_env_setter as _yaml_env_setter
 )
 
 # Every refusal (slash command, approval button, picker, prompt) says the same thing.
@@ -460,7 +461,7 @@ class _DiscordNonConversationalMessageTracker:
         if not path.exists():
             return []
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            data = json.loads(path.read_text(encoding="utf-8-sig"))
             if isinstance(data, list):
                 return [str(message_id) for message_id in data if str(message_id).strip()]
         except Exception:
@@ -579,14 +580,18 @@ def discord_deps_present() -> bool:
 
 
 def check_discord_requirements() -> bool:
-    """Check Discord deps; lazy-installs discord.py on first call and re-binds
-    module globals so ``DISCORD_AVAILABLE`` becomes True."""
+    """Check if Discord dependencies are available.
+
+    Lazy-installs discord.py via ``pm.ensure_import("discord")``
+    on first call if not present. After successful install, re-binds module
+    globals so ``DISCORD_AVAILABLE`` becomes True.
+    """
     global DISCORD_AVAILABLE, discord, DiscordMessage, Intents, commands
     if DISCORD_AVAILABLE:
         return True
     try:
-        from tools.lazy_deps import ensure as _lazy_ensure
-        _lazy_ensure("platform.discord", prompt=False)
+        from pm import ensure_import as _lazy_ensure
+        _lazy_ensure("discord")
     except Exception:
         return False
     try:
@@ -1691,6 +1696,10 @@ class DiscordAdapter(DiscordMediaMixin, BasePlatformAdapter):
             return
         self._liveness_task = asyncio.create_task(self._liveness_loop())
 
+    # Reasons from ``_read_websocket_health`` that mean the transport is confirmed dead,
+    # not merely suspect: ``_liveness_loop`` escalates on the first such strike (#118487).
+    _TERMINAL_HEALTH_REASONS = frozenset({"socket_closed", "client_closed"})
+
     def _read_websocket_health(self, client: Any) -> tuple[bool, str]:
         """Return current Discord Gateway health without making a REST request."""
         try:
@@ -1752,6 +1761,12 @@ class DiscordAdapter(DiscordMediaMixin, BasePlatformAdapter):
                 return
             client = self._client
             if not self._running or client is None or self._disconnecting:
+                # The probe must never disappear silently (#118487): an exit here leaves the
+                # gateway with no watchdog, so say why before going away.
+                logger.info(
+                    "[%s] Discord liveness probe exiting (running=%s, client=%s, disconnecting=%s)",
+                    self.name, self._running, client is not None, self._disconnecting,
+                )
                 return
             try:
                 healthy, reason = self._read_websocket_health(client)
@@ -1760,6 +1775,14 @@ class DiscordAdapter(DiscordMediaMixin, BasePlatformAdapter):
                 healthy = False
                 reason = "health_check_error"
             if healthy:
+                if failures:
+                    # discord.py swaps in a fresh socket while resuming, so a transport-side
+                    # sample can read healthy again while events never resumed (#118487) —
+                    # logging the reset keeps that distinguishable from a dead probe task.
+                    logger.info(
+                        "[%s] Discord Gateway WebSocket healthy again after %d unhealthy sample(s)",
+                        self.name, failures,
+                    )
                 failures = 0
                 continue
             failures += 1
@@ -1767,13 +1790,18 @@ class DiscordAdapter(DiscordMediaMixin, BasePlatformAdapter):
                 "[%s] Discord Gateway WebSocket unhealthy (%s, %d/%d)", self.name, reason, failures,
                 threshold,
             )
-            if failures < threshold:
+            # A closed transport is a confirmed death, not a suspicion: escalate on the
+            # first strike; soft signals keep the threshold (#118487).
+            terminal = reason in self._TERMINAL_HEALTH_REASONS
+            if failures < threshold and not terminal:
                 continue
             # Mark recovery before closing: Bot.start()'s done callback must not overwrite this reason.
             self._disconnecting = True
             logger.error(
-                "[%s] Discord Gateway WebSocket remained unhealthy (%s); forcing reconnect",
-                self.name, reason,
+                "[%s] Discord Gateway WebSocket %s (%s, %d/%d); forcing reconnect",
+                self.name,
+                "transport closed" if terminal else "remained unhealthy",
+                reason, failures, threshold,
             )
             self._set_fatal_error(
                 "discord_websocket_health_stale",
@@ -1936,7 +1964,7 @@ class DiscordAdapter(DiscordMediaMixin, BasePlatformAdapter):
             path = self._command_sync_state_path()
             if not path.exists():
                 return {}
-            data = json.loads(path.read_text(encoding="utf-8"))
+            data = json.loads(path.read_text(encoding="utf-8-sig"))
         except Exception:
             return {}
         return data if isinstance(data, dict) else {}
@@ -2161,16 +2189,16 @@ class DiscordAdapter(DiscordMediaMixin, BasePlatformAdapter):
         configured = self.config.extra.get("missed_message_backfill")
         if isinstance(configured, dict) and "channels" in configured:
             raw = configured.get("channels")
-            if isinstance(raw, list):
-                return {str(item).strip() for item in raw if str(item).strip()}
-            raw = str(raw or "")
-            if raw.strip():
-                return {item.strip() for item in raw.split(",") if item.strip()}
+            channels = self._gate_csv_set(raw)
+            # An explicit list (YAML list or JSON-list string, even empty) is authoritative — the
+            # operator disabled the scan; only the default "" string falls through to the env/default.
+            if channels or isinstance(_decode_json_list_literal(raw), list):
+                return channels
         raw = self._gate_env("DISCORD_MISSED_MESSAGE_BACKFILL_CHANNELS")
         if not raw.strip():
             allowed = self._get_allowed_channels()
             return allowed | self._discord_free_response_channels()
-        return {item.strip() for item in raw.split(",") if item.strip()}
+        return self._gate_csv_set(raw)
 
     def _missed_message_backfill_number(self, key: str, env_key: str, default, cast, lo, hi=None):
         """Numeric ``missed_message_backfill.<key>`` (dict extra wins over env), clamped to [lo, hi]."""
@@ -3811,7 +3839,7 @@ class DiscordAdapter(DiscordMediaMixin, BasePlatformAdapter):
 
     async def _process_voice_input(self, guild_id: int, user_id: int, pcm_data: bytes):
         """Convert PCM -> WAV -> STT -> callback."""
-        from tools.voice_mode import is_whisper_hallucination
+        from tools.voice_mode_transcript import is_whisper_hallucination
         tmp_f = tempfile.NamedTemporaryFile(suffix=".wav", prefix="vc_listen_", delete=False)
         wav_path = tmp_f.name
         tmp_f.close()
@@ -4690,7 +4718,7 @@ class DiscordAdapter(DiscordMediaMixin, BasePlatformAdapter):
             await interaction.followup.send(f"Created thread {link}", ephemeral=True)
         # Track thread participation so follow-ups don't require @mention
         if thread_id:
-            self._threads.mark(thread_id)
+            await self._threads.mark_async(thread_id)
         starter = (message or "").strip()
         if starter and thread_id:
             await self._dispatch_thread_session(interaction, thread_id, thread_name, starter)
@@ -4832,6 +4860,7 @@ class DiscordAdapter(DiscordMediaMixin, BasePlatformAdapter):
     def _gate_csv_set(raw) -> set:
         if raw is None:
             return set()
+        raw = _decode_json_list_literal(raw)
         if isinstance(raw, list):
             return {str(part).strip() for part in raw if str(part).strip()}
         return {part.strip() for part in str(raw).split(",") if part.strip()}
@@ -4934,13 +4963,7 @@ class DiscordAdapter(DiscordMediaMixin, BasePlatformAdapter):
         raw = self.config.extra.get("free_response_channels")
         if raw is None:
             raw = self._gate_env("DISCORD_FREE_RESPONSE_CHANNELS")
-        if isinstance(raw, list):
-            return {str(part).strip() for part in raw if str(part).strip()}
-        # YAML parses a bare numeric value as int; str() any scalar before splitting.
-        s = str(raw).strip() if raw is not None else ""
-        if s:
-            return {part.strip() for part in s.split(",") if part.strip()}
-        return set()
+        return self._gate_csv_set(raw)
 
     def _raw_mentioned_user_ids(self, message: Any) -> set:
         """Extract user-mention IDs (``<@ID>`` and legacy ``<@!ID>``) from raw content,
@@ -5987,11 +6010,13 @@ class DiscordAdapter(DiscordMediaMixin, BasePlatformAdapter):
                     parent_channel_id = str(message.channel.id)
                     is_thread = True
                     thread_id = str(thread.id)
-                    auto_threaded_channel = thread
-                    self._threads.mark(thread_id)
                     # Pre-seed dedup: message.create_thread() fires a second MESSAGE_CREATE for the
                     # starter (id == thread.id, maybe type=default); mark it so it can't trigger a rerun.
+                    # Must run before the first await below: mark_async yields to the loop, and the
+                    # echo's _discord_message_admission would otherwise claim the id first.
                     self._dedup.is_duplicate(str(thread.id))
+                    auto_threaded_channel = thread
+                    await self._threads.mark_async(thread_id)
                 else:
                     # Auto-threading is the routing target; do NOT fall back to an inline parent-channel
                     # reply (dumps the task into a shared channel). Surface an error and skip the run.
@@ -6118,7 +6143,7 @@ class DiscordAdapter(DiscordMediaMixin, BasePlatformAdapter):
 
         # Track participation so follow-ups in this thread don't need @mention.
         if thread_id:
-            self._threads.mark(thread_id)
+            await self._threads.mark_async(thread_id)
         # Only live plain text is batched: recovery candidates are complete; coalescing would replay IDs.
         if (not recovered and msg_type == MessageType.TEXT and self._text_batch_delay_seconds > 0):
             self._enqueue_text_event(event)
@@ -6331,12 +6356,35 @@ def _define_discord_view_classes() -> None:
                 unauth_msg=_UNAUTHORIZED,
             ):
                 return
+            user = getattr(interaction, "user", None)
+            actor_user_id = str(getattr(user, "id", "") or "")
+            from tools.approval import gateway_approval_actor_authorized
+            actor_is_admin = bool(actor_user_id and actor_user_id in self.admin_user_ids)
+            if not gateway_approval_actor_authorized(
+                self.session_key,
+                actor_user_id,
+                actor_is_explicit_admin=actor_is_admin,
+            ):
+                logger.warning(
+                    "Rejected Discord approval click for session %s by non-owner user %s",
+                    self.session_key, actor_user_id or "<unknown>",
+                )
+                try:
+                    await interaction.response.send_message(_UNAUTHORIZED, ephemeral=True)
+                except Exception:
+                    pass
+                return
             self.resolved = True
             # Unblock the waiting agent thread FIRST. A click after the approval
             # wait timed out (count == 0) must not claim "Approved".
             try:
                 from tools.approval import resolve_gateway_approval
-                count = resolve_gateway_approval(self.session_key, choice)
+                count = resolve_gateway_approval(
+                    self.session_key,
+                    choice,
+                    actor_user_id=actor_user_id,
+                    actor_is_explicit_admin=actor_is_admin,
+                )
                 logger.info(
                     "Discord button resolved %d approval(s) for session %s (choice=%s, user=%s)",
                     count, self.session_key, choice, interaction.user.display_name,

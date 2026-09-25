@@ -88,8 +88,14 @@ except ImportError:
     _WS_AVAILABLE = False
 
 
-def _run_async(coro):
-    """Run an async coroutine from a sync handler, safe inside or outside a loop."""
+def _run_async(coro, *, timeout: Optional[float] = None):
+    """Run an async coroutine from a sync handler with a bounded bridge wait.
+
+    A running event loop requires a worker thread. Do not use the executor as a context manager:
+    its implicit shutdown(wait=True) would reintroduce an unbounded join after result(timeout=...)
+    fires. The coroutine owns its own operation-level timeout; this bridge timeout is the final
+    containment boundary.
+    """
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
@@ -97,8 +103,12 @@ def _run_async(coro):
     if loop and loop.is_running():
         import concurrent.futures
         import contextvars
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            return pool.submit(contextvars.copy_context().run, asyncio.run, coro).result()
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        future = pool.submit(contextvars.copy_context().run, asyncio.run, coro)
+        try:
+            return future.result(timeout=timeout)
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)
     return asyncio.run(coro)
 
 
@@ -171,6 +181,18 @@ async def _cdp_call(ws_url: str, method: str, params: Dict[str, Any], target_id:
     page-level session over the browser-level WebSocket; without it ``method`` runs at browser level."""
     assert websockets is not None  # guarded by _WS_AVAILABLE at call-site
     from agent.proxy_bypass import loopback_connect_kwargs
+    # One deadline governs connect + send + response work. Individual waits consume the remaining
+    # budget instead of each receiving a fresh timeout, so a stalled send cannot extend the tool
+    # call indefinitely.
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+
+    def remaining(what: str) -> float:
+        left = deadline - loop.time()
+        if left <= 0:
+            raise TimeoutError(f"Timed out {what}")
+        return left
+
     # max_size=None: CDP responses (e.g. DOM.getDocument) can be large; ping_interval=None: CDP
     # servers don't expect pings.
     async with websockets.connect(ws_url, max_size=None, open_timeout=timeout, close_timeout=5,
@@ -180,13 +202,12 @@ async def _cdp_call(ws_url: str, method: str, params: Dict[str, Any], target_id:
         async def _send(req: Dict[str, Any], what: str) -> Dict[str, Any]:
             nonlocal next_id
             call_id, next_id = next_id, next_id + 1
-            await ws.send(json.dumps({"id": call_id, **req}))
-            deadline = asyncio.get_running_loop().time() + timeout
+            await asyncio.wait_for(
+                ws.send(json.dumps({"id": call_id, **req})),
+                timeout=remaining(f"sending {what}"),
+            )
             while True:  # ignore events / out-of-order responses
-                remaining = deadline - asyncio.get_running_loop().time()
-                if remaining <= 0:
-                    raise TimeoutError(f"Timed out {what}")
-                msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=remaining))
+                msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=remaining(what)))
                 if msg.get("id") == call_id:
                     return msg
 
@@ -277,7 +298,7 @@ def browser_cdp(method: str, params: Optional[Dict[str, Any]] = None, target_id:
         return tool_error("'method' is required (e.g. 'Target.getTargets')", cdp_docs=CDP_DOCS_URL)
     if not _WS_AVAILABLE:
         return tool_error("The 'websockets' Python package is required but not installed. "
-                          "Install it with: pip install websockets")
+                          "Run: hermes pm repair")
     endpoint = _resolve_cdp_endpoint()
     if not endpoint:
         return tool_error("No CDP endpoint is available. Run '/browser connect' to attach to a running Chrome, "
@@ -301,7 +322,12 @@ def browser_cdp(method: str, params: Optional[Dict[str, Any]] = None, target_id:
         safe_timeout = 30.0
     safe_timeout = max(1.0, min(safe_timeout, 300.0))
     try:
-        result = _run_async(_cdp_call(endpoint, method, call_params, target_id, safe_timeout))
+        # _cdp_call owns a single safe_timeout budget; allow the WebSocket close handshake
+        # (close_timeout=5) a small bounded tail on the sync bridge.
+        result = _run_async(
+            _cdp_call(endpoint, method, call_params, target_id, safe_timeout),
+            timeout=safe_timeout + 6.0,
+        )
     except asyncio.TimeoutError as exc:
         return tool_error(f"CDP call timed out after {safe_timeout}s: {exc}", method=method)
     except (TimeoutError, RuntimeError) as exc:

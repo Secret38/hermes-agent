@@ -545,7 +545,6 @@ async fn run_bootstrap(
     let source_note = match &script.source {
         ScriptSource::DevCheckout => "dev checkout",
         ScriptSource::Bundled => "bundled",
-        ScriptSource::Cached => "cached",
         ScriptSource::Downloaded => "downloaded",
     };
     emit_log(&format!(
@@ -981,6 +980,8 @@ fn build_pin_args(script: &install_script::ResolvedScript) -> Vec<String> {
         out.push("-Branch".to_string());
         out.push(b.clone());
     }
+    out.push("-Repository".to_string());
+    out.push(install_script::build_repository().to_string());
     out
 }
 
@@ -1146,6 +1147,25 @@ mod tests {
             "no resolved app when nothing has been built"
         );
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn build_pin_args_propagates_baked_repository() {
+        let script = install_script::ResolvedScript {
+            path: PathBuf::from("install.ps1"),
+            source: ScriptSource::Bundled,
+            commit: Some("abcdef1234567890".to_string()),
+            branch: Some("main".to_string()),
+        };
+        let args = build_pin_args(&script);
+        let repo_pos = args
+            .iter()
+            .position(|arg| arg == "-Repository")
+            .expect("repository argument");
+        assert_eq!(
+            args.get(repo_pos + 1).map(String::as_str),
+            Some(install_script::build_repository())
+        );
     }
 
     #[test]
