@@ -33,10 +33,14 @@ jobs:
           git config user.name "$(git log -1 --format=%an HEAD)"
           git config user.email "$(git log -1 --format=%ae HEAD)"
 
-          # The repository currently contains one CRLF-tracked catalog file that
-          # normalizes to LF on Linux checkout. Stash that checkout-only delta so
-          # Git can perform the real merge against a clean working tree.
-          git stash push --include-untracked -m "checkout-line-ending-normalization" >/dev/null || true
+          # This tracked catalog file currently contains CRLF bytes while the
+          # repository attributes normalize text to LF. Disable that clean filter
+          # for this one runner-local path and restore exact HEAD bytes so the
+          # merge starts from a truly clean worktree without changing the repo.
+          mkdir -p .git/info
+          printf '%s\n' 'plugin-catalog/intelligent-tool-break.yaml -text' >> .git/info/attributes
+          git checkout --force HEAD -- plugin-catalog/intelligent-tool-break.yaml
+          test -z "$(git status --porcelain)"
 
           set +e
           git merge --no-commit --no-ff origin/agent-os-upstream-2026-09-26
