@@ -459,9 +459,203 @@ jobs:
             Remove-Item -LiteralPath $env:HERMES_HOME -Recurse -Force -ErrorAction SilentlyContinue
           }
 
+  qualify-windows-upgrade:
+    name: qualify previous release -> exact Windows candidate
+    needs: build-windows
+    runs-on: [self-hosted, windows, x64, agent-os-gui]
+    timeout-minutes: 120
+    env:
+      OPENROUTER_API_KEY: ""
+      OPENAI_API_KEY: ""
+      NOUS_API_KEY: ""
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Require tag at current Agent OS branch head
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $commit = (git rev-parse HEAD).Trim()
+          git fetch origin agent-os-v1 --depth=1
+          $branchHead = (git rev-parse origin/agent-os-v1).Trim()
+          if ($commit -ne $branchHead) {
+            throw "Release tag must point at current agent-os-v1 HEAD. tag=$commit branch=$branchHead"
+          }
+
+      - name: Require interactive Windows desktop
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sessionId = (Get-Process -Id $PID).SessionId
+          if ($sessionId -le 0) {
+            throw "Upgrade qualification requires a logged-in interactive Windows session."
+          }
+          Write-Host "Upgrade qualification session: $sessionId"
+
+      - name: Configure isolated upgrade workroot
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $workroot = Join-Path $env:RUNNER_TEMP ("agent-os-release-upgrade-" + $env:GITHUB_RUN_ID + "-" + $env:GITHUB_RUN_ATTEMPT)
+          if (Test-Path -LiteralPath $workroot) {
+            Remove-Item -LiteralPath $workroot -Recurse -Force
+          }
+          New-Item -ItemType Directory -Force -Path $workroot | Out-Null
+          "HERMES_E2E_WORKROOT=$workroot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Download exact immutable installer candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: agent-os-release-build-${{ github.sha }}
+          path: qualification/upgrade-candidate
+
+      - name: Verify exact candidate identity
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $metadata = Get-Content -Raw qualification/upgrade-candidate/source-build-metadata.json | ConvertFrom-Json
+          if ($metadata.repository -ne $env:GITHUB_REPOSITORY) { throw "Upgrade candidate repository mismatch" }
+          if ($metadata.commit -ne $env:GITHUB_SHA) { throw "Upgrade candidate commit mismatch" }
+          if ($metadata.tag -ne $env:GITHUB_REF_NAME) { throw "Upgrade candidate tag mismatch" }
+          $candidate = 'qualification/upgrade-candidate/Hermes-Setup.exe'
+          $actual = (Get-FileHash -Algorithm SHA256 $candidate).Hash.ToLowerInvariant()
+          if ($actual -ne $metadata.unsigned_sha256) { throw "Upgrade candidate hash mismatch" }
+
+      - name: Resolve previous supported desktop release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git fetch --tags --force
+          $current = $env:GITHUB_REF_NAME
+          $agentOsTags = @(git tag --list 'agent-os-v*' --sort=-version:refname | Where-Object { $_ -and $_ -ne $current })
+          $standardTags = @(git tag --list 'v[0-9]*' --sort=-version:refname | Where-Object { $_ -and $_ -ne $current })
+          if ($agentOsTags.Count -gt 0) { $previous = $agentOsTags[0] }
+          elseif ($standardTags.Count -gt 0) { $previous = $standardTags[0] }
+          else { throw "No previous release tag exists for upgrade qualification." }
+          git rev-parse --verify "refs/tags/$previous^{commit}" | Out-Null
+          $desktopTree = git ls-tree -d $previous apps/desktop
+          if ([string]::IsNullOrWhiteSpace(($desktopTree | Out-String))) {
+            throw "Previous release $previous does not contain apps/desktop."
+          }
+          "AGENT_OS_PREVIOUS_RELEASE=$previous" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Upgrade baseline: $previous"
+
+      - name: Stage previous release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $candidate = (Resolve-Path 'qualification/upgrade-candidate/Hermes-Setup.exe').Path
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests\install\windows-e2e.ps1 -Phase stage -InstallMethod installer-script+desktop -Route desktop-installer@latest -InstallRef $env:AGENT_OS_PREVIOUS_RELEASE -SetupExeUrl $candidate
+          if ($LASTEXITCODE -ne 0) { throw "Upgrade stage failed with exit $LASTEXITCODE" }
+
+      - name: Install previous release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $candidate = (Resolve-Path 'qualification/upgrade-candidate/Hermes-Setup.exe').Path
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests\install\windows-e2e.ps1 -Phase install -InstallMethod installer-script+desktop -Route desktop-installer@latest -InstallRef $env:AGENT_OS_PREVIOUS_RELEASE -SetupExeUrl $candidate
+          if ($LASTEXITCODE -ne 0) { throw "Previous-release install failed with exit $LASTEXITCODE" }
+
+      - name: Seed upgrade preservation sentinel
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $home = Join-Path $env:HERMES_E2E_WORKROOT 'hermes-home'
+          $sentinel = Join-Path $home 'agent-os-upgrade-sentinel.json'
+          [ordered]@{
+            release = $env:AGENT_OS_PREVIOUS_RELEASE
+            run_id = $env:GITHUB_RUN_ID
+            preserve = $true
+          } | ConvertTo-Json | Set-Content -Encoding utf8 $sentinel
+          "AGENT_OS_UPGRADE_SENTINEL=$sentinel" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Upgrade through exact Hermes-Setup.exe candidate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $candidate = (Resolve-Path 'qualification/upgrade-candidate/Hermes-Setup.exe').Path
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests\install\windows-e2e.ps1 -Phase update -InstallMethod installer-script+desktop -Route desktop-installer@latest -InstallRef $env:AGENT_OS_PREVIOUS_RELEASE -SetupExeUrl $candidate
+          if ($LASTEXITCODE -ne 0) { throw "Exact-candidate upgrade failed with exit $LASTEXITCODE" }
+
+      - name: Verify upgraded runtime and preserved state
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Test-Path -LiteralPath $env:AGENT_OS_UPGRADE_SENTINEL -PathType Leaf)) {
+            throw "Upgrade removed the preservation sentinel from HERMES_HOME."
+          }
+          $sentinel = Get-Content -Raw -LiteralPath $env:AGENT_OS_UPGRADE_SENTINEL | ConvertFrom-Json
+          if ($sentinel.preserve -ne $true) { throw "Upgrade preservation sentinel was corrupted." }
+
+          $installRoot = Join-Path $env:HERMES_E2E_WORKROOT 'hermes-home\hermes-agent'
+          $installed = (& git -C $installRoot rev-parse HEAD).Trim()
+          if ($installed -ne $env:GITHUB_SHA) {
+            throw "Exact candidate upgrade landed on $installed instead of $env:GITHUB_SHA"
+          }
+
+          $hermes = Join-Path $installRoot 'venv\Scripts\hermes.exe'
+          $health = & $hermes agent-os status --require-full --require-production-security --json
+          if ($LASTEXITCODE -ne 0) {
+            throw "Agent OS is not full/security ready after previous-release upgrade."
+          }
+
+          New-Item -ItemType Directory -Force -Path qualification | Out-Null
+          $health | Set-Content -Encoding utf8 qualification/agent-os-upgrade-health.json
+          [ordered]@{
+            repository = $env:GITHUB_REPOSITORY
+            commit = $env:GITHUB_SHA
+            tag = $env:GITHUB_REF_NAME
+            previous_release = $env:AGENT_OS_PREVIOUS_RELEASE
+            exact_installer_candidate = $true
+            state_preserved = $true
+            full_ready = $true
+            production_security_ready = $true
+          } | ConvertTo-Json | Set-Content -Encoding utf8 qualification/upgrade-metadata.json
+
+      - name: Collect upgrade evidence
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          New-Item -ItemType Directory -Force -Path qualification/upgrade-evidence | Out-Null
+          $work = $env:HERMES_E2E_WORKROOT
+          foreach ($pair in @(
+            @{ src = (Join-Path $work 'proof'); dst = 'proof' },
+            @{ src = (Join-Path $work 'logs'); dst = 'driver-logs' },
+            @{ src = (Join-Path $work 'shas.json'); dst = 'shas.json' }
+          )) {
+            if (Test-Path -LiteralPath $pair.src) {
+              Copy-Item -LiteralPath $pair.src -Destination (Join-Path 'qualification/upgrade-evidence' $pair.dst) -Recurse -Force
+            }
+          }
+
+      - name: Upload upgrade qualification evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: agent-os-upgrade-qualification-${{ github.sha }}
+          path: |
+            qualification/agent-os-upgrade-health.json
+            qualification/upgrade-metadata.json
+            qualification/upgrade-evidence
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Clean isolated upgrade home
+        if: always()
+        shell: pwsh
+        run: |
+          if ($env:HERMES_E2E_WORKROOT -and (Test-Path -LiteralPath $env:HERMES_E2E_WORKROOT)) {
+            Remove-Item -LiteralPath $env:HERMES_E2E_WORKROOT -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
   sign-publish:
     name: sign and publish production release
-    needs: [build-windows, qualify-windows-gui]
+    needs: [build-windows, qualify-windows-gui, qualify-windows-upgrade]
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
@@ -480,18 +674,33 @@ jobs:
           name: agent-os-qualification-${{ github.sha }}
           path: qualification
 
+      - name: Download upgrade qualification evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: agent-os-upgrade-qualification-${{ github.sha }}
+          path: upgrade-qualification
+
       - name: Verify build and qualification identity
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $build = Get-Content -Raw dist/source-build-metadata.json | ConvertFrom-Json
           $qualification = Get-Content -Raw qualification/qualification-metadata.json | ConvertFrom-Json
+          $upgrade = Get-Content -Raw upgrade-qualification/upgrade-metadata.json | ConvertFrom-Json
 
-          if ($build.commit -ne $env:GITHUB_SHA -or $qualification.commit -ne $env:GITHUB_SHA) {
+          if ($build.commit -ne $env:GITHUB_SHA -or $qualification.commit -ne $env:GITHUB_SHA -or $upgrade.commit -ne $env:GITHUB_SHA) {
             throw "Release evidence commit identity mismatch"
           }
-          if ($build.tag -ne $env:GITHUB_REF_NAME -or $qualification.tag -ne $env:GITHUB_REF_NAME) {
+          if ($build.tag -ne $env:GITHUB_REF_NAME -or $qualification.tag -ne $env:GITHUB_REF_NAME -or $upgrade.tag -ne $env:GITHUB_REF_NAME) {
             throw "Release evidence tag identity mismatch"
+          }
+          if (
+            -not $upgrade.exact_installer_candidate
+            -or -not $upgrade.state_preserved
+            -or -not $upgrade.full_ready
+            -or -not $upgrade.production_security_ready
+          ) {
+            throw "Previous-release upgrade evidence is not production-ready"
           }
           if (
             -not $qualification.clean_install `
@@ -580,6 +789,8 @@ jobs:
           Copy-Item qualification/agent-os-repair-health.json dist/agent-os-repair-health.json
           Copy-Item qualification/agent-os-golden-results.json dist/agent-os-golden-results.json
           Copy-Item qualification/qualification-metadata.json dist/qualification-metadata.json
+          Copy-Item upgrade-qualification/agent-os-upgrade-health.json dist/agent-os-upgrade-health.json
+          Copy-Item upgrade-qualification/upgrade-metadata.json dist/upgrade-metadata.json
           if (Test-Path qualification/installer-ahk.log) {
             Copy-Item qualification/installer-ahk.log dist/installer-ahk.log
           }
@@ -600,6 +811,8 @@ jobs:
             dist/agent-os-repair-health.json
             dist/agent-os-golden-results.json
             dist/qualification-metadata.json
+            dist/agent-os-upgrade-health.json
+            dist/upgrade-metadata.json
             dist/installer-ahk.log
             dist/bootstrap-installer.log
           if-no-files-found: error
@@ -619,7 +832,9 @@ jobs:
             'dist/agent-os-health.json',
             'dist/agent-os-repair-health.json',
             'dist/agent-os-golden-results.json',
-            'dist/qualification-metadata.json'
+            'dist/qualification-metadata.json',
+            'dist/agent-os-upgrade-health.json',
+            'dist/upgrade-metadata.json'
           )
           foreach ($optional in @('dist/installer-ahk.log', 'dist/bootstrap-installer.log')) {
             if (Test-Path $optional) { $assets += $optional }
