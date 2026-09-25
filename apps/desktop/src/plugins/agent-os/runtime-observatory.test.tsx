@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { AgentOSLiveFrameMessage } from './api'
 import type { AgentOSTask } from './types'
+import { RuntimeObservatory } from './visual-intelligence'
 
 const mocks = vi.hoisted(() => ({
   subscribeAgentOSLiveFrame: vi.fn()
@@ -10,8 +11,6 @@ const mocks = vi.hoisted(() => ({
 vi.mock('./api', () => ({
   subscribeAgentOSLiveFrame: (...args: unknown[]) => mocks.subscribeAgentOSLiveFrame(...args)
 }))
-
-import { RuntimeObservatory } from './visual-intelligence'
 
 function taskFixture(): AgentOSTask {
   return {
