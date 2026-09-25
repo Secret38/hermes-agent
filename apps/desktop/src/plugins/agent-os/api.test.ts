@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  type AgentOSLiveFrameMessage,
   bindAgentOSApi,
-  subscribeAgentOSLiveFrame,
-  type AgentOSLiveFrameMessage
+  subscribeAgentOSLiveFrame
 } from './api'
 
 describe('Agent OS live frame subscription', () => {
