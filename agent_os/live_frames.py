@@ -81,26 +81,52 @@ class LiveRuntimeFrameBroker:
         if image is None:
             return None
         mime_type, image_b64 = image
-
-        try:
-            decoded = base64.b64decode(image_b64, validate=True)
-        except (binascii.Error, ValueError):
-            return None
-        if not decoded or len(decoded) > self._max_frame_bytes:
-            return None
-
         meta = raw.get("meta") if isinstance(raw, dict) else None
-        width = _safe_dimension(meta.get("width")) if isinstance(meta, dict) else None
-        height = _safe_dimension(meta.get("height")) if isinstance(meta, dict) else None
-        timestamp = time.monotonic() if now is None else float(now)
-        frame = LiveRuntimeFrame(
+
+        return self.publish_image(
             task_id=identity[0],
             session_id=identity[1],
             action_id=identity[2],
             mime_type=mime_type,
             image_b64=image_b64,
-            width=width,
-            height=height,
+            width=meta.get("width") if isinstance(meta, dict) else None,
+            height=meta.get("height") if isinstance(meta, dict) else None,
+            now=now,
+        )
+
+    def publish_image(
+        self,
+        *,
+        task_id: str,
+        session_id: str,
+        action_id: str,
+        mime_type: str,
+        image_b64: str,
+        width: Any = None,
+        height: Any = None,
+        now: float | None = None,
+    ) -> LiveRuntimeFrame | None:
+        identity = (str(task_id).strip(), str(session_id).strip(), str(action_id).strip())
+        mime = str(mime_type).strip().lower()
+        if not all(identity) or mime not in _ALLOWED_MIME_TYPES:
+            return None
+
+        try:
+            decoded = base64.b64decode(str(image_b64), validate=True)
+        except (binascii.Error, ValueError):
+            return None
+        if not decoded or len(decoded) > self._max_frame_bytes:
+            return None
+
+        timestamp = time.monotonic() if now is None else float(now)
+        frame = LiveRuntimeFrame(
+            task_id=identity[0],
+            session_id=identity[1],
+            action_id=identity[2],
+            mime_type=mime,
+            image_b64=str(image_b64),
+            width=_safe_dimension(width),
+            height=_safe_dimension(height),
             captured_at=timestamp,
             expires_at=timestamp + self._ttl_seconds,
         )
