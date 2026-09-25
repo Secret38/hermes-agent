@@ -1,0 +1,66 @@
+name: Agent OS upstream merge apply
+
+on:
+  push:
+    branches:
+      - agent-os-v1-release-qualification
+    paths:
+      - ".github/workflows/agent-os-upstream-merge-apply.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  merge:
+    if: github.repository == 'Secret38/hermes-agent'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          ref: agent-os-v1-release-qualification
+
+      - name: Fetch pinned upstream snapshot
+        shell: bash
+        run: git fetch origin agent-os-upstream-2026-09-26
+
+      - name: Merge upstream and resolve conflicts in favor of pinned upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          before="$(git rev-parse HEAD)"
+          git config user.name "$(git log -1 --format=%an HEAD)"
+          git config user.email "$(git log -1 --format=%ae HEAD)"
+
+          set +e
+          git merge --no-commit --no-ff origin/agent-os-upstream-2026-09-26
+          merge_status=$?
+          set -e
+
+          if [ "$merge_status" -ne 0 ]; then
+            git diff --name-only --diff-filter=U | sort > "$RUNNER_TEMP/conflicts.txt"
+            while IFS= read -r file; do
+              [ -n "$file" ] || continue
+              if git cat-file -e "origin/agent-os-upstream-2026-09-26:$file" 2>/dev/null; then
+                git checkout origin/agent-os-upstream-2026-09-26 -- "$file"
+                git add -- "$file"
+              else
+                git rm -f -- "$file"
+              fi
+            done < "$RUNNER_TEMP/conflicts.txt"
+          fi
+
+          unresolved="$(git diff --name-only --diff-filter=U)"
+          if [ -n "$unresolved" ]; then
+            echo "::error::Unresolved merge conflicts remain"
+            printf '%s\n' "$unresolved"
+            exit 1
+          fi
+
+          git diff --cached --check
+          git commit -m "chore(agent-os): merge Hermes upstream for release qualification"
+          after="$(git rev-parse HEAD)"
+
+          test "$before" != "$after"
+          git push origin HEAD:agent-os-v1-release-qualification
