@@ -68,8 +68,30 @@ jobs:
           fi
 
           test -z "$(git ls-files -u)"
-          git commit -m "chore(agent-os): merge Hermes upstream for release qualification"
-          after="$(git rev-parse HEAD)"
 
-          test "$before" != "$after"
-          git push origin HEAD:agent-os-v1-release-qualification
+          out="$RUNNER_TEMP/agent-os-upstream-merged-tree"
+          mkdir -p "$out/files"
+          printf '%s\n' "$before" > "$out/parent-ours.txt"
+          git rev-parse origin/agent-os-upstream-2026-09-26 > "$out/parent-upstream.txt"
+          git diff --cached --name-status origin/agent-os-upstream-2026-09-26 > "$out/delta-status.txt"
+          git diff --cached --name-only --diff-filter=ACMR origin/agent-os-upstream-2026-09-26 > "$out/materialized-paths.txt"
+          git diff --cached --name-only --diff-filter=D origin/agent-os-upstream-2026-09-26 > "$out/deleted-paths.txt"
+
+          while IFS= read -r file; do
+            [ -n "$file" ] || continue
+            mkdir -p "$out/files/$(dirname "$file")"
+            cp -p -- "$file" "$out/files/$file"
+          done < "$out/materialized-paths.txt"
+
+          while IFS= read -r file; do
+            [ -n "$file" ] || continue
+            git ls-files -s -- "$file"
+          done < "$out/materialized-paths.txt" > "$out/index-modes.txt"
+
+
+      - name: Upload merged tree artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: agent-os-upstream-merged-tree-${{ github.sha }}
+          path: ${{ runner.temp }}/agent-os-upstream-merged-tree
+          retention-days: 2
