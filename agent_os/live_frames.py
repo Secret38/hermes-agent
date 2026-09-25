@@ -41,8 +41,6 @@ class LiveRuntimeFrame:
             "image_b64": self.image_b64,
             "width": self.width,
             "height": self.height,
-            "captured_at": self.captured_at,
-            "expires_at": self.expires_at,
         }
 
 
