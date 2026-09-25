@@ -26,6 +26,8 @@ jobs:
       - name: Audit merge conflicts without mutating repository
         shell: bash
         run: |
+          git config user.name "agent-os-conflict-audit"
+          git config user.email "agent-os-conflict-audit@users.noreply.github.com"
           set +e
           git merge --no-commit --no-ff origin/agent-os-v1-security-convergence
           status=$?
