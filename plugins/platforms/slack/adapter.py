@@ -5488,6 +5488,15 @@ class SlackAdapter(BasePlatformAdapter):
             return
         team_id, action_id, session_key, message, msg_ts, channel_id, user_name, user_id = started
         choice = self._APPROVAL_CHOICES.get(action_id, "deny")
+        # Shared-channel sessions are chat-keyed, not user-keyed. Authorize the actor against the
+        # central approval owner before consuming this message's local one-shot marker.
+        from tools.approval import gateway_approval_actor_authorized
+        if not gateway_approval_actor_authorized(session_key, user_id):
+            logger.warning(
+                "Rejected Slack approval click for session %s by non-owner user %s",
+                session_key, user_id or "<unknown>",
+            )
+            return
         # Double-click guard (atomic pop). Also accept the bare ts: the approval may
         # have been stored without a team id while the click carries one.
         approval_key = self._workspace_message_marker(team_id, msg_ts)
@@ -5499,7 +5508,9 @@ class SlackAdapter(BasePlatformAdapter):
         # timeout (count == 0) shows "expired", not "approved".
         try:
             from tools.approval import resolve_gateway_approval
-            count = resolve_gateway_approval(session_key, choice)
+            count = resolve_gateway_approval(
+                session_key, choice, actor_user_id=user_id
+            )
             logger.info(
                 "Slack button resolved %d approval(s) for session %s (choice=%s, user=%s)", count,
                 session_key, choice, user_name)

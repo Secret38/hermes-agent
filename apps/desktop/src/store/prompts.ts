@@ -84,13 +84,19 @@ function keyedPromptStore<T extends KeyedPrompt>(): PromptStore<T> {
 export interface ApprovalRequest extends KeyedPrompt {
   // false when the backend won't honor a permanent allow (tirith warning) → hide "Always allow".
   allowPermanent?: boolean
+  allowSession?: boolean
   choices?: string[]
   command: string
   description: string
+  patternKey?: string
+  patternKeys?: string[]
   requestId?: string
   serverRequestId?: string
   smartDenied?: boolean
+  toolName?: string
 }
+
+export type ApprovalChoice = 'always' | 'deny' | 'once' | 'session'
 
 interface ApprovalGateway {
   request: (method: string, params: Record<string, unknown>) => Promise<unknown>
@@ -98,11 +104,15 @@ interface ApprovalGateway {
 
 interface PendingApprovalPayload {
   allow_permanent?: boolean
+  allow_session?: boolean
   choices?: unknown
   command?: unknown
   description?: unknown
+  pattern_key?: unknown
+  pattern_keys?: unknown
   request_id?: unknown
   smart_denied?: boolean
+  tool_name?: unknown
 }
 
 export interface SudoRequest extends KeyedPrompt {
@@ -227,6 +237,7 @@ export interface VaultCodeRequest extends KeyedPrompt {
 
 const vaultCode = keyedPromptStore<VaultCodeRequest>()
 
+export const $approvalRequestQueues = computed($approvalQueues, queues => queues)
 export const $approvalRequests = approval.$all
 export const $approvalRequest = computed(
   [approval.$all, $activeSessionId],
@@ -324,14 +335,20 @@ export async function replayPendingApproval(gateway: ApprovalGateway | null, ses
 
       return receiveApprovalRequest(gateway, {
         allowPermanent: pending.allow_permanent !== false,
+        allowSession: pending.allow_session !== false,
         choices: Array.isArray(pending.choices)
           ? pending.choices.filter(choice => typeof choice === 'string')
           : undefined,
         command: typeof pending.command === 'string' ? pending.command : '',
         description: typeof pending.description === 'string' ? pending.description : 'dangerous command',
+        patternKey: typeof pending.pattern_key === 'string' ? pending.pattern_key : undefined,
+        patternKeys: Array.isArray(pending.pattern_keys)
+          ? pending.pattern_keys.filter(key => typeof key === 'string')
+          : undefined,
         requestId: pending.request_id,
         sessionId,
-        smartDenied: pending.smart_denied === true
+        smartDenied: pending.smart_denied === true,
+        toolName: typeof pending.tool_name === 'string' ? pending.tool_name : undefined
       })
     })
   )
@@ -364,6 +381,27 @@ export async function answerApproval(
     ...(request.requestId ? { request_id: request.requestId } : {}),
     session_id: request.sessionId ?? undefined
   })
+}
+
+/** Resolve one queued approval through the same stale-check / owner-routing /
+ * replay sequence used by every approval surface. Returns false when the
+ * request was already answered or withdrawn. */
+export async function resolveApprovalRequest(
+  gateway: ApprovalGateway | null,
+  request: ApprovalRequest,
+  choice: ApprovalChoice
+): Promise<boolean> {
+  const pending = sessionApprovalRequests(request.sessionId).get()
+
+  if (!pending.some(item => item.requestId === request.requestId)) {
+    return false
+  }
+
+  await answerApproval(gateway, request, choice)
+  clearApprovalRequest(request.sessionId, request.requestId)
+  void replayPendingApproval(gateway, request.sessionId).catch(() => undefined)
+
+  return true
 }
 
 /** The prompt request for one specific session — the tile counterpart of the

@@ -222,16 +222,22 @@ const approval: Handler = ctx => {
   void receiveApprovalRequest(null, {
     // false only when a tirith warning forbids it; backend omits the field otherwise.
     allowPermanent: p.allow_permanent !== false,
+    allowSession: p.allow_session !== false,
     choices: Array.isArray(p.choices)
       ? p.choices.filter((choice): choice is string => typeof choice === 'string')
       : undefined,
     command,
     description,
+    patternKey: str(p.pattern_key) || undefined,
+    patternKeys: Array.isArray(p.pattern_keys)
+      ? p.pattern_keys.filter((key): key is string => typeof key === 'string')
+      : undefined,
     // The approval queue's own id — `approval.pending` / `approval.received` / `approval.respond` key on it.
     requestId: str(p.request_id) || undefined,
     serverRequestId: request.id,
     sessionId: sessionId || null,
-    smartDenied: p.smart_denied === true
+    smartDenied: p.smart_denied === true,
+    toolName: str(p.tool_name) || undefined
   }).catch(() => undefined)
   markNeedsInput(ctx)
 

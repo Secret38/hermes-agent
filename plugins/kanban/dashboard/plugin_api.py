@@ -309,9 +309,21 @@ def get_board(
         # One window-function query for latest summaries (avoids N+1); cards get a
         # truncated preview, the full text comes from /tasks/:id.
         summary_map = kanban_db.latest_summaries(conn, [t.id for t in tasks])
+        # Exact worker-session correlation for active attempts, batched once for
+        # the whole board so Mission Control never needs N+1 task detail reads.
+        active_run_sessions = {
+            int(r["id"]): r["worker_session_id"]
+            for r in conn.execute(
+                "SELECT id, worker_session_id FROM task_runs WHERE ended_at IS NULL"
+            ).fetchall()
+        }
         for t in tasks:
             full = summary_map.get(t.id)
             d = _task_dict(t, latest_summary=(full[:_CARD_SUMMARY_PREVIEW_CHARS] if full else None))
+            d["worker_session_id"] = (
+                active_run_sessions.get(int(t.current_run_id))
+                if t.current_run_id is not None else None
+            )
             d["link_counts"] = link_counts.get(t.id, {"parents": 0, "children": 0})
             d["comment_count"] = comment_counts.get(t.id, 0)
             d["progress"] = progress.get(t.id)  # None when the task has no children
