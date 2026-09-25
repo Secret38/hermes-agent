@@ -1,0 +1,74 @@
+name: Agent OS upstream conflict audit
+
+on:
+  push:
+    branches:
+      - agent-os-v1-upstream-sync-20260925
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout upstream qualification base
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Fetch convergence branch
+        shell: bash
+        run: git fetch origin agent-os-v1-security-convergence
+
+      - name: Audit merge conflicts without mutating repository
+        shell: bash
+        run: |
+          set +e
+          git merge --no-commit --no-ff origin/agent-os-v1-security-convergence
+          status=$?
+          set -e
+
+          mkdir -p conflict-audit
+          printf '%s\n' "$status" > conflict-audit/merge-exit-code.txt
+          git diff --name-only --diff-filter=U | sort > conflict-audit/conflicts.txt
+          git diff --cc > conflict-audit/conflict-diff.txt || true
+          git status --short > conflict-audit/status.txt
+
+          python - <<'PY'
+          from collections import Counter
+          from pathlib import Path
+
+          rows = [line.strip() for line in Path("conflict-audit/conflicts.txt").read_text().splitlines() if line.strip()]
+          def bucket(path: str) -> str:
+              if path.startswith("agent_os/"):
+                  return "agent_os"
+              if path.startswith("apps/desktop/"):
+                  return "desktop"
+              if path.startswith("apps/bootstrap-installer/") or path.startswith("scripts/install"):
+                  return "installer"
+              if path.startswith("tools/approval") or path.startswith("tools/computer_use/"):
+                  return "security-runtime"
+              if path.startswith(".github/workflows/"):
+                  return "ci-release"
+              if path.startswith("tests/"):
+                  return "tests"
+              return "other"
+
+          counts = Counter(bucket(path) for path in rows)
+          out = [f"total={len(rows)}"]
+          out.extend(f"{key}={counts[key]}" for key in sorted(counts))
+          Path("conflict-audit/summary.txt").write_text("\n".join(out) + "\n")
+          PY
+
+          git merge --abort || true
+
+      - name: Upload conflict evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: agent-os-upstream-conflict-audit-${{ github.sha }}
+          path: conflict-audit
+          retention-days: 7
+          if-no-files-found: error
