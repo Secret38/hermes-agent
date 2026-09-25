@@ -100,3 +100,43 @@ def test_live_frame_broker_rejects_invalid_oversized_or_non_image_payloads():
         raw={"ok": True},
         now=1,
     ) is None
+
+
+def test_live_frame_broker_physically_expires_without_followup_read(monkeypatch):
+    timers = []
+
+    class FakeTimer:
+        def __init__(self, interval, function, args=()):
+            self.interval = interval
+            self.function = function
+            self.args = args
+            self.daemon = False
+            self.cancelled = False
+            timers.append(self)
+
+        def start(self):
+            return None
+
+        def cancel(self):
+            self.cancelled = True
+
+        def fire(self):
+            self.function(*self.args)
+
+    monkeypatch.setattr("agent_os.live_frames.threading.Timer", FakeTimer)
+    broker = LiveRuntimeFrameBroker(ttl_seconds=30, max_frame_bytes=1024)
+    frame = broker.publish_multimodal(
+        task_id="task-ttl",
+        session_id="session-ttl",
+        action_id="action-ttl",
+        raw=_multimodal(b"frame"),
+        now=10,
+    )
+
+    assert frame is not None
+    assert len(timers) == 1
+    assert timers[0].daemon is True
+
+    timers[0].fire()
+
+    assert broker.latest("task-ttl", now=11) is None
