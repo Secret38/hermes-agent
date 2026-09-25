@@ -33,6 +33,11 @@ jobs:
           git config user.name "$(git log -1 --format=%an HEAD)"
           git config user.email "$(git log -1 --format=%ae HEAD)"
 
+          # The repository currently contains one CRLF-tracked catalog file that
+          # normalizes to LF on Linux checkout. Stash that checkout-only delta so
+          # Git can perform the real merge against a clean working tree.
+          git stash push --include-untracked -m "checkout-line-ending-normalization" >/dev/null || true
+
           set +e
           git merge --no-commit --no-ff origin/agent-os-upstream-2026-09-26
           merge_status=$?
