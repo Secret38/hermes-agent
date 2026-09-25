@@ -88,6 +88,20 @@ jobs:
             git ls-files -s -- "$file"
           done < "$out/materialized-paths.txt" > "$out/index-modes.txt"
 
+          # Upload all non-workflow merged blobs through a temporary carrier
+          # commit whose parent is the pinned upstream snapshot. Its workflow
+          # directory is byte-for-byte upstream, so the Actions token does not
+          # need workflow-write permission.
+          git rm -r -f --ignore-unmatch .github/workflows >/dev/null
+          git checkout origin/agent-os-upstream-2026-09-26 -- .github/workflows
+          git add -A .github/workflows
+          test -z "$(git diff --cached --name-only origin/agent-os-upstream-2026-09-26 -- .github/workflows)"
+          carrier_tree="$(git write-tree)"
+          carrier_commit="$(printf '%s\n' 'chore(agent-os): materialize upstream merge carrier' | git commit-tree "$carrier_tree" -p origin/agent-os-upstream-2026-09-26)"
+          printf '%s\n' "$carrier_commit" > "$out/carrier-commit.txt"
+          printf '%s\n' "$carrier_tree" > "$out/carrier-tree.txt"
+          git push --force origin "$carrier_commit:refs/heads/agent-os-upstream-merge-carrier"
+
 
       - name: Upload merged tree artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
