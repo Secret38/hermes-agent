@@ -114,6 +114,32 @@ import { desktopSettings } from './settings'
 
 export type { DesktopSettingKey, DesktopSettingValues } from './settings'
 
+export type { SidebarProjectTree } from '@/app/chat/sidebar/projects/workspace-groups'
+export {
+  $liveSessionSnapshots,
+  liveSessionScopeKey,
+  type LiveSessionSnapshotItem
+} from '@/store/live-sessions'
+export { revealDesktopPane } from '@/store/pane-focus'
+export { openBrowserTab } from '@/store/preview'
+export {
+  $projectTree,
+  $projectTreeLoading,
+  fetchProjectSessions,
+  goToProject,
+  refreshProjectTree
+} from '@/store/projects'
+export { revealReview } from '@/store/review'
+export {
+  $resumeFailedSessionId,
+  $workspaceCwdOwner,
+  knownSessionProfile,
+  ownerLookupSessionRows,
+  sessionMatchesStoredId
+} from '@/store/session'
+export { storedSessionIdForRuntimeId } from '@/store/session-states'
+export { $subagentsBySession, type SubagentProgress } from '@/store/subagents'
+
 // -- state: readonly views over the app's live atoms -------------------------
 
 const readonlyAtom = <T>(atomLike: ReadableAtom<T>): ReadableAtom<T> => atomLike
@@ -1796,6 +1822,26 @@ export { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 export { Textarea } from '@/components/ui/textarea'
 export { Tip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 export type { GatewayEventListener } from '@/contrib/events'
+export {
+  OPERATIONS_CAPTURE_SOURCES_AREA,
+  OPERATIONS_TASK_SOURCES_AREA,
+  type OperationsArtifact,
+  type OperationsCaptureInput,
+  type OperationsCaptureResult,
+  type OperationsCaptureSource,
+  type OperationsEvent,
+  type OperationsPlanApprovalResult,
+  type OperationsProject,
+  type OperationsRun,
+  type OperationsRunInspection,
+  type OperationsShapeResult,
+  type OperationsTask,
+  type OperationsTaskExecution,
+  type OperationsTaskLog,
+  type OperationsTaskSnapshot,
+  type OperationsTaskSource,
+  type OperationsTaskWarning
+} from '@/contrib/operations'
 export type {
   HermesPlugin,
   PluginContext,
@@ -1818,7 +1864,7 @@ export { Contribute, type ContributeProps } from '@/contrib/react/contribute'
 export type { Contribution } from '@/contrib/types'
 /** The live gateway instance type — for typing the `gateway` prop `ConnectorsTab`
  *  takes; obtain the instance from `host.getGateway()`. */
-export type { HermesGateway } from '@/hermes'
+export type { HermesGateway, SessionInfo } from '@/hermes'
 /** Grab-to-pan for overflow containers (boards, timelines, wide tables) —
  *  the shared scrub primitive; don't hand-roll drag-to-scroll. */
 export { type GrabScroll, useGrabScroll } from '@/hooks/use-grab-scroll'
