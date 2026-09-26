@@ -1,20 +1,19 @@
 import {
   $approvalModes,
-  $approvalRequestQueues,
+  $approvalRequests,
   $clarifyRequests,
   $secretRequests,
   $sudoRequests,
   $vaultCodeRequests,
   $vaultSaveLoginRequests,
   $vaultUnlockRequests,
-  type ApprovalChoice,
   type ApprovalMode,
   type ApprovalRequest,
   type ClarifyRequest,
   host,
   knownSessionProfile,
   ownerLookupSessionRows,
-  resolveApprovalRequest,
+  answerApproval,
   type SecretRequest,
   sessionMatchesStoredId,
   type SudoRequest,
@@ -70,22 +69,16 @@ export function approvalProvenanceFor(
 ): ApprovalProvenance {
   const profile = profileForSession(runtimeSessionId)
 
-  const patternKeys = [
-    ...(request.patternKey ? [request.patternKey] : []),
-    ...(request.patternKeys ?? [])
-  ].filter((value, index, values) => value && values.indexOf(value) === index)
-
   const smartDenied = request.smartDenied === true
   const confirmedMode = modeForProfile(profile)
 
   return {
     allowPermanent: request.allowPermanent !== false,
-    allowSession: request.allowSession !== false,
+    allowSession: request.choices?.includes('session') === true,
     mode: smartDenied ? 'smart' : confirmedMode,
-    patternKeys,
+    patternKeys: [],
     profile,
-    smartDenied,
-    ...(request.toolName ? { toolName: request.toolName } : {})
+    smartDenied
   }
 }
 
@@ -102,7 +95,7 @@ export function openHumanGateSession(gate: Pick<HumanGate, 'runtimeSessionId'>):
 
 export async function resolveHumanGateApproval(
   gate: Pick<HumanGate, 'approvalRequest' | 'kind'>,
-  choice: Extract<ApprovalChoice, 'deny' | 'once'>
+  choice: 'deny' | 'once'
 ): Promise<boolean> {
   if (gate.kind !== 'approval' || !gate.approvalRequest) {
     return false
@@ -114,11 +107,12 @@ export async function resolveHumanGateApproval(
     throw new Error('Hermes gateway is not connected')
   }
 
-  return resolveApprovalRequest(gateway, gate.approvalRequest, choice)
+  await answerApproval(gateway, gate.approvalRequest, choice)
+  return true
 }
 
 export interface HumanGatePromptMaps {
-  approvals: Readonly<Record<string, readonly ApprovalRequest[]>>
+  approvals: Readonly<Record<string, ApprovalRequest>>
   clarify: Readonly<Record<string, ClarifyRequest>>
   secrets: Readonly<Record<string, SecretRequest>>
   sudo: Readonly<Record<string, SudoRequest>>
@@ -134,22 +128,20 @@ export function buildHumanGates(
 ): HumanGate[] {
   const gates: HumanGate[] = []
 
-  for (const [sessionId, queue] of Object.entries(maps.approvals)) {
-    for (const request of queue) {
-      const runtimeSessionId = request.sessionId || sessionId
+  for (const [sessionId, request] of Object.entries(maps.approvals)) {
+    const runtimeSessionId = request.sessionId || sessionId
 
-      gates.push({
-        approvalProvenance: approvalProvenanceFor(request, runtimeSessionId, approvalMode),
-        approvalRequest: request,
-        detail: clipped(request.command, request.description || 'Command requires approval'),
-        id: `approval:${sessionId}:${request.requestId ?? request.serverRequestId ?? gates.length}`,
-        kind: 'approval',
-        label: request.description?.trim() || 'Command approval',
-        runtimeSessionId,
-        sessionLabel: sessionLabel(runtimeSessionId),
-        state: queue.length > 1 ? `APPROVAL · ${queue.length} QUEUED` : 'APPROVAL'
-      })
-    }
+    gates.push({
+      approvalProvenance: approvalProvenanceFor(request, runtimeSessionId, approvalMode),
+      approvalRequest: request,
+      detail: clipped(request.command, request.description || 'Command requires approval'),
+      id: `approval:${sessionId}:${request.requestId ?? request.serverRequestId ?? gates.length}`,
+      kind: 'approval',
+      label: request.description?.trim() || 'Command approval',
+      runtimeSessionId,
+      sessionLabel: sessionLabel(runtimeSessionId),
+      state: 'APPROVAL'
+    })
   }
 
   for (const [sessionId, request] of Object.entries(maps.clarify)) {
@@ -244,7 +236,7 @@ export function useHumanGates(): HumanGate[] {
   const approvalModes = useStore($approvalModes)
 
   return buildHumanGates({
-    approvals: useStore($approvalRequestQueues),
+    approvals: useStore($approvalRequests),
     clarify: useStore($clarifyRequests),
     secrets: useStore($secretRequests),
     sudo: useStore($sudoRequests),
