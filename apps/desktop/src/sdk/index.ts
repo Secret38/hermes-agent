@@ -1797,6 +1797,26 @@ export { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 export { Textarea } from '@/components/ui/textarea'
 export { Tip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 export type { GatewayEventListener } from '@/contrib/events'
+export {
+  OPERATIONS_CAPTURE_SOURCES_AREA,
+  OPERATIONS_TASK_SOURCES_AREA,
+  type OperationsArtifact,
+  type OperationsCaptureInput,
+  type OperationsCaptureResult,
+  type OperationsCaptureSource,
+  type OperationsEvent,
+  type OperationsPlanApprovalResult,
+  type OperationsProject,
+  type OperationsRun,
+  type OperationsRunInspection,
+  type OperationsShapeResult,
+  type OperationsTask,
+  type OperationsTaskExecution,
+  type OperationsTaskLog,
+  type OperationsTaskSnapshot,
+  type OperationsTaskSource,
+  type OperationsTaskWarning
+} from '@/contrib/operations'
 export type {
   HermesPlugin,
   PluginContext,
@@ -1940,12 +1960,24 @@ export { cn } from '@/lib/utils'
  *  the user opens the session, `forgetSessionUnread` drops it when the session
  *  is gone. Pass the owning profile — a hidden session has no row to read it
  *  from, and the persisted half is bucketed per profile. */
+export {
+  $liveSessionSnapshots,
+  liveSessionScopeKey,
+  type LiveSessionSnapshotItem
+} from '@/store/live-sessions'
 export { revealDesktopPane } from '@/store/pane-focus'
 export { openBrowserTab } from '@/store/preview'
+export {
+  $projectTree,
+  $projectTreeLoading,
+  fetchProjectSessions,
+  refreshProjectTree
+} from '@/store/projects'
 export { revealReview } from '@/store/review'
 export { $resumeFailedSessionId, $workspaceCwdOwner } from '@/store/session'
 export { storedSessionIdForRuntimeId } from '@/store/session-states'
 export { ackStoredSessionId, forgetSessionUnread, markSessionUnreadFinished } from '@/store/session-unread'
+export { $subagentsBySession, type SubagentProgress } from '@/store/subagents'
 /** `sidebarNav.prefs`: hide / re-order the sidebar's nav rows by CONTRIBUTING a
  *  preference (union of hides, `capabilities` never hidden; the first order
  *  in registry area order — lowest `order`, then registration — wins). A
@@ -1983,7 +2015,7 @@ export { requestTheme } from '@/themes/request'
 export { retintTheme, themeHue } from '@/themes/retint'
 export type { DesktopTheme, DesktopThemeColors } from '@/themes/types'
 export { THEMES_AREA } from '@/themes/user-themes'
-export type { StatusResponse } from '@/types/hermes'
+export type { SessionInfo, StatusResponse } from '@/types/hermes'
 /** Public SDK name for the shared gateway wire event; kept stable for plugins. */
 export type { GatewayEvent as RpcEvent } from '@hermes/shared'
 /** Bot Screen wire shapes, generated from `tui_gateway/contracts/display.py`. */
