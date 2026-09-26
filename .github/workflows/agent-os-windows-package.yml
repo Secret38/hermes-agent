@@ -1,0 +1,98 @@
+name: Agent OS Windows Installer Candidate
+
+on:
+  pull_request:
+    paths:
+      - "apps/bootstrap-installer/**"
+      - "scripts/install.ps1"
+      - "scripts/install.sh"
+      - "agent_os/**"
+      - ".github/workflows/agent-os-windows-package.yml"
+  push:
+    branches:
+      - agent-os-v1
+    paths:
+      - "apps/bootstrap-installer/**"
+      - "scripts/install.ps1"
+      - "scripts/install.sh"
+      - "agent_os/**"
+      - ".github/workflows/agent-os-windows-package.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-os-windows-package-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build pinned Hermes-Setup.exe
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      HERMES_BUILD_REPOSITORY: ${{ github.repository }}
+      HERMES_BUILD_PIN_BRANCH: ${{ github.head_ref || github.ref_name }}
+      HERMES_BUILD_PIN_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Node.js 26
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install workspace dependencies
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          npm ci
+
+      - name: Verify locked Rust graph
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cargo metadata --locked --manifest-path apps/bootstrap-installer/src-tauri/Cargo.toml --format-version 1 | Out-Null
+
+      - name: Build pinned Windows executable
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          npm run tauri:build --workspace @hermes/bootstrap-installer -- --no-bundle
+
+          $exe = 'apps/bootstrap-installer/src-tauri/target/release/Hermes-Setup.exe'
+          if (-not (Test-Path $exe -PathType Leaf)) {
+            throw "Expected Hermes-Setup.exe was not produced"
+          }
+
+          git diff --exit-code -- apps/bootstrap-installer/src-tauri/Cargo.lock
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item -LiteralPath $exe -Destination dist/Hermes-Setup.exe -Force
+
+          $hash = (Get-FileHash -Algorithm SHA256 dist/Hermes-Setup.exe).Hash.ToLowerInvariant()
+          "$hash  Hermes-Setup.exe" | Set-Content -Encoding ascii dist/SHA256SUMS.txt
+
+          [ordered]@{
+            repository = $env:HERMES_BUILD_REPOSITORY
+            commit = $env:HERMES_BUILD_PIN_COMMIT
+            branch = $env:HERMES_BUILD_PIN_BRANCH
+            sha256 = $hash
+            signed = $false
+            production_release = $false
+          } | ConvertTo-Json | Set-Content -Encoding utf8 dist/build-metadata.json
+
+      - name: Upload unsigned release candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
+        with:
+          name: Hermes-Setup-windows-candidate
+          path: |
+            dist/Hermes-Setup.exe
+            dist/SHA256SUMS.txt
+            dist/build-metadata.json
+          if-no-files-found: error
+          retention-days: 7
