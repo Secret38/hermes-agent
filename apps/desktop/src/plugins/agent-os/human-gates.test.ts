@@ -8,13 +8,10 @@ describe('Agent OS human gates', () => {
       approvalProvenanceFor(
         {
           allowPermanent: false,
-          allowSession: true,
+          choices: ['deny', 'once', 'session'],
           command: 'git clean -fdx',
           description: 'destructive clean',
-          patternKey: 'git.clean',
-          patternKeys: ['git.clean', 'filesystem.delete'],
-          sessionId: 'unlisted-runtime',
-          toolName: 'terminal'
+          sessionId: 'unlisted-runtime'
         },
         'unlisted-runtime'
       )
@@ -22,10 +19,9 @@ describe('Agent OS human gates', () => {
       allowPermanent: false,
       allowSession: true,
       mode: 'unknown',
-      patternKeys: ['git.clean', 'filesystem.delete'],
+      patternKeys: [],
       profile: 'default',
-      smartDenied: false,
-      toolName: 'terminal'
+      smartDenied: false
     })
   })
 
@@ -48,7 +44,6 @@ describe('Agent OS human gates', () => {
       {
         command: 'rm build.log',
         description: 'delete file',
-        patternKey: 'filesystem.delete',
         sessionId: 'runtime'
       },
       'runtime',
@@ -56,7 +51,7 @@ describe('Agent OS human gates', () => {
     )
 
     expect(provenance.mode).toBe('manual')
-    expect(provenance.patternKeys).toEqual(['filesystem.delete'])
+    expect(provenance.patternKeys).toEqual([])
   })
 
 
@@ -64,14 +59,12 @@ describe('Agent OS human gates', () => {
     const gates = buildHumanGates(
       {
         approvals: {
-          runtimeA: [
-            {
-              command: 'rm -rf ./build',
-              description: 'Delete generated build output',
-              requestId: 'approval-1',
-              sessionId: 'runtimeA'
-            }
-          ]
+          runtimeA: {
+            command: 'rm -rf ./build',
+            description: 'Delete generated build output',
+            requestId: 'approval-1',
+            sessionId: 'runtimeA'
+          }
         },
         clarify: {
           runtimeB: {
@@ -137,24 +130,22 @@ describe('Agent OS human gates', () => {
     expect(gates.every(gate => gate.sessionLabel === 'session:' + gate.runtimeSessionId)).toBe(true)
   })
 
-  it('counts an approval queue entry by entry and marks the queue depth', () => {
+  it('projects only the current approval head exposed by upstream per session', () => {
     const gates = buildHumanGates(
       {
         approvals: {
-          runtimeA: [
-            {
-              command: 'first',
-              description: 'First command',
-              requestId: 'a',
-              sessionId: 'runtimeA'
-            },
-            {
-              command: 'second',
-              description: 'Second command',
-              requestId: 'b',
-              sessionId: 'runtimeA'
-            }
-          ]
+          runtimeA: {
+            command: 'first',
+            description: 'First command',
+            requestId: 'a',
+            sessionId: 'runtimeA'
+          },
+          runtimeB: {
+            command: 'second',
+            description: 'Second command',
+            requestId: 'b',
+            sessionId: 'runtimeB'
+          }
         },
         clarify: {},
         secrets: {},
@@ -167,7 +158,7 @@ describe('Agent OS human gates', () => {
     )
 
     expect(gates).toHaveLength(2)
-    expect(gates.map(gate => gate.state)).toEqual(['APPROVAL · 2 QUEUED', 'APPROVAL · 2 QUEUED'])
+    expect(gates.map(gate => gate.state)).toEqual(['APPROVAL', 'APPROVAL'])
   })
 
   it('does not project a secret prompt body into the control plane', () => {
