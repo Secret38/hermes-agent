@@ -1994,7 +1994,12 @@ export {
   type VaultUnlockRequest
 } from '@/store/prompts'
 export { revealReview } from '@/store/review'
-export { $resumeFailedSessionId, $workspaceCwdOwner } from '@/store/session'
+export {
+  $resumeFailedSessionId,
+  $workspaceCwdOwner,
+  knownSessionProfile,
+  ownerLookupSessionRows
+} from '@/store/session'
 export { storedSessionIdForRuntimeId } from '@/store/session-states'
 export { ackStoredSessionId, forgetSessionUnread, markSessionUnreadFinished } from '@/store/session-unread'
 export { $subagentsBySession, type SubagentProgress } from '@/store/subagents'
