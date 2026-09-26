@@ -1,0 +1,155 @@
+name: Agent OS Release Preflight
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  repository-policy:
+    name: validate protected release source
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require preflight from agent-os-v1
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_NAME}" != "agent-os-v1" ]; then
+            echo "Run Agent OS Release Preflight from the agent-os-v1 branch, not ${GITHUB_REF_NAME}." >&2
+            exit 1
+          fi
+
+      - name: Require protected agent-os-v1 branch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          protected="$(gh api "repos/${GITHUB_REPOSITORY}/branches/agent-os-v1" --jq '.protected')"
+          if [ "$protected" != "true" ]; then
+            echo "agent-os-v1 is not protected. Enable branch protection/rules before release preflight." >&2
+            exit 1
+          fi
+
+  gui-runner:
+    name: validate interactive Windows GUI runner
+    needs: repository-policy
+    runs-on: [self-hosted, windows, x64, agent-os-gui]
+    timeout-minutes: 10
+    steps:
+      - name: Verify interactive desktop session
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sessionId = (Get-Process -Id $PID).SessionId
+          if ($sessionId -le 0) {
+            throw "agent-os-gui runner is in Session 0. Start it interactively from a logged-in Windows desktop."
+          }
+          Write-Host "Interactive Windows session: $sessionId"
+
+      - name: Verify required Windows tools
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($cmd in @('git.exe', 'powershell.exe')) {
+            if (-not (Get-Command $cmd -ErrorAction SilentlyContinue)) {
+              throw "Missing required command: $cmd"
+            }
+          }
+
+  signing:
+    name: validate Windows signing identity
+    needs: repository-policy
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Validate PFX secret and code-signing EKU
+        shell: pwsh
+        env:
+          WINDOWS_CODE_SIGN_PFX_B64: ${{ secrets.WINDOWS_CODE_SIGN_PFX_B64 }}
+          WINDOWS_CODE_SIGN_PASSWORD: ${{ secrets.WINDOWS_CODE_SIGN_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CODE_SIGN_PFX_B64)) {
+            throw "Missing WINDOWS_CODE_SIGN_PFX_B64"
+          }
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CODE_SIGN_PASSWORD)) {
+            throw "Missing WINDOWS_CODE_SIGN_PASSWORD"
+          }
+
+          $pfx = Join-Path $env:RUNNER_TEMP 'agent-os-preflight.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CODE_SIGN_PFX_B64))
+          try {
+            $flags = [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet
+            $cert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new(
+              $pfx,
+              $env:WINDOWS_CODE_SIGN_PASSWORD,
+              $flags
+            )
+            if (-not $cert.HasPrivateKey) { throw "Signing certificate has no private key" }
+            $now = Get-Date
+            if ($now -lt $cert.NotBefore -or $now -ge $cert.NotAfter) {
+              throw "Signing certificate is outside its validity window: $($cert.NotBefore) - $($cert.NotAfter)"
+            }
+            $codeSigningOid = '1.3.6.1.5.5.7.3.3'
+            $hasCodeSigning = $false
+            foreach ($extension in $cert.Extensions) {
+              if ($extension -is [System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]) {
+                foreach ($oid in $extension.EnhancedKeyUsages) {
+                  if ($oid.Value -eq $codeSigningOid) { $hasCodeSigning = $true }
+                }
+              }
+            }
+            if (-not $hasCodeSigning) { throw "Certificate does not include the Code Signing EKU" }
+            Write-Host "Signing identity ready: $($cert.Subject)"
+            Write-Host "Certificate expires: $($cert.NotAfter.ToString('u'))"
+          }
+          finally {
+            Remove-Item -LiteralPath $pfx -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Smoke-test Authenticode signing and trusted timestamp
+        shell: pwsh
+        env:
+          WINDOWS_CODE_SIGN_PFX_B64: ${{ secrets.WINDOWS_CODE_SIGN_PFX_B64 }}
+          WINDOWS_CODE_SIGN_PASSWORD: ${{ secrets.WINDOWS_CODE_SIGN_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $pfx = Join-Path $env:RUNNER_TEMP 'agent-os-preflight-signing.pfx'
+          $probe = Join-Path $env:RUNNER_TEMP 'agent-os-signing-probe.exe'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CODE_SIGN_PFX_B64))
+          Copy-Item -LiteralPath (Join-Path $env:WINDIR 'System32\where.exe') -Destination $probe -Force
+
+          try {
+            $kits = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits/10/bin'
+            $signtool = Get-ChildItem -Path $kits -Filter signtool.exe -Recurse |
+              Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
+              Sort-Object FullName -Descending |
+              Select-Object -First 1
+            if (-not $signtool) {
+              throw "signtool.exe was not found on the hosted preflight runner"
+            }
+
+            & $signtool.FullName sign /fd SHA256 /tr "http://timestamp.digicert.com" /td SHA256 /f $pfx /p $env:WINDOWS_CODE_SIGN_PASSWORD $probe
+            if ($LASTEXITCODE -ne 0) { throw "Preflight Authenticode signing failed" }
+
+            & $signtool.FullName verify /pa /all /v $probe
+            if ($LASTEXITCODE -ne 0) { throw "Preflight Windows trust verification failed" }
+
+            $signature = Get-AuthenticodeSignature $probe
+            if ($signature.Status -ne 'Valid') {
+              throw "Preflight Authenticode status is $($signature.Status): $($signature.StatusMessage)"
+            }
+            if (-not $signature.TimeStamperCertificate) {
+              throw "Preflight signature has no trusted timestamp countersignature"
+            }
+
+            Write-Host "Authenticode signing + Windows trust + timestamp smoke test passed."
+          }
+          finally {
+            Remove-Item -LiteralPath $probe -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $pfx -Force -ErrorAction SilentlyContinue
+          }

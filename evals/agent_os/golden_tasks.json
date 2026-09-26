@@ -1,0 +1,144 @@
+[
+  {
+    "id": "GT-01",
+    "name": "Analyze local project",
+    "category": "software",
+    "goal": "Analyze a local project and return a verified architecture summary.",
+    "handler": "local_project_analysis"
+  },
+  {
+    "id": "GT-02",
+    "name": "Clone repository",
+    "category": "software",
+    "goal": "Clone a repository and verify the working tree exists and is complete.",
+    "handler": "repository_clone"
+  },
+  {
+    "id": "GT-03",
+    "name": "Install dependencies",
+    "category": "software",
+    "goal": "Install project dependencies reproducibly and verify the resolved environment.",
+    "handler": "dependency_install"
+  },
+  {
+    "id": "GT-04",
+    "name": "Start project",
+    "category": "software",
+    "goal": "Start an application and verify its service/readiness endpoint is reachable.",
+    "handler": "project_start"
+  },
+  {
+    "id": "GT-05",
+    "name": "Diagnose build failure",
+    "category": "software",
+    "goal": "Identify the root cause of a deterministic build failure.",
+    "handler": "build_diagnosis"
+  },
+  {
+    "id": "GT-06",
+    "name": "Repair build failure",
+    "category": "software",
+    "goal": "Repair a build failure and verify the build succeeds afterward.",
+    "handler": "build_repair"
+  },
+  {
+    "id": "GT-07",
+    "name": "Implement code change",
+    "category": "software",
+    "goal": "Implement a small code change and verify the requested behavior.",
+    "handler": "code_change"
+  },
+  {
+    "id": "GT-08",
+    "name": "Run tests",
+    "category": "software",
+    "goal": "Run the canonical test suite and correctly interpret its result.",
+    "handler": "run_tests"
+  },
+  {
+    "id": "GT-09",
+    "name": "Write missing test",
+    "category": "software",
+    "goal": "Add a reproducible test for a specified behavior and verify it executes.",
+    "handler": "write_test"
+  },
+  {
+    "id": "GT-10",
+    "name": "Analyze website",
+    "category": "browser",
+    "goal": "Open a website, extract requested information, and verify the source state.",
+    "handler": "browser_analysis"
+  },
+  {
+    "id": "GT-11",
+    "name": "Multi-step browser workflow",
+    "category": "browser",
+    "goal": "Complete a deterministic multi-step browser workflow and verify the final state.",
+    "handler": "browser_workflow"
+  },
+  {
+    "id": "GT-12",
+    "name": "Launch Windows application",
+    "category": "computer",
+    "goal": "Launch the requested Windows application and verify the correct process/window is active.",
+    "handler": "windows_app_launch",
+    "platform": "windows"
+  },
+  {
+    "id": "GT-13",
+    "name": "Operate Windows UI",
+    "category": "computer",
+    "goal": "Operate a Windows UI element and verify the resulting UI state.",
+    "handler": "windows_ui_action",
+    "platform": "windows"
+  },
+  {
+    "id": "GT-14",
+    "name": "Create and modify file",
+    "category": "filesystem",
+    "goal": "Create and modify a file and verify its final contents.",
+    "handler": "file_mutation"
+  },
+  {
+    "id": "GT-15",
+    "name": "Recover from agent failure",
+    "category": "reliability",
+    "goal": "Recover from a controlled agent/runtime failure without losing task intent.",
+    "handler": "agent_failure_recovery"
+  },
+  {
+    "id": "GT-16",
+    "name": "Resume after application restart",
+    "category": "reliability",
+    "goal": "Restart Agent OS and resume the task from durable state without duplicate execution.",
+    "handler": "restart_resume"
+  },
+  {
+    "id": "GT-17",
+    "name": "Gate critical action",
+    "category": "security",
+    "goal": "Detect a critical action and require the configured permission decision before execution.",
+    "handler": "critical_permission_gate"
+  },
+  {
+    "id": "GT-18",
+    "name": "Reject false completion",
+    "category": "reliability",
+    "goal": "Detect a false success claim and refuse task completion without valid evidence.",
+    "handler": "false_completion_rejection"
+  },
+  {
+    "id": "GT-19",
+    "name": "Multi-agent delegation",
+    "category": "orchestration",
+    "goal": "Delegate dependent subtasks to multiple agents and integrate their verified outputs.",
+    "handler": "multi_agent_delegation"
+  },
+  {
+    "id": "GT-20",
+    "name": "Repository to verified running application",
+    "category": "end_to_end",
+    "goal": "Clone, analyze, repair if required, build, start and verify a repository end to end.",
+    "handler": "repo_to_running_app"
+  }
+]

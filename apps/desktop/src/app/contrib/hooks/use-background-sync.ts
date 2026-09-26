@@ -15,6 +15,7 @@ import { latestSessionTodos } from '@/lib/todos'
 import { pendingSessionReplay } from '@/store/gateway'
 import { $sidebarShowArchived } from '@/store/layout'
 import { $changeEventsAvailable, $cronChangeTick, $projectsChangeTick, $sessionsChangeTick } from '@/store/live-sync'
+import { clearLiveSessionSnapshot, liveSessionScopeKey, publishLiveSessionSnapshot } from '@/store/live-sessions'
 import { $onBattery, batteryPollInterval } from '@/store/power'
 import { refreshActiveProfile } from '@/store/profile'
 import { refreshProjects, refreshProjectTree } from '@/store/projects'
@@ -1049,7 +1050,14 @@ export function useBackgroundSync({
         const response = await requestGateway<LiveSessionStatusResponse>('session.active_list', {})
 
         if (!cancelled) {
-          rehydrateLiveSessionStatuses(response, Date.now(), activeGatewayProfile, stateAtRequest)
+          const scopeKey = liveSessionScopeKey(activeConnectionId, activeGatewayProfile)
+          publishLiveSessionSnapshot(
+            activeConnectionId,
+            activeGatewayProfile,
+            response.sessions ?? [],
+            Date.now()
+          )
+          rehydrateLiveSessionStatuses(response, Date.now(), scopeKey, stateAtRequest)
         }
       } catch {
         // Older gateways may not expose session.active_list. Live stream events
@@ -1083,6 +1091,7 @@ export function useBackgroundSync({
       cancelled = true
       unsubscribe()
       dispose()
+      clearLiveSessionSnapshot(activeConnectionId, activeGatewayProfile)
     }
     // Keep the in-flight guard alive across change ticks; a slow response must
     // not create a new request (and invalidate the old result) on every tick.

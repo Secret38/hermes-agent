@@ -19,6 +19,7 @@ import {
   atom,
   captureGatewayFileDownload,
   host,
+  type OperationsTaskSnapshot,
   type PluginOs,
   type PluginRestOptions,
   type PluginStorage,
@@ -375,6 +376,59 @@ export const fetchProfiles = () => call<{ profiles: KanbanProfile[] }>('/profile
 export const fetchProjects = () => call<{ projects: KanbanProject[] }>('/projects')
 
 export const fetchOrchestration = () => call<OrchestrationSettings>('/orchestration')
+
+
+/** Read-only projection for Agent OS Mission Control.
+ *
+ * Uses only fields available in the current Kanban REST contract. Execution
+ * history remains producer-owned and optional in the Operations contract.
+ */
+export async function fetchOperationsSnapshot(): Promise<OperationsTaskSnapshot> {
+  const selectedSlug = $boardSlug.get()
+  const [board, boards, projectsResponse] = await Promise.all([
+    fetchBoard(false),
+    fetchBoards(),
+    fetchProjects()
+  ])
+  const scopeKey = selectedSlug || boards.current
+  const boardMeta = boards.boards.find(item => item.slug === scopeKey)
+  const defaultProject = boardMeta?.project_id
+    ? projectsResponse.projects.find(project => project.id === boardMeta.project_id)
+    : undefined
+
+  return {
+    sourceId: 'kanban',
+    sourceLabel: 'Kanban',
+    scopeKey,
+    scopeLabel: boardMeta?.name || scopeKey || 'Kanban',
+    observedAt: Date.now(),
+    projects: projectsResponse.projects.map(project => ({
+      id: project.id,
+      name: project.name,
+      slug: project.slug,
+      path: project.primary_path
+    })),
+    tasks: board.columns.flatMap(column =>
+      column.tasks.map(task => ({
+        id: task.id,
+        title: task.title,
+        status: task.status || column.name,
+        assignee: task.assignee,
+        priority: task.priority,
+        projectId: boardMeta?.project_id,
+        projectName: boardMeta?.project_name || defaultProject?.name,
+        startedAt: task.started_at,
+        lastHeartbeatAt: task.last_heartbeat_at,
+        warning: task.warnings
+          ? {
+              count: task.warnings.count,
+              severity: task.warnings.highest_severity
+            }
+          : null
+      }))
+    )
+  }
+}
 
 // ── writes ────────────────────────────────────────────────────────────────────
 
