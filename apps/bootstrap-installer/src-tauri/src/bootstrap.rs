@@ -980,6 +980,8 @@ fn build_pin_args(script: &install_script::ResolvedScript) -> Vec<String> {
         out.push("-Branch".to_string());
         out.push(b.clone());
     }
+    out.push("-Repository".to_string());
+    out.push(install_script::build_repository().to_string());
     out
 }
 
