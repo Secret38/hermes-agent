@@ -18,6 +18,8 @@ import {
   host,
   type KeybindContribution,
   KEYBINDS_AREA,
+  OPERATIONS_TASK_SOURCES_AREA,
+  type OperationsTaskSource,
   PALETTE_AREA,
   type PaletteContribution,
   type RouteContribution,
@@ -30,7 +32,7 @@ import {
   useValue
 } from '@hermes/plugin-sdk'
 
-import { $boardSlug, bindApi, boardKey, fetchBoard, useKanbanScope } from './api'
+import { $boardSlug, bindApi, boardKey, fetchBoard, fetchOperationsSnapshot, useKanbanScope } from './api'
 import { KanbanBoardPage } from './board'
 import { KANBAN_LOCALES } from './i18n'
 import { $newTaskLane, useKanban } from './ui'
@@ -105,6 +107,21 @@ const plugin: HermesPlugin = {
     }
 
     ctx.registerMany([
+      {
+        id: 'operations-source',
+        area: OPERATIONS_TASK_SOURCES_AREA,
+        data: {
+          id: 'kanban',
+          label: 'Kanban',
+          queryKey: ['operations', 'kanban'],
+          readSnapshot: async () => ({
+            ...(await fetchOperationsSnapshot()),
+            connectionId: host.state.connectionId.get(),
+            profile: host.state.profile.get()
+          }),
+          openTask: () => host.navigate('/kanban')
+        } satisfies OperationsTaskSource
+      },
       {
         id: 'page',
         area: ROUTES_AREA,
