@@ -1833,6 +1833,7 @@ export type {
  *  `ctx.register` stays the door for permanent contributions. Namespace the
  *  id with your plugin slug (`kanban:board-switcher`). */
 export { Contribute, type ContributeProps } from '@/contrib/react/contribute'
+export { useContributions } from '@/contrib/react/use-contributions'
 
 // -- contracts ----------------------------------------------------------------
 
@@ -1960,6 +1961,8 @@ export { cn } from '@/lib/utils'
  *  the user opens the session, `forgetSessionUnread` drops it when the session
  *  is gone. Pass the owning profile — a hidden session has no row to read it
  *  from, and the persisted half is bucketed per profile. */
+export { $approvalModes, type ApprovalMode } from '@/store/approval-mode'
+export { $clarifyRequests, type ClarifyRequest } from '@/store/clarify'
 export {
   $liveSessionSnapshots,
   liveSessionScopeKey,
@@ -1971,8 +1974,25 @@ export {
   $projectTree,
   $projectTreeLoading,
   fetchProjectSessions,
+  goToProject,
   refreshProjectTree
 } from '@/store/projects'
+export {
+  $approvalRequestQueues,
+  $secretRequests,
+  $sudoRequests,
+  $vaultCodeRequests,
+  $vaultSaveLoginRequests,
+  $vaultUnlockRequests,
+  type ApprovalChoice,
+  type ApprovalRequest,
+  resolveApprovalRequest,
+  type SecretRequest,
+  type SudoRequest,
+  type VaultCodeRequest,
+  type VaultSaveLoginRequest,
+  type VaultUnlockRequest
+} from '@/store/prompts'
 export { revealReview } from '@/store/review'
 export { $resumeFailedSessionId, $workspaceCwdOwner } from '@/store/session'
 export { storedSessionIdForRuntimeId } from '@/store/session-states'
