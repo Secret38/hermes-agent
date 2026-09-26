@@ -55,7 +55,6 @@ describe('Kanban operations execution projection', () => {
           summary: 'first attempt',
           error: 'worker crashed',
           worker_pid: 111,
-          worker_session_id: 'session-a',
           started_at: 100,
           ended_at: 140
         },
@@ -66,7 +65,6 @@ describe('Kanban operations execution projection', () => {
           outcome: 'completed',
           summary: 'finished',
           worker_pid: 222,
-          worker_session_id: 'session-b',
           started_at: 200,
           ended_at: 260
         }
@@ -87,7 +85,6 @@ describe('Kanban operations execution projection', () => {
           status: 'failed',
           outcome: 'crashed',
           profile: 'coder',
-          workerSessionId: 'session-a',
           workerPid: 111,
           startedAt: 100,
           endedAt: 140,
@@ -99,7 +96,6 @@ describe('Kanban operations execution projection', () => {
           status: 'done',
           outcome: 'completed',
           profile: 'coder',
-          workerSessionId: 'session-b',
           workerPid: 222,
           startedAt: 200,
           endedAt: 260,
