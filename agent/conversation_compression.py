@@ -174,7 +174,7 @@ _COMPRESSOR_ATTEMPT_STATE_FIELDS = (
     "_last_summary_dropped_count",
     "_last_summary_fallback_used", "_last_compress_aborted", "_last_summary_auth_failure",
     "_last_summary_network_failure", "_last_summary_empty_content_failure", "_last_summary_truncated_failure",
-    "_last_summary_overload_failure",
+    "_last_summary_overload_failure", "_consecutive_overload_aborts", "_last_summary_overload_degraded",
     "_last_aux_model_failure_error", "_last_aux_model_failure_model", "_last_aux_resolved_model",
     "_summary_model_fallen_back", "summary_model",
     "_last_compression_telemetry", "_active_compression_telemetry", "_compression_telemetry_seed",
@@ -1692,8 +1692,14 @@ def _adopt_live_compression_child(
     agent.session_id = child_session_id
     _rebind_session_context(child_session_id)
     agent._session_db_created = True
-    if child.get("system_prompt"):
-        agent._cached_system_prompt = child["system_prompt"]
+    # The turn skips restore/rebuild while this slot is set, so it may hold only the child's own
+    # prompt, and only when that prompt matches the current runtime (otherwise None -> rebuild).
+    # Turn-start adoption runs before _restore_primary_runtime on purpose; a reject here is re-checked by the normal restore.
+    from agent.conversation_loop import _stored_prompt_matches_runtime
+    child_prompt = child.get("system_prompt")
+    agent._cached_system_prompt = (
+        child_prompt if child_prompt and _stored_prompt_matches_runtime(agent, child_prompt) else None
+    )
     agent._last_flushed_db_idx = len(recovered)
     agent._flushed_db_message_session_id = child_session_id
     agent._flushed_db_message_ids = {id(message) for message in recovered if isinstance(message, dict)}
@@ -3410,8 +3416,8 @@ def _warn_summary_or_aux_fallback(agent: Any) -> None:
             )
 
 
-def _reset_read_dedup_caches(task_id: str, *, session_id: str = "", skills: bool = True) -> None:
-    """Advance the file-read (and skill_view) repeat-read dedup to a fresh generation after a boundary.
+def _reset_read_dedup_caches(task_id: str, *, session_id: str = "") -> None:
+    """Advance the file-read and skill_view repeat-read dedup to a fresh generation after a boundary.
     The mtime map is kept: the first read of each unchanged key returns full content compaction may have
     omitted; later reads return stubs, and stub-hit counters restart at the same boundary (#84857).
     The computer_use screenshot dedup is session-keyed and forgets its last frame for the same reason.
@@ -3423,8 +3429,6 @@ def _reset_read_dedup_caches(task_id: str, *, session_id: str = "", skills: bool
         with contextlib.suppress(Exception):
             from tools.computer_use.tool import reset_screenshot_dedup
             reset_screenshot_dedup(session_id)
-    if not skills:
-        return
     with contextlib.suppress(Exception):
         from tools.skills_tool import reset_skill_view_dedup
         reset_skill_view_dedup(task_id)
@@ -4342,7 +4346,7 @@ def _compress_context_via_codex_app_server(
         # armed until a later turn; minimal test engines may lack update_from_response.
         if hasattr(agent.context_compressor, "update_from_response"):
             _record_codex_app_server_usage(agent, result, messages=messages)
-    _reset_read_dedup_caches(task_id, session_id=agent.session_id or "", skills=False)
+    _reset_read_dedup_caches(task_id, session_id=agent.session_id or "")
     logger.info(
         "codex app-server compaction done: session=%s thread=%s turn=%s", _sid,
         getattr(result, "thread_id", None) or "", getattr(result, "turn_id", None) or "",
