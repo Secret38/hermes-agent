@@ -62,6 +62,10 @@ impl ScriptKind {
     }
 }
 
+pub(crate) fn build_repository() -> &'static str {
+    option_env!("BUILD_REPOSITORY").unwrap_or("NousResearch/hermes-agent")
+}
+
 /// Validates a string looks like a git SHA (7+ hex chars). Mirrors
 /// `STAMP_COMMIT_RE` from bootstrap-runner.ts.
 fn is_valid_commit(s: &str) -> bool {
@@ -204,9 +208,15 @@ pub(crate) fn prepare_cached_script_bytes(kind: ScriptKind, bytes: &[u8]) -> Vec
 /// Explicit timeouts: this runs on every bootstrap, and a black-holed
 /// connection (captive portal, hung proxy) would otherwise hang forever
 /// instead of failing so the user can Retry.
-async fn download(kind: ScriptKind, commit_or_ref: &str, dest_path: &Path) -> Result<()> {
+async fn download(
+    kind: ScriptKind,
+    repository: &str,
+    commit_or_ref: &str,
+    dest_path: &Path,
+) -> Result<()> {
     let url = format!(
-        "https://raw.githubusercontent.com/NousResearch/hermes-agent/{}/scripts/{}",
+        "https://raw.githubusercontent.com/{}/{}/scripts/{}",
+        repository,
         commit_or_ref,
         kind.filename()
     );

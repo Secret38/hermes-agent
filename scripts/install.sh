@@ -20,7 +20,7 @@ set -u
 # hygiene can't break the locked sync the way it used to before pm owned it.
 export UV_NO_CONFIG=1
 
-REPO_URL="${HERMES_REPO_URL:-https://github.com/NousResearch/hermes-agent.git}"
+REPOSITORY="NousResearch/hermes-agent"
 BRANCH="main"
 INSTALL_COMMIT=""
 INSTALL_DIR="${HERMES_INSTALL_DIR:-}"
@@ -35,7 +35,7 @@ SKIP_BROWSER=false
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --branch|-Branch|--commit|-Commit|--dir|--hermes-home|-HermesHome|--stage|-Stage)
+        --branch|-Branch|--repository|-Repository|--commit|-Commit|--dir|--hermes-home|-HermesHome|--stage|-Stage)
             option="$1"
             if [ $# -lt 2 ] || [ -z "$2" ] || [[ "$2" == -* ]]; then
                 printf '%s needs a value\n' "$option" >&2
@@ -43,6 +43,7 @@ while [ $# -gt 0 ]; do
             fi
             case "$option" in
                 --branch|-Branch) BRANCH="$2" ;;
+                --repository|-Repository) REPOSITORY="$2" ;;
                 --commit|-Commit) INSTALL_COMMIT="$2" ;;
                 --dir) INSTALL_DIR="$2" ;;
                 --hermes-home|-HermesHome) HERMES_HOME="$2" ;;
@@ -57,7 +58,7 @@ while [ $# -gt 0 ]; do
         --include-desktop|-IncludeDesktop) INCLUDE_DESKTOP=true; shift ;;
         --verbose|-Verbose) VERBOSE=true; shift ;;
         -h|--help)
-            echo "Usage: install.sh [--branch NAME] [--commit SHA] [--dir PATH]"
+            echo "Usage: install.sh [--branch NAME] [--repository OWNER/REPO] [--commit SHA] [--dir PATH]"
             echo "                  [--hermes-home PATH]"
             echo "                  [--manifest] [--stage NAME] [--json]"
             echo "                  [--non-interactive] [--include-desktop] [--verbose]"
@@ -70,6 +71,18 @@ while [ $# -gt 0 ]; do
         *) echo "unknown option: $1" >&2; exit 1 ;;
     esac
 done
+
+if [[ ! "$REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+    echo "Invalid --repository value: $REPOSITORY (expected OWNER/REPO)" >&2
+    exit 1
+fi
+REPO_OWNER="${REPOSITORY%%/*}"
+REPO_NAME="${REPOSITORY#*/}"
+if [ "$REPO_OWNER" = "." ] || [ "$REPO_OWNER" = ".." ] || [ "$REPO_NAME" = "." ] || [ "$REPO_NAME" = ".." ]; then
+    echo "Invalid --repository value: $REPOSITORY (dot path components are not allowed)" >&2
+    exit 1
+fi
+REPO_URL="${HERMES_REPO_URL:-https://github.com/${REPOSITORY}.git}"
 
 INSTALL_DIR="${INSTALL_DIR:-$HERMES_HOME/hermes-agent}"
 export HERMES_HOME

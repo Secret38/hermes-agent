@@ -1633,6 +1633,7 @@ export { SidebarRowLead } from '@/app/chat/sidebar/chrome'
  *  switcher, the fleet profile rail and any plugin rail listing gateways share
  *  it, so a connection looks the same wherever it is named. */
 export { ConnectionGlyph } from '@/app/chat/sidebar/connection-glyph'
+export type { SidebarProjectTree } from '@/app/chat/sidebar/projects/workspace-groups'
 export { SIDEBAR_ROW_LEAD, SIDEBAR_TRUNCATED_LEADING } from '@/app/chat/sidebar/row-geometry'
 export { PALETTE_AREA, type PaletteContribution } from '@/app/command-palette/contrib'
 /** THE overdue test for a cron job's `next_run_at`: non-null once the stored slot
@@ -1796,6 +1797,26 @@ export { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 export { Textarea } from '@/components/ui/textarea'
 export { Tip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 export type { GatewayEventListener } from '@/contrib/events'
+export {
+  OPERATIONS_CAPTURE_SOURCES_AREA,
+  OPERATIONS_TASK_SOURCES_AREA,
+  type OperationsArtifact,
+  type OperationsCaptureInput,
+  type OperationsCaptureResult,
+  type OperationsCaptureSource,
+  type OperationsEvent,
+  type OperationsPlanApprovalResult,
+  type OperationsProject,
+  type OperationsRun,
+  type OperationsRunInspection,
+  type OperationsShapeResult,
+  type OperationsTask,
+  type OperationsTaskExecution,
+  type OperationsTaskLog,
+  type OperationsTaskSnapshot,
+  type OperationsTaskSource,
+  type OperationsTaskWarning
+} from '@/contrib/operations'
 export type {
   HermesPlugin,
   PluginContext,
@@ -1812,6 +1833,7 @@ export type {
  *  `ctx.register` stays the door for permanent contributions. Namespace the
  *  id with your plugin slug (`kanban:board-switcher`). */
 export { Contribute, type ContributeProps } from '@/contrib/react/contribute'
+export { useContributions } from '@/contrib/react/use-contributions'
 
 // -- contracts ----------------------------------------------------------------
 
@@ -1939,7 +1961,48 @@ export { cn } from '@/lib/utils'
  *  the user opens the session, `forgetSessionUnread` drops it when the session
  *  is gone. Pass the owning profile — a hidden session has no row to read it
  *  from, and the persisted half is bucketed per profile. */
+export { $approvalModes, type ApprovalMode } from '@/store/approval-mode'
+export { $clarifyRequests, type ClarifyRequest } from '@/store/clarify'
+export {
+  $liveSessionSnapshots,
+  liveSessionScopeKey,
+  type LiveSessionSnapshotItem
+} from '@/store/live-sessions'
+export { revealDesktopPane } from '@/store/pane-focus'
+export { openBrowserTab } from '@/store/preview'
+export {
+  $projectTree,
+  $projectTreeLoading,
+  fetchProjectSessions,
+  goToProject,
+  refreshProjectTree
+} from '@/store/projects'
+export {
+  $approvalRequestQueues,
+  $secretRequests,
+  $sudoRequests,
+  $vaultCodeRequests,
+  $vaultSaveLoginRequests,
+  $vaultUnlockRequests,
+  type ApprovalChoice,
+  type ApprovalRequest,
+  resolveApprovalRequest,
+  type SecretRequest,
+  type SudoRequest,
+  type VaultCodeRequest,
+  type VaultSaveLoginRequest,
+  type VaultUnlockRequest
+} from '@/store/prompts'
+export { revealReview } from '@/store/review'
+export {
+  $resumeFailedSessionId,
+  $workspaceCwdOwner,
+  knownSessionProfile,
+  ownerLookupSessionRows
+} from '@/store/session'
+export { storedSessionIdForRuntimeId } from '@/store/session-states'
 export { ackStoredSessionId, forgetSessionUnread, markSessionUnreadFinished } from '@/store/session-unread'
+export { $subagentsBySession, type SubagentProgress } from '@/store/subagents'
 /** `sidebarNav.prefs`: hide / re-order the sidebar's nav rows by CONTRIBUTING a
  *  preference (union of hides, `capabilities` never hidden; the first order
  *  in registry area order — lowest `order`, then registration — wins). A
@@ -1977,7 +2040,7 @@ export { requestTheme } from '@/themes/request'
 export { retintTheme, themeHue } from '@/themes/retint'
 export type { DesktopTheme, DesktopThemeColors } from '@/themes/types'
 export { THEMES_AREA } from '@/themes/user-themes'
-export type { StatusResponse } from '@/types/hermes'
+export type { SessionInfo, StatusResponse } from '@/types/hermes'
 /** Public SDK name for the shared gateway wire event; kept stable for plugins. */
 export type { GatewayEvent as RpcEvent } from '@hermes/shared'
 /** Bot Screen wire shapes, generated from `tui_gateway/contracts/display.py`. */

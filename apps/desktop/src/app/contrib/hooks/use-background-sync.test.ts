@@ -5,6 +5,7 @@ import { type ChatMessage, toChatMessages } from '@/lib/chat-messages'
 import { createClientSessionState } from '@/lib/chat-runtime'
 import { sessionMessagesSignature } from '@/lib/session-signatures'
 import { $changeEventsAvailable, notifyProjectsChanged, notifySessionsChanged, resetLiveSync } from '@/store/live-sync'
+import { $liveSessionSnapshots, liveSessionScopeKey, resetLiveSessionSnapshots } from '@/store/live-sessions'
 import {
   $activeSessionId,
   $selectedStoredSessionId,
@@ -173,6 +174,7 @@ afterEach(() => {
   vi.clearAllTimers()
   vi.useRealTimers()
   resetLiveSync()
+  resetLiveSessionSnapshots()
   $activeSessionId.set(null)
   $selectedStoredSessionId.set(null)
   setSessions([])
@@ -185,6 +187,72 @@ afterEach(() => {
   $sessionTiles.set([])
   _resetSessionOwnerHintsForTests()
   resetTypingActivityTracking()
+})
+
+describe('Agent OS live-session snapshot bridge', () => {
+  it('publishes and clears Agent OS live-session snapshots from session.active_list', async () => {
+    const requestGateway = vi.fn(async (method: string) => {
+      if (method === 'session.active_list') {
+        return {
+          sessions: [
+            {
+              id: 'runtime-fleet',
+              last_active: Date.now() / 1000,
+              session_key: 'stored-fleet',
+              status: 'working'
+            }
+          ]
+        }
+      }
+
+      return {}
+    })
+
+    const stable = {
+      refreshActiveTranscript: vi.fn(async () => undefined),
+      refreshCronJobs: vi.fn(async () => undefined),
+      refreshCurrentModel: vi.fn(async () => undefined),
+      refreshHermesConfig: vi.fn(async () => undefined),
+      refreshMessagingSessions: vi.fn(async () => undefined),
+      refreshSessions: vi.fn(async () => undefined),
+      updateSessionState: vi.fn(
+        (
+          _sessionId: string,
+          updater: (state: ReturnType<typeof createClientSessionState>) => ReturnType<typeof createClientSessionState>
+        ) => updater(createClientSessionState('stored-fleet'))
+      )
+    }
+
+    const { unmount } = renderHook(() =>
+      useBackgroundSync({
+        activeConnectionId: 'conn-fleet',
+        activeGatewayProfile: 'default',
+        activeIsMessaging: false,
+        activeSessionId: null,
+        activeStoredSessionId: null,
+        freshDraftReady: false,
+        gatewayState: 'open',
+        requestGateway: requestGateway as never,
+        ...stable
+      })
+    )
+
+    const scopeKey = liveSessionScopeKey('conn-fleet', 'default')
+
+    await waitFor(() => {
+      expect($liveSessionSnapshots.get()[scopeKey]?.sessions).toEqual([
+        {
+          id: 'runtime-fleet',
+          last_active: expect.any(Number),
+          session_key: 'stored-fleet',
+          status: 'working'
+        }
+      ])
+    })
+
+    unmount()
+    expect($liveSessionSnapshots.get()[scopeKey]).toBeUndefined()
+  })
 })
 
 describe('resolveActiveTranscriptSession', () => {
