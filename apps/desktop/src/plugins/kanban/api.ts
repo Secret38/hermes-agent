@@ -19,6 +19,11 @@ import {
   atom,
   captureGatewayFileDownload,
   host,
+  type OperationsCaptureInput,
+  type OperationsRunInspection,
+  type OperationsTaskExecution,
+  type OperationsTaskLog,
+  type OperationsTaskSnapshot,
   type PluginOs,
   type PluginRestOptions,
   type PluginStorage,
@@ -338,6 +343,23 @@ function withBoard(path: string, params: Record<string, string> = {}): string {
   return qs ? `${path}?${qs}` : path
 }
 
+function withBoardScope(
+  path: string,
+  scopeKey?: null | string,
+  params: Record<string, string> = {}
+): string {
+  const search = new URLSearchParams(params)
+  const slug = String(scopeKey ?? '').trim()
+
+  if (slug) {
+    search.set('board', slug)
+  }
+
+  const qs = search.toString()
+
+  return qs ? `${path}?${qs}` : path
+}
+
 // ── query keys (connection- and board-scoped; scope is always segment [2]) ────
 
 /** Prefix matching every board query on one connection (all slugs, both
@@ -375,6 +397,176 @@ export const fetchProfiles = () => call<{ profiles: KanbanProfile[] }>('/profile
 export const fetchProjects = () => call<{ projects: KanbanProject[] }>('/projects')
 
 export const fetchOrchestration = () => call<OrchestrationSettings>('/orchestration')
+
+export function toOperationsTaskExecution(detail: KanbanTaskDetail): OperationsTaskExecution {
+  return {
+    taskId: detail.task.id,
+    result: detail.task.result,
+    lastFailureError: detail.task.last_failure_error,
+    workspacePath: detail.task.workspace_path,
+    branchName: detail.task.branch_name,
+    artifacts: (detail.attachments ?? []).map(attachment => ({
+      id: attachment.id,
+      name: attachment.filename,
+      sizeBytes: attachment.size
+    })),
+    events: detail.events.map(event => ({
+      id: event.id,
+      kind: event.kind,
+      createdAt: event.created_at,
+      detail:
+        typeof event.payload === 'string'
+          ? event.payload
+          : event.payload == null
+            ? null
+            : JSON.stringify(event.payload)
+    })),
+    runs: detail.runs.map(run => ({
+      id: run.id,
+      status: run.status,
+      outcome: run.outcome,
+      profile: run.profile,
+      workerPid: run.worker_pid,
+      startedAt: run.started_at,
+      endedAt: run.ended_at,
+      summary: run.summary,
+      error: run.error
+    }))
+  }
+}
+
+export async function fetchOperationsTaskExecution(
+  id: string,
+  snapshot: OperationsTaskSnapshot
+): Promise<OperationsTaskExecution> {
+  const detail = await call<KanbanTaskDetail>(withBoardScope(`/tasks/${id}`, snapshot.scopeKey))
+  return toOperationsTaskExecution(detail)
+}
+
+export function toOperationsRunInspection(inspection: {
+  run_id: number | string
+  alive: boolean
+  reason?: null | string
+  pid?: null | number
+  status?: null | string
+  cpu_percent?: null | number
+  memory_rss_bytes?: null | number
+  num_threads?: null | number
+}): OperationsRunInspection {
+  return {
+    runId: inspection.run_id,
+    alive: inspection.alive,
+    reason: inspection.reason,
+    pid: inspection.pid,
+    status: inspection.status,
+    cpuPercent: inspection.cpu_percent,
+    memoryRssBytes: inspection.memory_rss_bytes,
+    numThreads: inspection.num_threads
+  }
+}
+
+export async function fetchOperationsRunInspection(
+  id: number | string,
+  snapshot: OperationsTaskSnapshot
+): Promise<OperationsRunInspection> {
+  return toOperationsRunInspection(
+    await call(withBoardScope(`/runs/${id}/inspect`, snapshot.scopeKey))
+  )
+}
+
+export function toOperationsTaskLog(log: WorkerLog): OperationsTaskLog {
+  return {
+    exists: log.exists,
+    sizeBytes: log.size_bytes,
+    content: log.content,
+    truncated: log.truncated
+  }
+}
+
+export async function fetchOperationsTaskLog(
+  id: string,
+  snapshot: OperationsTaskSnapshot
+): Promise<OperationsTaskLog> {
+  return toOperationsTaskLog(
+    await call<WorkerLog>(withBoardScope(`/tasks/${id}/log`, snapshot.scopeKey, { tail: '16384' }))
+  )
+}
+
+/** Read-only normalized projection for Mission Control and other operations surfaces. */
+export function toOperationsSnapshot(
+  board: KanbanBoard,
+  boards: BoardsResponse,
+  projects: readonly KanbanProject[],
+  scopeKey?: null | string
+): OperationsTaskSnapshot {
+  const current = boards.boards.find(item => item.slug === boards.current)
+  const projectById = new Map(projects.map(project => [project.id, project]))
+  const boardProject = current?.project_id ? projectById.get(current.project_id) : undefined
+
+  return {
+    sourceId: 'kanban',
+    sourceLabel: 'Kanban',
+    scopeKey: scopeKey || boards.current || null,
+    scopeLabel: current?.name || current?.slug || boards.current || 'Current board',
+    observedAt: board.now * 1000,
+    projects: projects.map(project => ({
+      id: project.id,
+      name: project.name,
+      slug: project.slug,
+      path: project.primary_path
+    })),
+    tasks: board.columns.flatMap(column =>
+      column.tasks.map(task => {
+        const project = task.project_id ? projectById.get(task.project_id) : boardProject
+
+        return {
+          id: task.id,
+          title: task.title,
+          status: task.status || column.name,
+          assignee: task.assignee,
+          priority: task.priority,
+          projectId: task.project_id || current?.project_id,
+          projectName: project?.name || current?.project_name,
+          originSessionId: task.session_id,
+          runId: task.current_run_id,
+          startedAt: task.started_at,
+          lastHeartbeatAt: task.last_heartbeat_at,
+          warning: task.warnings
+            ? {
+                count: task.warnings.count,
+                severity: task.warnings.highest_severity,
+                kinds: task.warnings.kinds,
+                latestAt: task.warnings.latest_at
+              }
+            : null
+        }
+      })
+    )
+  }
+}
+
+export async function fetchOperationsSnapshot(): Promise<OperationsTaskSnapshot> {
+  const scopeKey = $boardSlug.get()
+  const [board, boards, projects] = await Promise.all([fetchBoard(false), fetchBoards(), fetchProjects()])
+
+  return toOperationsSnapshot(board, boards, projects.projects, scopeKey || boards.current)
+}
+
+/** Normalize Mission Control intake into Kanban's non-executing triage shape. */
+export function toMissionCaptureTaskBody(input: OperationsCaptureInput): Record<string, unknown> {
+  const title = input.title.trim()
+
+  if (!title) {
+    throw new Error('A title is required.')
+  }
+
+  return {
+    title,
+    body: input.body?.trim() || undefined,
+    triage: true,
+    ...(input.projectId ? { project_id: input.projectId } : {})
+  }
+}
 
 // ── writes ────────────────────────────────────────────────────────────────────
 
