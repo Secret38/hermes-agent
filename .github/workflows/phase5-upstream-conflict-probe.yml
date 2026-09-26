@@ -1,0 +1,33 @@
+name: Phase 5 upstream conflict probe
+
+on:
+  push:
+    branches:
+      - agent-os-v1-upstream-integration
+    paths:
+      - ".github/workflows/phase5-upstream-conflict-probe.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  merge-tree:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          ref: agent-os-v1-upstream-integration
+
+      - name: Compute exact remaining upstream conflicts
+        shell: bash
+        run: |
+          git fetch --no-tags origin upstream-main-2026-09-26
+          set +e
+          git merge-tree --write-tree --name-only             HEAD origin/upstream-main-2026-09-26             > phase5-merge-tree.txt 2>&1
+          status=$?
+          set -e
+          cat phase5-merge-tree.txt
+          echo "merge_tree_exit=$status"
+          echo "conflict_file_count=$(grep -c '^CONFLICT ' phase5-merge-tree.txt || true)"
