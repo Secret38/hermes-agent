@@ -113,6 +113,23 @@ import { sessionsHost } from './sessions'
 import { desktopSettings } from './settings'
 
 export type { DesktopSettingKey, DesktopSettingValues } from './settings'
+export { $approvalModes, type ApprovalMode } from '@/store/approval-mode'
+export { $clarifyRequests, type ClarifyRequest } from '@/store/clarify'
+export {
+  $approvalRequests,
+  $secretRequests,
+  $sudoRequests,
+  $vaultCodeRequests,
+  $vaultSaveLoginRequests,
+  $vaultUnlockRequests,
+  answerApproval,
+  type ApprovalRequest,
+  type SecretRequest,
+  type SudoRequest,
+  type VaultCodeRequest,
+  type VaultSaveLoginRequest,
+  type VaultUnlockRequest
+} from '@/store/prompts'
 
 export type { SidebarProjectTree } from '@/app/chat/sidebar/projects/workspace-groups'
 export {
@@ -1858,6 +1875,7 @@ export type {
  *  `ctx.register` stays the door for permanent contributions. Namespace the
  *  id with your plugin slug (`kanban:board-switcher`). */
 export { Contribute, type ContributeProps } from '@/contrib/react/contribute'
+export { useContributions } from '@/contrib/react/use-contributions'
 
 // -- contracts ----------------------------------------------------------------
 
