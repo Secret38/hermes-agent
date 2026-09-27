@@ -21,6 +21,7 @@ class FakeWebglAddon {
 }
 
 class FakeTerminal {
+  static instances: FakeTerminal[] = [];
   options: Record<string, unknown>;
   rows = 24;
   cols = 80;
@@ -31,6 +32,7 @@ class FakeTerminal {
 
   constructor(options: Record<string, unknown>) {
     this.options = options;
+    FakeTerminal.instances.push(this);
   }
 
   attachCustomKeyEventHandler() {
@@ -204,6 +206,7 @@ async function render(ui: ReactNode) {
 }
 
 beforeEach(() => {
+  FakeTerminal.instances = [];
   FakeWebSocket.instances = [];
   maybeReloadForLoopbackWsAuthFailure.mockClear();
   apiMocks.buildWsUrl.mockReset();
@@ -269,6 +272,24 @@ afterEach(async () => {
 });
 
 describe("ChatPage", () => {
+  it("enables xterm screen-reader mode and labels the chat terminal host", async () => {
+    const { default: ChatPage } = await import("./ChatPage");
+    await render(
+      <MemoryRouter initialEntries={["/chat"]}>
+        <ChatPage isActive />
+      </MemoryRouter>,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(FakeTerminal.instances[0]?.options.screenReaderMode).toBe(true);
+    expect(
+      container.querySelector('[aria-label="Hermes chat terminal"]'),
+    ).not.toBeNull();
+  });
+
+
   it("sends a PTY keepalive frame every 20 seconds while the socket is open", async () => {
     vi.useFakeTimers();
     try {

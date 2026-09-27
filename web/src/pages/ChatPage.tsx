@@ -604,6 +604,10 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
       // Browser-embedded chat runs the TUI in inline mode. Keep transcript
       // history in xterm.js so the browser wheel can scroll it directly.
       scrollback: 5000,
+      // xterm's accessibility tree mirrors terminal rows into DOM nodes for
+      // screen readers. Without this the chat transcript is primarily a
+      // canvas/WebGL surface and is effectively opaque to assistive tech.
+      screenReaderMode: true,
       theme: terminalTheme,
     });
     termRef.current = term;
@@ -1944,6 +1948,7 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
         >
           <div
             ref={hostRef}
+            aria-label="Hermes chat terminal"
             className="hermes-chat-xterm-host min-h-0 min-w-0 flex-1"
           />
 

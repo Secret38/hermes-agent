@@ -2266,6 +2266,13 @@ class FeishuAdapter(BasePlatformAdapter):
         if checked is None:
             return self._card_response()
         open_id, chat_id, user_name = checked
+        from tools.approval import gateway_approval_actor_authorized
+        if not gateway_approval_actor_authorized(state["session_key"], open_id):
+            logger.warning(
+                "[Feishu] Rejected approval click by non-owner %s for session %s",
+                open_id or "<unknown>", state["session_key"],
+            )
+            return self._card_response()
         coro = self._resolve_approval(
             approval_id=approval_id, choice=choice, user_name=user_name, open_id=open_id, chat_id=chat_id,
         )
@@ -2330,7 +2337,9 @@ class FeishuAdapter(BasePlatformAdapter):
             return
         try:
             from tools.approval import resolve_gateway_approval
-            count = resolve_gateway_approval(state["session_key"], choice)
+            count = resolve_gateway_approval(
+                state["session_key"], choice, actor_user_id=open_id
+            )
             logger.info(
                 "Feishu button resolved %d approval(s) for session %s (choice=%s, user=%s)",
                 count, state["session_key"], choice, user_name,

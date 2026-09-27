@@ -403,6 +403,18 @@ class SessionControlUpdatePayload(Payload):
 event("session.control.update", SessionControlUpdatePayload, doc="Persisted goal / loop / heartbeat state changed.")
 
 
+class AuditChangedPayload(Payload):
+    """Metadata-only invalidation emitted after a durable operator-audit append."""
+
+    id: int
+    event: str
+    subject: str
+
+
+event("audit.changed", AuditChangedPayload,
+      doc="Durable operator/security audit changed; refetch audit.list for authoritative history.")
+
+
 class BillingStepUpVerificationPayload(Payload):
     """``methods_session`` billing.step_up on_verification."""
 
@@ -705,8 +717,8 @@ class ChangeSignalPayload(OpenPayload):
 
 event("cron.changed", ChangeSignalPayload, doc="cron/jobs.json moved; refetch the cron list.")
 event("sessions.changed", ChangeSignalPayload, doc="state.db moved; refetch the session list.")
+event("projects.changed", ChangeSignalPayload, doc="projects.db moved; refetch the Projects sidebar.")
 event("platforms.changed", ChangeSignalPayload, doc="gateway_state.json moved; refetch platform status.")
-event("projects.changed", ChangeSignalPayload, doc="projects.db moved; refetch the project list + tree.")
 event("pairing.changed", ChangeSignalPayload, doc="Pairing state moved; refetch pairing.")
 event("bot_relay.outbox.pending", ChangeSignalPayload, doc="A bot-relay outbox envelope is queued; drain it.")
 

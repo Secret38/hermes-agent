@@ -4380,6 +4380,9 @@ class TelegramAdapter(BasePlatformAdapter):
         if not state:
             await query.answer(text="Picker expired — run the command again.")
             return
+        # Same auth gate as approval buttons: strangers in a shared group must not flip session state.
+        if not await self._callback_authorized(query, self._callback_ctx(query), _UNAUTHORIZED):
+            return
         try:
             choice = state["choices"][int(data[3:])]
         except (ValueError, IndexError):
@@ -4714,8 +4717,7 @@ class TelegramAdapter(BasePlatformAdapter):
             (("cp:",), self._handle_choice_picker_callback)):
             if data.startswith(prefixes):
                 chat_id = str(query.message.chat_id) if query.message else None
-                # One auth gate for every chat-id picker: strangers in a shared group must not drive the owner's picker.
-                if chat_id and await self._callback_authorized(query, cb, _UNAUTHORIZED):
+                if chat_id:
                     await handler(query, data, chat_id)
                 return
         for prefix, handler in (
@@ -4746,6 +4748,22 @@ class TelegramAdapter(BasePlatformAdapter):
         except (ValueError, IndexError):
             await query.answer(text="Invalid approval data.")
             return
+        # Peek before consuming local state: a different participant in the same group must not
+        # retire the owner's live approval card merely by clicking it.
+        pending_session_key = self._approval_state.get(approval_id)
+        actor_user_id = str(getattr(query.from_user, "id", "") or "")
+        if pending_session_key:
+            from tools.approval import gateway_approval_actor_authorized
+            if not gateway_approval_actor_authorized(
+                pending_session_key, actor_user_id
+            ):
+                logger.warning(
+                    "Rejected Telegram approval click for session %s by non-owner user %s",
+                    pending_session_key, actor_user_id or "<unknown>",
+                )
+                await query.answer(text=_UNAUTHORIZED)
+                return
+
         session_key = await self._claim_callback_state(
             query, cb, self._approval_state, approval_id, _UNAUTHORIZED,
             "This approval has already been resolved.")
@@ -4759,7 +4777,9 @@ class TelegramAdapter(BasePlatformAdapter):
             # the approval wait timed out (count == 0) must NOT claim "Approved" — the command was already
             # denied and will not run (#63501 regression follow-up: 60s waits made stale taps common).
             from tools.approval import resolve_gateway_approval
-            count = resolve_gateway_approval(session_key, choice)
+            count = resolve_gateway_approval(
+                session_key, choice, actor_user_id=actor_user_id
+            )
             logger.info(
                 "Telegram button resolved %d approval(s) for session %s (choice=%s, user=%s)", count, session_key, choice, user_display)
         except Exception as exc:
