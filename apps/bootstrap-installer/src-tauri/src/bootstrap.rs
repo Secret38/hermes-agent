@@ -259,6 +259,48 @@ pub(crate) fn hermes_is_installed(install_root: &std::path::Path) -> bool {
         && resolve_hermes_desktop_exe(install_root).is_some()
 }
 
+fn is_full_sha(value: &str) -> bool {
+    value.len() == 40
+        && value
+            .bytes()
+            .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+}
+
+/// HEAD of the checkout read from its ref files. install.ps1 resolves git
+/// through the PM-staged binary, which is not on PATH, so a bare `git` spawn
+/// here returns nothing on a git-less machine.
+fn read_checkout_head(install_root: &Path) -> Option<String> {
+    let git_dir = install_root.join(".git");
+    let head = std::fs::read_to_string(git_dir.join("HEAD")).ok()?;
+    let head = head.trim();
+    let sha = match head.strip_prefix("ref: ") {
+        None => head.to_string(),
+        Some(name) => match std::fs::read_to_string(git_dir.join(name)) {
+            Ok(loose) => loose.trim().to_string(),
+            Err(_) => std::fs::read_to_string(git_dir.join("packed-refs"))
+                .ok()?
+                .lines()
+                .find_map(|line| {
+                    let (sha, ref_name) = line.split_once(' ')?;
+                    (ref_name == name).then(|| sha.to_string())
+                })?,
+        },
+    };
+    is_full_sha(&sha).then_some(sha)
+}
+
+/// The receipt install.ps1's Stage-Complete published moments earlier in this
+/// run. Windows PowerShell writes it with a UTF-8 BOM.
+fn read_existing_marker_commit(marker_path: &Path) -> Option<String> {
+    let raw = std::fs::read(marker_path).ok()?;
+    let body = raw.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(&raw);
+    let marker: serde_json::Value = serde_json::from_slice(body).ok()?;
+    let commit = marker.get("pinnedCommit")?.as_str()?;
+    is_full_sha(commit).then(|| commit.to_string())
+}
+
+/// Same order as install.ps1's Stage-Complete: the pinned commit, else the
+/// checkout's HEAD; the prior receipt is the last resort.
 fn resolve_marker_commit(install_root: &Path, pin: &Pin, marker_path: &Path) -> Option<String> {
     pin.commit
         .clone()
@@ -987,8 +1029,6 @@ fn build_pin_args(script: &install_script::ResolvedScript) -> Vec<String> {
         out.push("-Branch".to_string());
         out.push(b.clone());
     }
-    out.push("-Repository".to_string());
-    out.push(install_script::build_repository().to_string());
     out
 }
 
@@ -1169,25 +1209,6 @@ mod tests {
             "no resolved app when nothing has been built"
         );
         let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn build_pin_args_propagates_baked_repository() {
-        let script = install_script::ResolvedScript {
-            path: PathBuf::from("install.ps1"),
-            source: ScriptSource::Bundled,
-            commit: Some("abcdef1234567890".to_string()),
-            branch: Some("main".to_string()),
-        };
-        let args = build_pin_args(&script);
-        let repo_pos = args
-            .iter()
-            .position(|arg| arg == "-Repository")
-            .expect("repository argument");
-        assert_eq!(
-            args.get(repo_pos + 1).map(String::as_str),
-            Some(install_script::build_repository())
-        );
     }
 
     #[test]
