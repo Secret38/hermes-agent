@@ -106,7 +106,13 @@ import {
 import { runGatewayRestart } from '@/store/system-actions'
 import type { PaginatedSessions, UsageStats } from '@/types/hermes'
 
+import { pluginDecisions, profiles, skills, toolsets } from './bridge'
+import { composerHost } from './composer'
 import { planPluginOpenSession } from './plugin-open-session-plan'
+import { sessionsHost } from './sessions'
+import { desktopSettings } from './settings'
+
+export type { DesktopSettingKey, DesktopSettingValues } from './settings'
 
 // -- state: readonly views over the app's live atoms -------------------------
 
@@ -363,6 +369,13 @@ export const BOT_CHAT_SESSION_HYDRATION_TIMEOUT_MS = 60_000
  *  needs a bound of its own or it outlives the wake it describes. */
 export const HYDRATION_SYNC_BADGE_TIMEOUT_MS = 30_000
 let openSessionGeneration = 0
+/** Which generation's wake most recently set $gatewaySwapTarget. Clearing it
+ *  keys off this, not off `generation === openSessionGeneration`, so a
+ *  superseded wake still clears the overlay IT put up — the generation
+ *  counter has already moved on by the time its `finally` runs, and a later
+ *  wake that never sets the target (e.g. a paint-first open without
+ *  awaitHydration) would otherwise leave it stuck forever (#115844). */
+let gatewaySwapTargetOwnerGeneration: number | null = null
 
 export interface PluginOpenSessionOptions {
   awaitHydration?: boolean
@@ -669,10 +682,6 @@ export const host = {
     /** Stored (durable) id of the focused session — for navigation and
      *  session-list matching, where runtime ids don't survive reloads. */
     focusedStoredSessionId: readonlyAtom<null | string>($focusedStoredSessionId),
-    /** Stored id selected in the primary workspace. Unlike focusedStoredSessionId,
-     * this does not follow an interacted background tile and is the authority for
-     * actions that must wait for the main session surface to settle. */
-    selectedStoredSessionId: readonlyAtom<null | string>($selectedStoredSessionId),
     /** Live usage snapshot of the focused session (`context_used` /
      *  `context_max` / `context_percent`, token counts, `cost_usd`) —
      *  streamed by the backend, no RPC needed. Null while unresolved.
@@ -688,6 +697,9 @@ export const host = {
     /** Window geometry ({ width, height, narrow }). */
     viewport: readonlyAtom<ViewportRect>($viewport)
   },
+
+  /** Read, update, and observe the allowlisted Desktop appearance preferences. */
+  settings: desktopSettings,
 
   /** Toast into the app's notification stack. */
   notify,
@@ -908,6 +920,16 @@ export const host = {
   ensureAgent: async (connectionId: null | string | undefined, profile: string): Promise<void> =>
     ensureGatewayAgent(connectionId ?? null, (profile ?? '').trim() || 'default'),
 
+  /** Session-list mutations (pin, reorder, colour) — see `./sessions`. */
+  sessions: sessionsHost,
+
+  /** Typed capabilities bridge — see `./bridge.ts`. `pluginDecisions` is
+   *  read-only: plugin toggling stays in the app's Plugins tab. */
+  skills,
+  toolsets,
+  profiles,
+  pluginDecisions,
+
   /** Open a stored session the way core surfaces do. A plugin/Bot Mode open
    *  is navigation, not a workspace or chrome API-home switch —
    *  keepAllProfilesScope defaults true so `$activeGatewayProfile` /
@@ -938,12 +960,16 @@ export const host = {
     // path below still keys off the explicit cross-connection route, so a plain
     // local open dials exactly as before (openGatewayForProfile), never the
     // registry-secondary path.
-    const localConnectionId = activeGatewayConnectionId()
+    const liveConnection = $connection.get()
+    const liveRemote = liveConnection?.mode === 'remote'
+    const liveConnectionId = String(liveConnection?.connectionId ?? '').trim()
+    const ambientConnectionId = (liveRemote && liveConnectionId) || activeGatewayConnectionId()
+    const ambientMode = liveRemote ? ('remote' as const) : ('local' as const)
 
     const ownerRoute =
       explicitRoute ??
-      (options.workspaceMode === 'bots' && profile && localConnectionId
-        ? { connectionId: localConnectionId, mode: 'local' as const, profile: targetProfile }
+      (options.workspaceMode === 'bots' && profile && ambientConnectionId
+        ? { connectionId: ambientConnectionId, mode: ambientMode, profile: targetProfile }
         : null)
 
     const expectHistory = options.expectHistory ?? false
@@ -982,16 +1008,18 @@ export const host = {
     if (ownerRoute) {
       setSessionOwnerHint(storedSessionId, ownerRoute)
     } else if (profile) {
-      // Local plugin-owned opens (Bot Mode without a cross-connection route)
-      // still carry an explicit owning profile. Record it: hidden sessions
-      // (canonical Bot Chats) have no sidebar row, so this hint is the only
-      // durable owner record the session-RPC router can consult — without it
-      // a later prompt.submit resolves to the ACTIVE profile's backend and
-      // 4001s while the bot's own backend is healthy.
-      const connectionId = activeGatewayConnectionId()
-
-      if (connectionId) {
-        setSessionOwnerHint(storedSessionId, { connectionId, mode: 'local', profile: targetProfile })
+      // Plugin-owned opens without a cross-connection route still carry an
+      // explicit owning profile. Record it: hidden sessions have no sidebar
+      // row, so this hint is the only durable owner record the session-RPC
+      // router can consult. Do not stamp mode local when the live connection
+      // is remote — that hint persists and the next open resolves the profile
+      // against this machine (#90477).
+      if (ambientConnectionId) {
+        setSessionOwnerHint(storedSessionId, {
+          connectionId: ambientConnectionId,
+          mode: ambientMode,
+          profile: targetProfile
+        })
       }
     }
 
@@ -1053,6 +1081,7 @@ export const host = {
         // Keep the target-specific overlay visible through transcript hydration,
         // not merely through the gateway/profile activation that precedes it.
         $gatewaySwapTarget.set(targetProfile)
+        gatewaySwapTargetOwnerGeneration = generation
       }
 
       // Only the HYDRATION half retries. Activation already failed its own
@@ -1195,8 +1224,13 @@ export const host = {
 
       throw error
     } finally {
-      if (options.awaitHydration && generation === openSessionGeneration) {
+      // Clear the overlay THIS wake set, even when a later open superseded
+      // it: `generation === openSessionGeneration` is false by then, but
+      // nothing else is coming to clear it. Skip only when a newer wake has
+      // since taken ownership of the target.
+      if (gatewaySwapTargetOwnerGeneration === generation) {
         $gatewaySwapTarget.set(null)
+        gatewaySwapTargetOwnerGeneration = null
       }
     }
   },
@@ -1448,17 +1482,22 @@ export const host = {
    *  a non-retained secondary socket closes at refcount 0 between calls — and
    *  the gateway reaps any runtime session that socket minted, failing the
    *  next RPC with 4001. Acquire before the first session-scoped RPC, release
-   *  (idempotent) in a `finally`. Feature-detect: older hosts lack this. */
-  retainProfile: async (route: PluginProfileRoute | string): Promise<() => void> => {
+   *  (idempotent) in a `finally`. An explicit user action can mark the retain
+   *  foreground so a retired route takes the pool's reserved interactive
+   *  slot. Feature-detect: older hosts lack this. */
+  retainProfile: async (
+    route: PluginProfileRoute | string,
+    options?: PluginProfileRequestOptions
+  ): Promise<() => void> => {
     if (typeof route !== 'string') {
       if (!route.connectionId.trim() || !route.profile.trim()) {
         throw new Error('Profile route must include connectionId and profile')
       }
 
-      return retainGatewayForAgent(route.connectionId, route.profile)
+      return retainGatewayForAgent(route.connectionId, route.profile, options)
     }
 
-    return retainGatewayForAgent(null, route.trim() || 'default')
+    return retainGatewayForAgent(null, route.trim() || 'default', options)
   },
 
   /** Read persisted sessions from a profile's owning source without dialing
@@ -1536,10 +1575,12 @@ export const host = {
 
   /** The LIVE gateway instance for the active profile (null before the first
    *  socket opens). Most plugins want `host.request`; this exists for SDK
-   *  components that take a `HermesGateway` prop directly (e.g. `McpTab`),
+   *  components that take a `HermesGateway` prop directly (e.g. `ConnectorsTab`),
    *  which need the instance, not just a JSON-RPC door. Re-read per use — the
    *  active instance changes on a profile swap. */
-  getGateway: (): HermesGateway | null => $gateway.get()
+  getGateway: (): HermesGateway | null => $gateway.get(),
+
+  composer: composerHost
 }
 
 // -- react bridge -------------------------------------------------------------
@@ -1557,11 +1598,12 @@ export { CapabilitiesView } from '@/app/capabilities'
 
 // -- ui: the design language --------------------------------------------------
 
-/** THE full MCP tab core Settings renders — per-server enable + OAuth sign-in
- *  + API-key setup + live probes, not a checkbox list. Route-decoupled so it
- *  renders anywhere (a plugin dialog); pass a live `gateway` (see
- *  `host.getGateway()`) and an optional `profile` to scope it to one bot. */
-export { McpTab } from '@/app/capabilities/mcp/mcp-tab'
+/** THE Connectors tab core Capabilities renders — managed apps, the user's
+ *  own MCP servers, plugin servers and the catalog, with per-server enable,
+ *  sign-in and live probes. Renders anywhere under the app router (a plugin
+ *  dialog); pass a live `gateway` (see `host.getGateway()`) and the `profile`
+ *  to scope it to one bot. */
+export { ConnectorsTab } from '@/app/capabilities/connectors/connectors-tab'
 // Every contribution surface, plugin-reachable: register keybinds, palette
 // commands, routes, themes, panes, composer extensions, and bar items with
 // the same area ids + payload types core uses.
@@ -1570,7 +1612,9 @@ export {
   type ComposerAtCompletionItem,
   type ComposerAtCompletionSource,
   type ComposerAttachmentProvider,
-  type ComposerMiddleware
+  type ComposerMiddleware,
+  type ComposerModelPillContext,
+  type ComposerModelPillProvider
 } from '@/app/chat/composer/contrib'
 /** THE session status dot — the one primitive the sidebar row, the pane tabs
  *  and the session switcher render, so a session's status can never disagree
@@ -1589,7 +1633,6 @@ export { SidebarRowLead } from '@/app/chat/sidebar/chrome'
  *  switcher, the fleet profile rail and any plugin rail listing gateways share
  *  it, so a connection looks the same wherever it is named. */
 export { ConnectionGlyph } from '@/app/chat/sidebar/connection-glyph'
-export type { SidebarProjectTree } from '@/app/chat/sidebar/projects/workspace-groups'
 export { SIDEBAR_ROW_LEAD, SIDEBAR_TRUNCATED_LEADING } from '@/app/chat/sidebar/row-geometry'
 export { PALETTE_AREA, type PaletteContribution } from '@/app/command-palette/contrib'
 /** THE overdue test for a cron job's `next_run_at`: non-null once the stored slot
@@ -1624,13 +1667,27 @@ export {
   PanelSectionLabel
 } from '@/app/overlays/panel'
 export {
+  type ProfileGroupHeaderContribution,
+  type ProfileGroupRoute,
   type RouteContribution,
   ROUTES_AREA,
   SIDEBAR_NAV_AREA,
+  SIDEBAR_PROFILE_GROUP_HEADER_AREA,
   type SidebarNavContribution,
   WORKSPACE_PAGE_HEADER_AREA
 } from '@/app/routes'
+/** Appearance settings' plugin seam: register a render contribution at
+ *  `APPEARANCE_AREAS.extra` to add controls at the end of the Appearance page.
+ *  `ColorSwatches` is the app's own swatch grid (profile rail / project dialog
+ *  look) — use it for colour picking instead of driving app widgets through
+ *  React internals; pair it with `host.sessions.setColor` for session colours. */
+export { APPEARANCE_AREAS } from '@/app/settings/appearance-contrib'
 
+/** THE settings rows: `ListRow` is label + description with the control beside
+ *  it (wide) or under it (narrow); `ToggleRow` is the one on/off row — a Switch,
+ *  never an Off/On pill pair. Use them for preference rows in plugin panes and
+ *  dialogs so they line up with core Settings. */
+export { ListRow, ToggleRow } from '@/app/settings/primitives'
 /** THE full per-toolset config panel core Settings renders — provider picker,
  *  env vars / API keys, model catalog picker, and post-setup runners. Route-
  *  decoupled (the "manage keys" deep link is a no-op outside the router); pass
@@ -1676,6 +1733,7 @@ export { ColorSwatches } from '@/components/ui/color-swatches'
 export { ConfirmDialog } from '@/components/ui/confirm-dialog'
 export {
   ContextMenu,
+  ContextMenuCheckboxItem,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
@@ -1723,6 +1781,10 @@ export { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
  *  layout classes — it just bakes in `type="button"` and a stable `data-slot`.
  *  Use it for rows and regions; `Button` is for ordinary compact actions. */
 export { RowButton } from '@/components/ui/row-button'
+/** The sanctioned embed primitive for external web content: a sandboxed
+ *  iframe (opaque origin, `allow-scripts` by default) — never a raw
+ *  `<webview>`, which would land on the app's own preview partition. */
+export { SandboxedFrame, type SandboxedFrameProps } from '@/components/ui/sandboxed-frame'
 export { ScrollArea } from '@/components/ui/scroll-area'
 export { SearchField } from '@/components/ui/search-field'
 export { SegmentedControl } from '@/components/ui/segmented-control'
@@ -1734,26 +1796,6 @@ export { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 export { Textarea } from '@/components/ui/textarea'
 export { Tip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 export type { GatewayEventListener } from '@/contrib/events'
-export {
-  OPERATIONS_CAPTURE_SOURCES_AREA,
-  OPERATIONS_TASK_SOURCES_AREA,
-  type OperationsArtifact,
-  type OperationsCaptureInput,
-  type OperationsCaptureResult,
-  type OperationsCaptureSource,
-  type OperationsEvent,
-  type OperationsPlanApprovalResult,
-  type OperationsProject,
-  type OperationsRun,
-  type OperationsRunInspection,
-  type OperationsShapeResult,
-  type OperationsTask,
-  type OperationsTaskExecution,
-  type OperationsTaskLog,
-  type OperationsTaskSnapshot,
-  type OperationsTaskSource,
-  type OperationsTaskWarning
-} from '@/contrib/operations'
 export type {
   HermesPlugin,
   PluginContext,
@@ -1770,15 +1812,13 @@ export type {
  *  `ctx.register` stays the door for permanent contributions. Namespace the
  *  id with your plugin slug (`kanban:board-switcher`). */
 export { Contribute, type ContributeProps } from '@/contrib/react/contribute'
-/** Read-only contribution discovery for data-source style plugin contracts. */
-export { useContributions } from '@/contrib/react/use-contributions'
 
 // -- contracts ----------------------------------------------------------------
 
 export type { Contribution } from '@/contrib/types'
-/** The live gateway instance type — for typing the `gateway` prop `McpTab`
+/** The live gateway instance type — for typing the `gateway` prop `ConnectorsTab`
  *  takes; obtain the instance from `host.getGateway()`. */
-export type { HermesGateway, SessionInfo } from '@/hermes'
+export type { HermesGateway } from '@/hermes'
 /** Grab-to-pan for overflow containers (boards, timelines, wide tables) —
  *  the shared scrub primitive; don't hand-roll drag-to-scroll. */
 export { type GrabScroll, useGrabScroll } from '@/hooks/use-grab-scroll'
@@ -1836,6 +1876,8 @@ export { formatModifierToken } from '@/lib/keybinds/combo'
  *  a renderer that stays open for days. Only for values that can be
  *  regenerated — eviction costs a recompute or a refetch, never correctness. */
 export { LruCache } from '@/lib/lru-cache'
+/** Capture a gateway file download alongside a REST read (see the SDK guide). */
+export { captureGatewayFileDownload } from '@/lib/media'
 /** The app's deterministic identity color for a name (profiles, assignees,
  *  authors), its translucent tag fill, and the curated picker swatches — so
  *  plugin-rendered identities read the same hue as everywhere else. The
@@ -1863,6 +1905,13 @@ export const TITLEBAR_AREAS = { center: 'titleBar.center', left: 'titleBar.left'
  *  setup.runtime_check, reconciled) — pass `host.request`. Don't hand-roll
  *  readiness from raw RPC shapes. */
 export { evaluateRuntimeReadiness, type RuntimeReadinessResult } from '@/lib/runtime-readiness'
+/** Row-decoration slots: register a `data` contribution with a `render` for
+ *  `SESSION_ROW_AREAS.leading` / `.trailing` to decorate sidebar session rows
+ *  (the props carry the row's stored session id). */
+export { SESSION_ROW_AREAS, type SessionRowSlotContribution, type SessionRowSlotProps } from '@/lib/session-row-slots'
+/** A sibling WebSocket beside the route's `/api/ws` (voice PCM, Bot Screen RFB):
+ *  same origin, same auth resolution as chat. */
+export { resolveSiblingWsUrl, type SiblingWsRoute } from '@/lib/sibling-ws-url'
 /** Canonical time formatting — every surface pulls from here so timestamps read
  *  the same app-wide. For a row's AGE, bucket with `coarseElapsed` and render
  *  the compact suffixes (`t.sidebar.row.ageMin` → "52m"), which is what the
@@ -1890,50 +1939,13 @@ export { cn } from '@/lib/utils'
  *  the user opens the session, `forgetSessionUnread` drops it when the session
  *  is gone. Pass the owning profile — a hidden session has no row to read it
  *  from, and the persisted half is bucketed per profile. */
-export { $approvalModes, type ApprovalMode } from '@/store/approval-mode'
-export { $clarifyRequests, type ClarifyRequest } from '@/store/clarify'
-export { $goalsBySession, type SessionGoal } from '@/store/goals'
-export {
-  $liveSessionSnapshots,
-  liveSessionScopeKey,
-  type LiveSessionSnapshotItem
-} from '@/store/live-sessions'
-export { revealDesktopPane } from '@/store/pane-focus'
-export { openBrowserTab } from '@/store/preview'
-export {
-  $projectTree,
-  $projectTreeLoading,
-  fetchProjectSessions,
-  goToProject,
-  refreshProjectTree
-} from '@/store/projects'
-export {
-  $approvalRequestQueues,
-  $secretRequests,
-  $sudoRequests,
-  $vaultCodeRequests,
-  $vaultSaveLoginRequests,
-  $vaultUnlockRequests,
-  type ApprovalChoice,
-  type ApprovalRequest,
-  resolveApprovalRequest,
-  type SecretRequest,
-  type SudoRequest,
-  type VaultCodeRequest,
-  type VaultSaveLoginRequest,
-  type VaultUnlockRequest
-} from '@/store/prompts'
-export { revealReview } from '@/store/review'
-export {
-  $resumeFailedSessionId,
-  $workspaceCwdOwner,
-  knownSessionProfile,
-  ownerLookupSessionRows,
-  sessionMatchesStoredId
-} from '@/store/session'
-export { storedSessionIdForRuntimeId } from '@/store/session-states'
 export { ackStoredSessionId, forgetSessionUnread, markSessionUnreadFinished } from '@/store/session-unread'
-export { $subagentsBySession, type SubagentProgress } from '@/store/subagents'
+/** `sidebarNav.prefs`: hide / re-order the sidebar's nav rows by CONTRIBUTING a
+ *  preference (union of hides, `capabilities` never hidden; the first order
+ *  in registry area order — lowest `order`, then registration — wins). A
+ *  contribution, not a `host.sidebar` verb, so it is attributed and dropped
+ *  on disable. */
+export { SIDEBAR_NAV_PREFS_AREA, type SidebarNavPrefsContribution } from '@/store/sidebar-nav'
 /** Live accent override — set a hex and the ACTIVE theme repaints with its
  *  accent family re-seeded from it (see `retintTheme`); `null` restores the
  *  authored palette. Deliberately not persisted: it is an authoring knob, not
@@ -1968,6 +1980,8 @@ export { THEMES_AREA } from '@/themes/user-themes'
 export type { StatusResponse } from '@/types/hermes'
 /** Public SDK name for the shared gateway wire event; kept stable for plugins. */
 export type { GatewayEvent as RpcEvent } from '@hermes/shared'
+/** Bot Screen wire shapes, generated from `tui_gateway/contracts/display.py`. */
+export type { DisplayLease, DisplayObserveResult, DisplayStatus, DisplayThumbnailResult } from '@hermes/shared'
 /** THE compact-number formatter — every user-facing count/token figure goes
  *  through here (1230 → "1.2k", 1_500_000 → "1.5M"). Don't hand-roll `/1000`. */
 export { compactNumber } from '@hermes/shared'

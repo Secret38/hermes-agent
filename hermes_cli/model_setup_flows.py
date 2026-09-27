@@ -374,19 +374,23 @@ def _model_flow_openai_codex(config, current_model=""):
 
     # Prefer the credential pool (where `hermes auth` stores device_code tokens),
     # fall back to legacy provider state.
-    _codex_token = None
+    # Token and route base travel together (#121486): a pooled gateway key must never be sent to
+    # the chatgpt.com default by the catalog probe.
+    _codex_token = _codex_base = None
     with contextlib.suppress(Exception):
         _codex_status = get_codex_auth_status()
-        _codex_token = _codex_status.get("api_key") if _codex_status.get("logged_in") else None
+        if _codex_status.get("logged_in"):
+            _codex_token, _codex_base = _codex_status.get("api_key"), _codex_status.get("base_url")
     if not _codex_token:
         with contextlib.suppress(Exception):
             from hermes_cli.auth import resolve_codex_runtime_credentials
-            _codex_token = resolve_codex_runtime_credentials().get("api_key")
+            _creds = resolve_codex_runtime_credentials()
+            _codex_token, _codex_base = _creds.get("api_key"), _creds.get("base_url")
 
-    codex_models = get_codex_model_ids(access_token=_codex_token)
+    codex_models = get_codex_model_ids(access_token=_codex_token, base_url=_codex_base)
     selected = _prompt_model_selection(
         codex_models, current_model=current_model, confirm_provider="openai-codex",
-        confirm_base_url=DEFAULT_CODEX_BASE_URL, confirm_api_key=_codex_token or "")
+        confirm_base_url=_codex_base or DEFAULT_CODEX_BASE_URL, confirm_api_key=_codex_token or "")
     _activate_provider_model(selected, "openai-codex", DEFAULT_CODEX_BASE_URL,
                              f"Default model set to: {selected} (via OpenAI Codex)")
 
@@ -1066,6 +1070,34 @@ def _model_flow_anthropic(config, current_model=""):
 # ``_model_flow_api_key_provider``; ``hermes_cli.main`` routes every registered profile missing
 # from ``_PROVIDER_MODEL_FLOWS`` here, so an admitted plugin is never a silent no-op.
 
+def _external_process_login_gate(profile, status) -> bool:
+    """Logged in → say so (with plan). Logged out → run the CLI's own login on a TTY (it is
+    browser/device based, so it must own the terminal), else print the instruction and stop."""
+    import shlex
+    import subprocess
+    import sys
+
+    if status["logged_in"]:
+        plan = f" ({status['plan']})" if status.get("plan") else ""
+        _say(f"  {profile.display_name} credentials: ✓{plan}", "")
+        return True
+    login = status.get("login_command")
+    if not login or not sys.stdin.isatty():
+        _say(f"  ✗ {status['detail']}")
+        return False
+    _say(f"  {status['detail'].split('.')[0]}.", f"  Starting `{shlex.join(login[-2:])}` (press Ctrl-C to cancel)...", "")
+    try:
+        subprocess.run(login, check=False)
+    except (KeyboardInterrupt, OSError):
+        print("Login cancelled or failed.")
+        return False
+    if not profile.setup_status()["logged_in"]:
+        print("Login failed.")
+        return False
+    _say("", f"  {profile.display_name} credentials: ✓", "")
+    return True
+
+
 def _plugin_flow_external_process(provider_id: str, profile) -> tuple[str, str] | None:
     from hermes_cli.auth import get_external_process_provider_status, resolve_external_process_provider_credentials
     status = get_external_process_provider_status(provider_id)
@@ -1077,6 +1109,14 @@ def _plugin_flow_external_process(provider_id: str, profile) -> tuple[str, str] 
     except Exception as exc:
         _say(f"  ⚠ {exc}")
         return None
+    # A profile that can ask its CLI (``setup_status``) gates on login before anything is saved.
+    probe = profile.setup_status()
+    if probe is not None:
+        if not probe["available"]:
+            _say(f"  ✗ {probe['detail']}")
+            return None
+        if not _external_process_login_gate(profile, probe):
+            return None
     return str(creds.get("base_url") or profile.base_url or ""), ""
 
 
@@ -1109,6 +1149,20 @@ def _is_profile_plugin_flow_provider(provider_id: str) -> bool:
     return profile is not None and profile.auth_type in _PLUGIN_FLOW_CREDENTIALS
 
 
+def _plugin_flow_live_rows(profile, api_key: str, base_url: str) -> tuple[list[str] | None, dict[str, str]]:
+    """``(live ids, {id: note})``. ``discover_models()`` (the account's own annotated picker, e.g.
+    ``usage credits``) wins when the profile implements it; otherwise the plain ``fetch_models()``."""
+    with contextlib.suppress(Exception):
+        rows = profile.discover_models()
+        if rows:
+            _say(f"  Models below come from your {profile.display_name or profile.name} account.", "")
+            return [r["id"] for r in rows], {r["id"]: r["note"] for r in rows if r.get("note")}
+    live = None
+    with contextlib.suppress(Exception):
+        live = profile.fetch_models(api_key=api_key or None, base_url=base_url or None)
+    return live, {}
+
+
 def _model_flow_plugin_provider(config, provider_id, current_model=""):
     """Generic ``hermes model`` flow for a registered plugin profile: credential step by auth_type,
     catalog via ``merge_profile_catalog`` (live ``fetch_models()`` ⊕ ``fallback_models``), persist."""
@@ -1120,13 +1174,11 @@ def _model_flow_plugin_provider(config, provider_id, current_model=""):
     if creds is None:
         return
     base_url, api_key = creds
-    live = None
-    with contextlib.suppress(Exception):
-        live = profile.fetch_models(api_key=api_key or None, base_url=base_url or None)
+    live, notes = _plugin_flow_live_rows(profile, api_key, base_url)
     model_list = merge_profile_catalog(provider_id, profile, live) or []
     selected = _pick_model_or_prompt(
         model_list, "Model name: ", current_model=current_model, confirm_provider=provider_id,
-        confirm_base_url=base_url, confirm_api_key=api_key)
+        confirm_base_url=base_url, confirm_api_key=api_key, notes=notes)
     _finish_model(selected, provider_id, f"Default model set to: {selected} (via {profile.display_name or provider_id})",
                   base_url=base_url or None, api_mode=profile.api_mode or None)
 

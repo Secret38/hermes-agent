@@ -717,7 +717,11 @@ def _spawn_detached(script_path: Path | None = None, home: Path | None = None) -
     """
     _assert_windows()
     argv, working_dir, env_overlay = _build_gateway_argv(home)
-    env = {**os.environ, **env_overlay}
+    from tools.environments.local import served_profile_child_env
+    # home=None is this process's own gateway, not a forced jump to the default root.
+    # served_profile_child_env overlays that home's secrets instead of os.environ.copy().
+    target = home if home is not None else _hermes_home()
+    env = {**served_profile_child_env(target_home=target, inherit_credentials=True), **env_overlay}
 
     # Stray print()/native stderr goes to a sidecar log; real gateway logs still land in gateway.log
     # via the logging FileHandler.
@@ -754,6 +758,13 @@ def _stdin_is_interactive(*, isatty: bool, console_mode_ok: bool | None) -> bool
     isatty must be confirmed by GetConsoleMode accepting the handle (#113977). ``console_mode_ok`` is
     None where that fact does not exist (not Windows) and isatty alone decides."""
     return isatty and console_mode_ok is not False
+
+
+def _stdout_isatty() -> bool:
+    """The question is printed to stdout. When stdout is captured, nobody sees it. Desktop update
+    hand-offs before #122234 captured each step's stdout while leaving it the console's stdin, so a
+    prompt there waited forever for an answer to a question nobody saw."""
+    return sys.stdout is not None and sys.stdout.isatty()
 
 
 def _stdin_console_mode_ok() -> bool | None:
@@ -806,7 +817,7 @@ def _start_or_report_running(running_pids: list[int] | None = None) -> None:
         _report_already_running(running_pids)
     else:
         pid = _spawn_detached()
-        _report_gateway_start(f"direct spawn (PID {pid})")
+        _report_gateway_start("direct spawn")
 
 
 def _install_startup_fallback(script_path: Path, start_now: bool, detail: str) -> None:
@@ -877,6 +888,11 @@ def install(
         _startup_staging_path().unlink(missing_ok=True)
     except OSError:
         pass
+    if force:
+        # Pre-suffix strays (task ``Hermes_Gateway``, Startup ``Hermes_Gateway.vbs``) are unreachable by
+        # the current names, so a plain reconcile never heals them (#116157).
+        from hermes_cli.gateway_windows_legacy import remove_legacy_launchers
+        remove_legacy_launchers()
 
     # On locked-down accounts schtasks can sit for the full timeout before returning Access Denied.
     # All intent questions were asked above, so ask for UAC before touching schtasks.
@@ -1062,7 +1078,7 @@ def _consume_start_attestation(generation: str, home: Path | None = None) -> Non
 def _read_start_attestation(home: Path | None = None) -> object | None:
     """Parsed attestation payload (any JSON type), or ``None`` when absent/unreadable. Never raises."""
     try:
-        return json.loads(_start_attestation_path(home).read_text(encoding="utf-8"))
+        return json.loads(_start_attestation_path(home).read_text(encoding="utf-8-sig"))
     except (OSError, ValueError):
         return None
 
@@ -1097,7 +1113,7 @@ def _attested_pid_exited_cleanly(pid: int, create_time: float | None = None, hom
         from gateway.lifecycle_ledger import get_lifecycle_sentinel_path
 
         sentinel = get_lifecycle_sentinel_path(home if home is not None else _hermes_home())
-        data = json.loads(sentinel.read_text(encoding="utf-8"))
+        data = json.loads(sentinel.read_text(encoding="utf-8-sig"))
     except OSError:
         return False
     except Exception:
@@ -1270,6 +1286,9 @@ def uninstall() -> None:
         except FileNotFoundError:
             pass
 
+    from hermes_cli.gateway_windows_legacy import remove_legacy_launchers
+    remove_legacy_launchers()
+
     if is_task_registered() and not scheduled_task_removed:
         print(f"⚠ Scheduled Task still registered: {task_name}")
 
@@ -1428,7 +1447,7 @@ def _probe_pid_file(pid_path: Path) -> int | None:
     if _probe_missing(1, pid_path, "PID file"):
         return None
     try:
-        data = json.loads(pid_path.read_text(encoding="utf-8"))
+        data = json.loads(pid_path.read_text(encoding="utf-8-sig"))
         pid_value = int(data.get("pid")) if data.get("pid") is not None else None
         _probe(1, True, f"PID file present: {pid_path} (pid={pid_value})")
         return pid_value
@@ -1477,7 +1496,7 @@ def _probe_state_file(state_path: Path) -> None:
     if _probe_missing(5, state_path, "gateway_state.json"):
         return
     try:
-        state_data = json.loads(state_path.read_text(encoding="utf-8"))
+        state_data = json.loads(state_path.read_text(encoding="utf-8-sig"))
         gateway_state = state_data.get("gateway_state")
         updated_at = state_data.get("updated_at")
         age_str = ""
@@ -1550,6 +1569,8 @@ def status(deep: bool = False) -> None:
         print(f"✓ Windows login item installed: {entry if entry.exists() else _legacy_startup_entry_path()}")
     else:
         print("✗ Gateway service not installed")
+    from hermes_cli.gateway_windows_legacy import warn_legacy_launchers
+    warn_legacy_launchers()
 
     print(f"✓ Gateway process running (PID: {', '.join(map(str, pids))})" if pids else "✗ No gateway process detected")
 
@@ -1582,7 +1603,7 @@ def start() -> None:
             from hermes_cli.setup import is_interactive_stdin, is_noninteractive, prompt_yes_no
 
             print("✗ Gateway service is not installed")
-            if is_noninteractive() or not _stdin_is_interactive(
+            if is_noninteractive() or not _stdout_isatty() or not _stdin_is_interactive(
                 isatty=is_interactive_stdin(), console_mode_ok=_stdin_console_mode_ok()
             ):
                 start_on_login = False
@@ -1600,7 +1621,7 @@ def start() -> None:
     # Manual starts use the same console-less direct spawn as restart() and install --start-now;
     # Scheduled Task / Startup entries are only login persistence.
     pid = _spawn_detached()
-    _report_gateway_start(f"direct spawn (PID {pid})")
+    _report_gateway_start("direct spawn")
 
 
 def _drain_gateway_pid(pid: int, drain_timeout: float) -> bool:
