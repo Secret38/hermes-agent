@@ -1,0 +1,89 @@
+name: Agent OS Windows Visual QA
+
+on:
+  pull_request:
+    paths:
+      - "apps/desktop/src/plugins/agent-os/**"
+      - "apps/desktop/e2e/agent-os-windows-visual.spec.ts"
+      - "apps/desktop/e2e/fixtures.ts"
+      - ".github/workflows/agent-os-windows-visual-qa.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-os-windows-visual-qa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  visual:
+    name: Mission Control @ ${{ matrix.scale_label }} DPI
+    runs-on: windows-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - scale: "1"
+            scale_label: "100%"
+          - scale: "1.25"
+            scale_label: "125%"
+          - scale: "1.5"
+            scale_label: "150%"
+          - scale: "2"
+            scale_label: "200%"
+
+    env:
+      CI: "true"
+      AGENT_OS_VISUAL_SCALE: ${{ matrix.scale }}
+      OPENROUTER_API_KEY: ""
+      OPENAI_API_KEY: ""
+      NOUS_API_KEY: ""
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 26
+          cache: npm
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # 8.2.0
+        with:
+          version: "0.12.13"
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      - name: Set up Python 3.14
+        run: uv python install 3.14
+
+      - name: Install Python dependencies
+        run: uv sync --locked --python 3.14 --extra all --group dev
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Build desktop
+        working-directory: apps/desktop
+        run: npm run build
+
+      - name: Run Agent OS Windows visual QA
+        working-directory: apps/desktop
+        run: npx playwright test e2e/agent-os-windows-visual.spec.ts --reporter=list
+
+      - name: Upload Windows visual evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: agent-os-windows-visual-${{ matrix.scale_label }}-${{ github.sha }}
+          path: |
+            apps/desktop/test-results/**/*-actual.png
+            apps/desktop/test-results/**/*.zip
+            apps/desktop/test-results/**/*.webm
+            apps/desktop/playwright-report
+          retention-days: 14
+          if-no-files-found: warn

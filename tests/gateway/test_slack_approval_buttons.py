@@ -172,12 +172,51 @@ class TestSlackApprovalAction:
         mock_client = adapter._team_clients["T1"]
         mock_client.chat_update = AsyncMock()
 
-        with patch("tools.approval.resolve_gateway_approval", return_value=1):
+        with (
+            patch("tools.approval.gateway_approval_actor_authorized", return_value=True),
+            patch("tools.approval.resolve_gateway_approval", return_value=1) as mock_resolve,
+        ):
             await adapter._handle_approval_action(ack, body, action)
+
+        mock_resolve.assert_called_once_with(
+            "session-key", "once", actor_user_id="U_ALICE"
+        )
 
         update_kwargs = mock_client.chat_update.call_args[1]
         section_text = update_kwargs["blocks"][0]["text"]["text"]
         assert len(section_text) <= 3000
+
+    @pytest.mark.asyncio
+    async def test_central_owner_check_rejects_other_authorized_group_user(self):
+        adapter = _make_adapter()
+        _attach_auth_runner(adapter)
+        adapter._approval_resolved["9.9"] = False
+
+        ack = AsyncMock()
+        body = {
+            "message": {"ts": "9.9", "blocks": []},
+            "channel": {"id": "C1"},
+            "user": {"name": "participant", "id": "U_PARTICIPANT"},
+        }
+        action = {
+            "action_id": "hermes_approve_once",
+            "value": "agent:main:slack:group:C1:owner",
+        }
+
+        with (
+            patch(
+                "tools.approval.gateway_approval_actor_authorized",
+                return_value=False,
+            ) as mock_actor,
+            patch("tools.approval.resolve_gateway_approval") as mock_resolve,
+        ):
+            await adapter._handle_approval_action(ack, body, action)
+
+        mock_actor.assert_called_once_with(
+            "agent:main:slack:group:C1:owner", "U_PARTICIPANT"
+        )
+        mock_resolve.assert_not_called()
+        assert adapter._approval_resolved["9.9"] is False
 
     @pytest.mark.asyncio
     async def test_global_allowlist_blocks_unauthorized_click(self, monkeypatch):

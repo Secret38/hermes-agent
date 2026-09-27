@@ -1,0 +1,14 @@
+{
+  "name": "agent-os",
+  "label": "Agent OS",
+  "description": "Mission Control for durable tasks, plans, agents, verification, recovery, memory and runtime topology",
+  "icon": "Activity",
+  "version": "1.0.0",
+  "tab": {
+    "path": "/agent-os",
+    "hidden": true
+  },
+  "entry": "dist/index.js",
+  "css": "dist/style.css",
+  "api": "plugin_api.py"
+}
