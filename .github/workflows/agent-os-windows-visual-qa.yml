@@ -62,7 +62,7 @@ jobs:
         run: uv python install 3.11
 
       - name: Install Python dependencies
-        run: uv sync --locked --python 3.11 --extra all --extra dev
+        run: uv sync --locked --python 3.11 --extra all --group dev
 
       - name: Install Node dependencies
         run: npm ci
