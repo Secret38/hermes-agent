@@ -122,7 +122,40 @@ def _unanswerable(method: str, sid: str) -> bool:
     return True
 
 
+def _audit_request(req: ServerRequest, event: str, outcome: str | None = None) -> None:
+    """Best-effort metadata-only audit. Never pass req.params/result payloads here."""
+    try:
+        from hermes_cli.operations_audit import append_event
+
+        event_id = append_event(
+            event,
+            category="human_gate",
+            session_id=req.sid,
+            request_id=req.id,
+            subject=req.method,
+            outcome=outcome,
+        )
+        if event_id is not None:
+            _emit("audit.changed", req.sid, {"id": event_id, "event": event, "subject": req.method})
+    except Exception:
+        logger.debug("server request audit failed", exc_info=True)
+
+
+def _cancel_outcome(reason: str) -> str:
+    value = str(reason or "").strip().lower()
+    return value if value in {"timeout", "interrupted", "shutdown", "cancelled", "withdrawn"} else "cancelled"
+
+
+def _response_outcome(req: ServerRequest) -> str:
+    if req.method == "approval" and isinstance(req.result, dict):
+        choice = str(req.result.get("choice") or "").strip().lower()
+        if choice in {"once", "session", "always", "deny"}:
+            return choice
+    return "answered"
+
+
 def _emit_cancel(req: ServerRequest, reason: str) -> None:
+    _audit_request(req, "human_gate.cancelled", _cancel_outcome(reason))
     _emit("request.cancel", req.sid, {"id": req.id, "method": req.method, "reason": reason})
 
 
@@ -138,6 +171,7 @@ def _register(req: ServerRequest) -> None:
     with _lock:
         _open[req.id] = req
     _write(req.frame())
+    _audit_request(req, "human_gate.requested", "waiting")
 
 
 def send(method: str, sid: str, params: dict, *, timeout: float | None,
@@ -230,6 +264,11 @@ def resolve_response(frame: dict) -> bool:
                     merged.update(answers)
                 req.result = {**req.result, "answers": merged}
             req.answered = True
+    _audit_request(
+        req,
+        "human_gate.resolved" if req.answered else "human_gate.cancelled",
+        _response_outcome(req) if req.answered else "client_error",
+    )
     if req.on_result is not None:
         req.on_result(req.result)
     req.event.set()
@@ -252,6 +291,7 @@ def lock_answer(request_id: str, question_id: str, answer: str) -> list[str] | N
             req.result, req.answered = {"answers": dict(req.locked)}, True
             _open.pop(request_id, None)
     if not remaining:
+        _audit_request(req, "human_gate.resolved", "answered")
         req.event.set()
     return remaining
 

@@ -1,0 +1,627 @@
+name: Agent OS Release
+
+on:
+  push:
+    tags:
+      - "agent-os-v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agent-os-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  repository-policy:
+    name: require protected Agent OS release source
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require protected agent-os-v1 branch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          protected="$(gh api "repos/${GITHUB_REPOSITORY}/branches/agent-os-v1" --jq '.protected')"
+          if [ "$protected" != "true" ]; then
+            echo "Refusing release: agent-os-v1 is not protected." >&2
+            exit 1
+          fi
+
+  build-windows:
+    name: build immutable Windows release candidate
+    needs: repository-policy
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      HERMES_BUILD_REPOSITORY: ${{ github.repository }}
+      HERMES_BUILD_PIN_COMMIT: ${{ github.sha }}
+      HERMES_BUILD_PIN_BRANCH: agent-os-v1
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Require tag at current Agent OS branch head
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $commit = (git rev-parse HEAD).Trim()
+          git fetch origin agent-os-v1 --depth=1
+          $branchHead = (git rev-parse origin/agent-os-v1).Trim()
+          if ($commit -ne $branchHead) {
+            throw "Release tag must point at current agent-os-v1 HEAD. tag=$commit branch=$branchHead"
+          }
+
+      - name: Set up Node.js 26
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install workspace dependencies
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          npm ci
+
+      - name: Verify locked Rust dependency graph
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cargo metadata --locked --manifest-path apps/bootstrap-installer/src-tauri/Cargo.toml --format-version 1 | Out-Null
+
+      - name: Build pinned Hermes-Setup.exe
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          npm run tauri:build --workspace @hermes/bootstrap-installer -- --no-bundle
+          git diff --exit-code -- apps/bootstrap-installer/src-tauri/Cargo.lock
+
+          $exe = 'apps/bootstrap-installer/src-tauri/target/release/Hermes-Setup.exe'
+          if (-not (Test-Path $exe -PathType Leaf)) {
+            throw "Expected bootstrap executable was not produced: $exe"
+          }
+
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item -LiteralPath $exe -Destination dist/Hermes-Setup.exe -Force
+          $hash = (Get-FileHash -Algorithm SHA256 dist/Hermes-Setup.exe).Hash.ToLowerInvariant()
+
+          [ordered]@{
+            repository = $env:HERMES_BUILD_REPOSITORY
+            commit = $env:HERMES_BUILD_PIN_COMMIT
+            branch = $env:HERMES_BUILD_PIN_BRANCH
+            tag = $env:GITHUB_REF_NAME
+            unsigned_sha256 = $hash
+          } | ConvertTo-Json | Set-Content -Encoding utf8 dist/source-build-metadata.json
+
+      - name: Upload immutable unsigned build
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
+        with:
+          name: agent-os-release-build-${{ github.sha }}
+          path: |
+            dist/Hermes-Setup.exe
+            dist/source-build-metadata.json
+          if-no-files-found: error
+          retention-days: 7
+
+  qualify-windows-gui:
+    name: qualify exact installer, repair, and prove 20/20 on interactive Windows
+    needs: build-windows
+    runs-on: [self-hosted, windows, x64, agent-os-gui]
+    timeout-minutes: 150
+    env:
+      OPENROUTER_API_KEY: ""
+      OPENAI_API_KEY: ""
+      NOUS_API_KEY: ""
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Require tag at current Agent OS branch head
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $commit = (git rev-parse HEAD).Trim()
+          git fetch origin agent-os-v1 --depth=1
+          $branchHead = (git rev-parse origin/agent-os-v1).Trim()
+          if ($commit -ne $branchHead) {
+            throw "Release tag must point at current agent-os-v1 HEAD. tag=$commit branch=$branchHead"
+          }
+
+      - name: Require an interactive Windows runner session
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sessionId = (Get-Process -Id $PID).SessionId
+          if ($sessionId -le 0) {
+            throw "Production GUI qualification cannot run from Windows Session 0. Start the self-hosted agent-os-gui runner interactively from a logged-in user desktop."
+          }
+          "AGENT_OS_RELEASE_SESSION_ID=$sessionId" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Release runner is attached to interactive Windows session $sessionId"
+
+      - name: Create isolated clean-install home
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $releaseHome = Join-Path $env:RUNNER_TEMP ("agent-os-release-" + $env:GITHUB_RUN_ID + "-" + $env:GITHUB_RUN_ATTEMPT)
+          if (Test-Path $releaseHome) {
+            Remove-Item -LiteralPath $releaseHome -Recurse -Force
+          }
+          New-Item -ItemType Directory -Force -Path $releaseHome | Out-Null
+          $installRoot = Join-Path $releaseHome 'hermes-agent'
+          "HERMES_HOME=$releaseHome" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "AGENT_OS_INSTALL_ROOT=$installRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Clean HERMES_HOME=$releaseHome"
+
+      - name: Download the exact immutable installer candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: agent-os-release-build-${{ github.sha }}
+          path: qualification/candidate
+
+      - name: Verify candidate identity before execution
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $metadata = Get-Content -Raw qualification/candidate/source-build-metadata.json | ConvertFrom-Json
+          if ($metadata.repository -ne $env:GITHUB_REPOSITORY) {
+            throw "Installer repository identity mismatch: $($metadata.repository)"
+          }
+          if ($metadata.commit -ne $env:GITHUB_SHA) {
+            throw "Installer commit identity mismatch: $($metadata.commit)"
+          }
+          if ($metadata.tag -ne $env:GITHUB_REF_NAME) {
+            throw "Installer tag identity mismatch: $($metadata.tag)"
+          }
+          $setup = 'qualification/candidate/Hermes-Setup.exe'
+          $actual = (Get-FileHash -Algorithm SHA256 $setup).Hash.ToLowerInvariant()
+          if ($actual -ne $metadata.unsigned_sha256) {
+            throw "Downloaded installer hash differs from immutable build metadata"
+          }
+
+      - name: Install AutoHotkey GUI driver
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ahkRoot = Join-Path $env:RUNNER_TEMP 'agent-os-release-ahk'
+          if (Test-Path $ahkRoot) {
+            Remove-Item -LiteralPath $ahkRoot -Recurse -Force
+          }
+          New-Item -ItemType Directory -Force -Path $ahkRoot | Out-Null
+          $zip = Join-Path $ahkRoot 'ahk.zip'
+          Invoke-WebRequest -Uri 'https://github.com/AutoHotkey/AutoHotkey/releases/download/v2.0.19/AutoHotkey_2.0.19.zip' -OutFile $zip
+          $expectedAhkSha256 = '4e0d0e65655066a646a210951320feaef0729a3597177131adaec4066bef5869'
+          $actualAhkSha256 = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant()
+          if ($actualAhkSha256 -ne $expectedAhkSha256) {
+            throw "AutoHotkey GUI driver archive hash mismatch"
+          }
+          Expand-Archive -Path $zip -DestinationPath $ahkRoot -Force
+          $ahk = Join-Path $ahkRoot 'AutoHotkey64.exe'
+          if (-not (Test-Path $ahk -PathType Leaf)) {
+            throw "AutoHotkey GUI driver was not provisioned"
+          }
+          Copy-Item tests/install/e2e-assets/install-and-launch.ahk $ahkRoot -Force
+          Copy-Item tests/install/e2e-assets/install-button.png $ahkRoot -Force
+          Copy-Item tests/install/e2e-assets/launch-button.png $ahkRoot -Force
+          "AGENT_OS_RELEASE_AHK=$ahk" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "AGENT_OS_RELEASE_AHK_ROOT=$ahkRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Clean-install through the exact Hermes-Setup.exe user path
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setup = (Resolve-Path 'qualification/candidate/Hermes-Setup.exe').Path
+          $driver = Join-Path $env:AGENT_OS_RELEASE_AHK_ROOT 'install-and-launch.ahk'
+          $ahkLog = Join-Path $env:GITHUB_WORKSPACE 'qualification/installer-ahk.log'
+          $bootstrapLog = Join-Path $env:HERMES_HOME 'logs\bootstrap-installer.log'
+
+          # The candidate is built with repository + commit pins. Do not allow a
+          # developer checkout override to bypass the exact release artifact.
+          Remove-Item Env:HERMES_SETUP_DEV_REPO_ROOT -ErrorAction SilentlyContinue
+
+          $installer = Start-Process -FilePath $setup -PassThru
+          $ahk = Start-Process -FilePath $env:AGENT_OS_RELEASE_AHK `
+            -ArgumentList $driver, $ahkLog, 'Hermes-Setup.exe', $bootstrapLog `
+            -PassThru
+
+          if (-not $ahk.WaitForExit(65 * 60 * 1000)) {
+            Stop-Process -Id $ahk.Id -Force -ErrorAction SilentlyContinue
+            throw "Installer GUI driver did not finish within 65 minutes"
+          }
+          if ($ahk.ExitCode -ne 0) {
+            if (Test-Path $ahkLog) { Get-Content $ahkLog | Write-Host }
+            throw "Installer GUI driver failed with exit $($ahk.ExitCode)"
+          }
+
+          $hermesDesktop = @(Get-Process -Name 'Hermes' -ErrorAction SilentlyContinue)
+          if ($hermesDesktop.Count -eq 0) {
+            throw "Hermes-Setup.exe completed but the Launch hand-off did not start Hermes.exe"
+          }
+          $hermesDesktop | Stop-Process -Force -ErrorAction SilentlyContinue
+
+          if (-not $installer.HasExited) {
+            $installer.WaitForExit(30000) | Out-Null
+          }
+          if (-not $installer.HasExited) {
+            throw "Hermes-Setup.exe did not exit after the Launch hand-off"
+          }
+
+          if (-not (Test-Path $ahkLog -PathType Leaf)) {
+            throw "Installer GUI driver completed without producing its evidence log"
+          }
+          if (-not (Test-Path $bootstrapLog -PathType Leaf)) {
+            throw "Hermes-Setup.exe completed without producing bootstrap-installer.log"
+          }
+          Copy-Item -LiteralPath $bootstrapLog -Destination qualification/bootstrap-installer.log -Force
+
+          $marker = Join-Path $env:AGENT_OS_INSTALL_ROOT '.hermes-bootstrap-complete'
+          $hermes = Join-Path $env:AGENT_OS_INSTALL_ROOT 'venv\Scripts\hermes.exe'
+          if (-not (Test-Path $marker -PathType Leaf)) {
+            throw "Bootstrap completion marker was not published by Hermes-Setup.exe"
+          }
+          if (-not (Test-Path $hermes -PathType Leaf)) {
+            throw "Hermes-Setup.exe did not produce the Hermes launcher"
+          }
+          $installedCommit = (& git -C $env:AGENT_OS_INSTALL_ROOT rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $installedCommit -ne $env:GITHUB_SHA) {
+            throw "Hermes-Setup.exe installed $installedCommit instead of release commit $env:GITHUB_SHA"
+          }
+
+      - name: Collect installer GUI diagnostics
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path qualification | Out-Null
+          $bootstrapLog = Join-Path $env:HERMES_HOME 'logs\bootstrap-installer.log'
+          if (Test-Path $bootstrapLog -PathType Leaf) {
+            Copy-Item -LiteralPath $bootstrapLog -Destination qualification/bootstrap-installer.log -Force
+          }
+          $desktop = @(Get-Process -Name 'Hermes' -ErrorAction SilentlyContinue)
+          [ordered]@{
+            commit = $env:GITHUB_SHA
+            tag = $env:GITHUB_REF_NAME
+            session_id = (Get-Process -Id $PID).SessionId
+            desktop_process_count = $desktop.Count
+            bootstrap_log_present = (Test-Path qualification/bootstrap-installer.log -PathType Leaf)
+            ahk_log_present = (Test-Path qualification/installer-ahk.log -PathType Leaf)
+          } | ConvertTo-Json | Set-Content -Encoding utf8 qualification/installer-gui-diagnostics.json
+
+      - name: Upload installer GUI diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
+        with:
+          name: agent-os-installer-gui-${{ github.sha }}
+          path: |
+            qualification/installer-ahk.log
+            qualification/bootstrap-installer.log
+            qualification/installer-gui-diagnostics.json
+            qualification/candidate/source-build-metadata.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Require full readiness from the installed runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path qualification | Out-Null
+          $hermes = Join-Path $env:AGENT_OS_INSTALL_ROOT 'venv\Scripts\hermes.exe'
+          $health = & $hermes agent-os status --require-full --require-production-security --json
+          if ($LASTEXITCODE -ne 0) {
+            throw "Installed Agent OS did not satisfy full_ready + production_security_ready"
+          }
+          $health | Set-Content -Encoding utf8 qualification/agent-os-health.json
+
+      - name: Prove native Windows GT-12 and GT-13 from the installed checkout
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $python = Join-Path $env:AGENT_OS_INSTALL_ROOT 'venv\Scripts\python.exe'
+          $test = Join-Path $env:AGENT_OS_INSTALL_ROOT 'tests\agent_os\test_windows_golden_e2e.py'
+          & $python -m pytest $test -m "windows_only and integration" -v --tb=short
+          if ($LASTEXITCODE -ne 0) { throw "Native Windows Golden E2E failed" }
+
+      - name: Prove canonical Agent OS V1 20/20 from the installed checkout
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $python = Join-Path $env:AGENT_OS_INSTALL_ROOT 'venv\Scripts\python.exe'
+          $runner = Join-Path $env:AGENT_OS_INSTALL_ROOT 'scripts\agent_os_golden.py'
+          $golden = & $python $runner --json
+          if ($LASTEXITCODE -ne 0) { throw "Agent OS 20/20 Golden Task gate failed" }
+          $golden | Set-Content -Encoding utf8 qualification/agent-os-golden-results.json
+
+      - name: Seed durable Agent OS state before repair
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $python = Join-Path $env:AGENT_OS_INSTALL_ROOT 'venv\Scripts\python.exe'
+          $code = @'
+          from agent_os.contracts import TaskRecord
+          from agent_os.store import AgentOSStore
+
+          store = AgentOSStore()
+          task = TaskRecord.create(
+              "release-qualification-preservation-sentinel",
+              metadata={"release_qualification": True},
+          )
+          store.create_task(task)
+          print(task.id)
+          '@
+          $taskId = (& $python -c $code | Select-Object -Last 1).Trim()
+          if ([string]::IsNullOrWhiteSpace($taskId)) {
+            throw "Could not create durable Agent OS sentinel task"
+          }
+          "AGENT_OS_RELEASE_SENTINEL_TASK=$taskId" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Created durable sentinel task $taskId"
+
+      - name: Re-run production installer as repair/idempotency gate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/install.ps1 `
+            -Repository $env:GITHUB_REPOSITORY `
+            -Branch agent-os-v1 `
+            -Commit $env:GITHUB_SHA `
+            -HermesHome $env:HERMES_HOME `
+            -InstallDir $env:AGENT_OS_INSTALL_ROOT `
+            -IncludeDesktop `
+            -NonInteractive `
+            -Json
+          if ($LASTEXITCODE -ne 0) {
+            throw "Repair/reinstall idempotency gate failed with exit $LASTEXITCODE"
+          }
+
+          $hermes = Join-Path $env:AGENT_OS_INSTALL_ROOT 'venv\Scripts\hermes.exe'
+          $repairHealth = & $hermes agent-os status --require-full --require-production-security --json
+          if ($LASTEXITCODE -ne 0) { throw "Agent OS lost full/security readiness after repair" }
+          $repairHealth | Set-Content -Encoding utf8 qualification/agent-os-repair-health.json
+
+          $python = Join-Path $env:AGENT_OS_INSTALL_ROOT 'venv\Scripts\python.exe'
+          $verifyCode = @'
+          import os
+          from agent_os.store import AgentOSStore
+
+          task_id = os.environ["AGENT_OS_RELEASE_SENTINEL_TASK"]
+          task = AgentOSStore().get_task(task_id)
+          if task is None or task.metadata.get("release_qualification") is not True:
+              raise SystemExit("durable Agent OS sentinel was lost across repair")
+          print(task.id)
+          '@
+          & $python -c $verifyCode
+          if ($LASTEXITCODE -ne 0) {
+            throw "Durable Agent OS state did not survive repair/reinstall"
+          }
+
+      - name: Prove full uninstall removes the isolated installation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $hermes = Join-Path $env:AGENT_OS_INSTALL_ROOT 'venv\Scripts\hermes.exe'
+          if (-not (Test-Path $hermes -PathType Leaf)) {
+            throw "Installed Hermes launcher missing before uninstall gate"
+          }
+
+          & $hermes uninstall --yes --full
+          $uninstallExit = $LASTEXITCODE
+          if ($uninstallExit -ne 0) {
+            throw "Full uninstall returned exit $uninstallExit"
+          }
+
+          Start-Sleep -Milliseconds 500
+          if (Test-Path $env:AGENT_OS_INSTALL_ROOT) {
+            throw "Full uninstall left the installation checkout on disk: $env:AGENT_OS_INSTALL_ROOT"
+          }
+          if (Test-Path $env:HERMES_HOME) {
+            throw "Full uninstall left the isolated HERMES_HOME on disk: $env:HERMES_HOME"
+          }
+
+      - name: Record qualification identity
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [ordered]@{
+            repository = $env:GITHUB_REPOSITORY
+            commit = $env:GITHUB_SHA
+            tag = $env:GITHUB_REF_NAME
+            windows_session_id = [int]$env:AGENT_OS_RELEASE_SESSION_ID
+            clean_install = $true
+            exact_installer_gui = $true
+            desktop_launch_handoff = $true
+            repair_reinstall = $true
+            durable_state_preserved = $true
+            full_uninstall = $true
+            full_ready = $true
+            production_security_ready = $true
+            windows_golden = "GT-12,GT-13"
+            golden_tasks = "20/20"
+          } | ConvertTo-Json | Set-Content -Encoding utf8 qualification/qualification-metadata.json
+
+      - name: Upload qualification evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
+        with:
+          name: agent-os-qualification-${{ github.sha }}
+          path: qualification/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Clean isolated Agent OS release home
+        if: always()
+        shell: pwsh
+        run: |
+          if ($env:HERMES_HOME -and (Test-Path $env:HERMES_HOME)) {
+            Remove-Item -LiteralPath $env:HERMES_HOME -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
+  sign-publish:
+    name: sign and publish production release
+    needs: [build-windows, qualify-windows-gui]
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Download immutable Windows build
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: agent-os-release-build-${{ github.sha }}
+          path: dist
+
+      - name: Download qualification evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: agent-os-qualification-${{ github.sha }}
+          path: qualification
+
+      - name: Verify build and qualification identity
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $build = Get-Content -Raw dist/source-build-metadata.json | ConvertFrom-Json
+          $qualification = Get-Content -Raw qualification/qualification-metadata.json | ConvertFrom-Json
+
+          if ($build.commit -ne $env:GITHUB_SHA -or $qualification.commit -ne $env:GITHUB_SHA) {
+            throw "Release evidence commit identity mismatch"
+          }
+          if ($build.tag -ne $env:GITHUB_REF_NAME -or $qualification.tag -ne $env:GITHUB_REF_NAME) {
+            throw "Release evidence tag identity mismatch"
+          }
+          if (
+            -not $qualification.clean_install `
+            -or -not $qualification.exact_installer_gui `
+            -or -not $qualification.desktop_launch_handoff `
+            -or -not $qualification.repair_reinstall `
+            -or -not $qualification.durable_state_preserved `
+            -or -not $qualification.full_uninstall `
+            -or -not $qualification.full_ready `
+            -or -not $qualification.production_security_ready `
+            -or $qualification.windows_golden -ne "GT-12,GT-13" `
+            -or $qualification.golden_tasks -ne "20/20"
+          ) {
+            throw "Qualification evidence is not production-ready"
+          }
+
+          $actualUnsigned = (Get-FileHash -Algorithm SHA256 dist/Hermes-Setup.exe).Hash.ToLowerInvariant()
+          if ($actualUnsigned -ne $build.unsigned_sha256) {
+            throw "Unsigned installer hash differs from immutable build metadata"
+          }
+          "UNSIGNED_SHA256=$actualUnsigned" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Authenticode-sign Hermes-Setup.exe
+        shell: pwsh
+        env:
+          WINDOWS_CODE_SIGN_PFX_B64: ${{ secrets.WINDOWS_CODE_SIGN_PFX_B64 }}
+          WINDOWS_CODE_SIGN_PASSWORD: ${{ secrets.WINDOWS_CODE_SIGN_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CODE_SIGN_PFX_B64)) {
+            throw "Missing WINDOWS_CODE_SIGN_PFX_B64 repository secret; refusing an unsigned production release"
+          }
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CODE_SIGN_PASSWORD)) {
+            throw "Missing WINDOWS_CODE_SIGN_PASSWORD repository secret"
+          }
+
+          $pfx = Join-Path $env:RUNNER_TEMP 'agent-os-codesign.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CODE_SIGN_PFX_B64))
+
+          try {
+            $kits = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits/10/bin'
+            $signtool = Get-ChildItem -Path $kits -Filter signtool.exe -Recurse |
+              Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
+              Sort-Object FullName -Descending |
+              Select-Object -First 1
+            if (-not $signtool) { throw "signtool.exe was not found on the hosted signing runner" }
+
+            & $signtool.FullName sign /fd SHA256 /tr "http://timestamp.digicert.com" /td SHA256 /f $pfx /p $env:WINDOWS_CODE_SIGN_PASSWORD dist/Hermes-Setup.exe
+            if ($LASTEXITCODE -ne 0) { throw "signtool sign failed" }
+
+            & $signtool.FullName verify /pa /all /v dist/Hermes-Setup.exe
+            if ($LASTEXITCODE -ne 0) { throw "signtool Authenticode verification failed" }
+          }
+          finally {
+            Remove-Item -LiteralPath $pfx -Force -ErrorAction SilentlyContinue
+          }
+
+          $signature = Get-AuthenticodeSignature dist/Hermes-Setup.exe
+          if ($signature.Status -ne 'Valid') {
+            throw "Authenticode verification failed: $($signature.Status) $($signature.StatusMessage)"
+          }
+          if (-not $signature.TimeStamperCertificate) {
+            throw "Authenticode signature is valid but has no trusted timestamp countersignature"
+          }
+
+      - name: Finalize release evidence
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $signedHash = (Get-FileHash -Algorithm SHA256 dist/Hermes-Setup.exe).Hash.ToLowerInvariant()
+          "$signedHash  Hermes-Setup.exe" | Set-Content -Encoding ascii dist/SHA256SUMS.txt
+
+          $signature = Get-AuthenticodeSignature dist/Hermes-Setup.exe
+          [ordered]@{
+            repository = $env:GITHUB_REPOSITORY
+            commit = $env:GITHUB_SHA
+            tag = $env:GITHUB_REF_NAME
+            unsigned_sha256 = $env:UNSIGNED_SHA256
+            signed_sha256 = $signedHash
+            signature_status = [string]$signature.Status
+            signer = [string]$signature.SignerCertificate.Subject
+            timestamp_signer = [string]$signature.TimeStamperCertificate.Subject
+          } | ConvertTo-Json | Set-Content -Encoding utf8 dist/build-metadata.json
+
+          Copy-Item qualification/agent-os-health.json dist/agent-os-health.json
+          Copy-Item qualification/agent-os-repair-health.json dist/agent-os-repair-health.json
+          Copy-Item qualification/agent-os-golden-results.json dist/agent-os-golden-results.json
+          Copy-Item qualification/qualification-metadata.json dist/qualification-metadata.json
+          if (Test-Path qualification/installer-ahk.log) {
+            Copy-Item qualification/installer-ahk.log dist/installer-ahk.log
+          }
+          if (Test-Path qualification/bootstrap-installer.log) {
+            Copy-Item qualification/bootstrap-installer.log dist/bootstrap-installer.log
+          }
+
+      - name: Upload signed release evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
+        with:
+          name: Hermes-Setup-signed-${{ github.ref_name }}
+          path: |
+            dist/Hermes-Setup.exe
+            dist/SHA256SUMS.txt
+            dist/build-metadata.json
+            dist/source-build-metadata.json
+            dist/agent-os-health.json
+            dist/agent-os-repair-health.json
+            dist/agent-os-golden-results.json
+            dist/qualification-metadata.json
+            dist/installer-ahk.log
+            dist/bootstrap-installer.log
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $assets = @(
+            'dist/Hermes-Setup.exe',
+            'dist/SHA256SUMS.txt',
+            'dist/build-metadata.json',
+            'dist/source-build-metadata.json',
+            'dist/agent-os-health.json',
+            'dist/agent-os-repair-health.json',
+            'dist/agent-os-golden-results.json',
+            'dist/qualification-metadata.json'
+          )
+          foreach ($optional in @('dist/installer-ahk.log', 'dist/bootstrap-installer.log')) {
+            if (Test-Path $optional) { $assets += $optional }
+          }
+          gh release create $env:GITHUB_REF_NAME @assets --verify-tag --title "Agent OS $env:GITHUB_REF_NAME" --generate-notes

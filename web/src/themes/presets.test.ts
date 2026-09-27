@@ -27,3 +27,16 @@ describe("dashboard presets derive from the shared palette table", () => {
     expect(contrastRatio(palette.midground.hex, palette.background.hex)).toBeGreaterThanOrEqual(3);
   });
 });
+
+describe("Nous Blue accessibility contrast", () => {
+  it.each(["success", "warning", "destructive"] as const)(
+    "%s status text meets WCAG AA against the light canvas",
+    (key) => {
+      const theme = BUILTIN_THEMES["nous-blue"];
+      const color = theme.colorOverrides?.[key];
+
+      expect(color).toBeTruthy();
+      expect(contrastRatio(color!, theme.palette.background.hex)).toBeGreaterThanOrEqual(4.5);
+    },
+  );
+});
