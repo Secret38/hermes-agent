@@ -1633,6 +1633,7 @@ export { SidebarRowLead } from '@/app/chat/sidebar/chrome'
  *  switcher, the fleet profile rail and any plugin rail listing gateways share
  *  it, so a connection looks the same wherever it is named. */
 export { ConnectionGlyph } from '@/app/chat/sidebar/connection-glyph'
+export type { SidebarProjectTree } from '@/app/chat/sidebar/projects/workspace-groups'
 export { SIDEBAR_ROW_LEAD, SIDEBAR_TRUNCATED_LEADING } from '@/app/chat/sidebar/row-geometry'
 export { PALETTE_AREA, type PaletteContribution } from '@/app/command-palette/contrib'
 /** THE overdue test for a cron job's `next_run_at`: non-null once the stored slot
@@ -1825,7 +1826,7 @@ export { useContributions } from '@/contrib/react/use-contributions'
 export type { Contribution } from '@/contrib/types'
 /** The live gateway instance type — for typing the `gateway` prop `ConnectorsTab`
  *  takes; obtain the instance from `host.getGateway()`. */
-export type { HermesGateway } from '@/hermes'
+export type { HermesGateway, SessionInfo } from '@/hermes'
 /** Grab-to-pan for overflow containers (boards, timelines, wide tables) —
  *  the shared scrub primitive; don't hand-roll drag-to-scroll. */
 export { type GrabScroll, useGrabScroll } from '@/hooks/use-grab-scroll'
@@ -1946,11 +1947,46 @@ export { cn } from '@/lib/utils'
  *  the user opens the session, `forgetSessionUnread` drops it when the session
  *  is gone. Pass the owning profile — a hidden session has no row to read it
  *  from, and the persisted half is bucketed per profile. */
+export { $approvalModes, type ApprovalMode } from '@/store/approval-mode'
+export { $clarifyRequests, type ClarifyRequest } from '@/store/clarify'
 export {
   $liveSessionSnapshots,
   liveSessionScopeKey,
   type LiveSessionSnapshotItem
 } from '@/store/live-sessions'
+export { revealDesktopPane } from '@/store/pane-focus'
+export { openBrowserTab } from '@/store/preview'
+export {
+  $projectTree,
+  $projectTreeLoading,
+  fetchProjectSessions,
+  goToProject,
+  refreshProjectTree
+} from '@/store/projects'
+export {
+  $approvalRequests,
+  $secretRequests,
+  $sudoRequests,
+  $vaultCodeRequests,
+  $vaultSaveLoginRequests,
+  $vaultUnlockRequests,
+  answerApproval,
+  type ApprovalRequest,
+  type SecretRequest,
+  type SudoRequest,
+  type VaultCodeRequest,
+  type VaultSaveLoginRequest,
+  type VaultUnlockRequest
+} from '@/store/prompts'
+export { revealReview } from '@/store/review'
+export {
+  $resumeFailedSessionId,
+  $workspaceCwdOwner,
+  knownSessionProfile,
+  ownerLookupSessionRows,
+  sessionMatchesStoredId
+} from '@/store/session'
+export { storedSessionIdForRuntimeId } from '@/store/session-states'
 export { ackStoredSessionId, forgetSessionUnread, markSessionUnreadFinished } from '@/store/session-unread'
 export { $subagentsBySession, type SubagentProgress } from '@/store/subagents'
 /** `sidebarNav.prefs`: hide / re-order the sidebar's nav rows by CONTRIBUTING a
