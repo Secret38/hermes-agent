@@ -305,6 +305,22 @@ def _get_unattended_approval_mode() -> str:
     return _binary_approval_mode("unattended_mode")
 
 
+def _confirm_host_mutations() -> bool:
+    """Agent-OS production floor: require exact human consent for host mutations.
+
+    Defaults off for ordinary Hermes installs. When enabled it is intentionally
+    separate from approvals.mode/yolo: a session convenience toggle must not
+    disable the production trust boundary.
+    """
+    try:
+        value = _get_approval_config().get("confirm_host_mutations", False)
+    except Exception:
+        return False
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on", "manual", "ask"}
+    return bool(value)
+
+
 def _tirith_fail_open() -> bool:
     """``security.tirith_fail_open`` (default True; True when config is unreadable).
     False means the operator opted into fail-closed: an un-importable scanner

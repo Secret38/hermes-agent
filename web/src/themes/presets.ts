@@ -215,6 +215,14 @@ export const nousBlueTheme: DashboardTheme = {
   layout: DEFAULT_LAYOUT,
   terminalBackground: "#f5f8fc",
   terminalForeground: "#170d02",
+  colorOverrides: {
+    // WCAG AA normal-text contrast against the Nous Blue canvas (#E8F2FD).
+    // The dark-theme defaults (#4ade80 / #ffbd38 / #fb2c36) are too light
+    // here (~1.54:1 / ~1.47:1 / ~3.36:1 respectively).
+    success: "#08783f",
+    warning: "#8a4b00",
+    destructive: "#b42318",
+  },
   seriesColors: {
     inputTokenAccent: "#001934",
     outputTokenAccent: "#0053fd",

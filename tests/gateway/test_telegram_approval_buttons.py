@@ -230,8 +230,17 @@ class TestTelegramApprovalCallback:
         context = MagicMock()
 
         with patch.dict(os.environ, {"TELEGRAM_ALLOWED_USERS": "*"}, clear=False):
-            with patch("tools.approval.resolve_gateway_approval", return_value=1):
+            with (
+                patch("tools.approval.gateway_approval_actor_authorized", return_value=True),
+                patch("tools.approval.resolve_gateway_approval", return_value=1) as mock_resolve,
+            ):
                 await adapter._handle_callback_query(update, context)
+
+        mock_resolve.assert_called_once_with(
+            "agent:main:telegram:group:12345:99",
+            "once",
+            actor_user_id="12345",
+        )
 
         assert "12345" not in adapter._typing_paused
 
@@ -263,6 +272,41 @@ class TestTelegramApprovalCallback:
         assert "MARKDOWN_V2" in repr(edit_kwargs["parse_mode"])
         assert "Alice\\_Bob" in edit_kwargs["text"]
 
+
+    @pytest.mark.asyncio
+    async def test_other_authorized_group_user_cannot_consume_owner_approval(self):
+        adapter = _make_adapter()
+        session_key = "agent:main:telegram:group:12345:99"
+        adapter._approval_state[7] = session_key
+
+        query = AsyncMock()
+        query.data = "ea:once:7"
+        query.message = MagicMock()
+        query.message.chat_id = 12345
+        query.from_user = MagicMock()
+        query.from_user.first_name = "Participant"
+        query.from_user.id = "777"
+        query.answer = AsyncMock()
+        query.edit_message_text = AsyncMock()
+
+        update = MagicMock()
+        update.callback_query = query
+        context = MagicMock()
+
+        with patch.dict(os.environ, {"TELEGRAM_ALLOWED_USERS": "*"}, clear=False):
+            with (
+                patch(
+                    "tools.approval.gateway_approval_actor_authorized",
+                    return_value=False,
+                ) as mock_actor,
+                patch("tools.approval.resolve_gateway_approval") as mock_resolve,
+            ):
+                await adapter._handle_callback_query(update, context)
+
+        mock_actor.assert_called_once_with(session_key, "777")
+        mock_resolve.assert_not_called()
+        assert adapter._approval_state[7] == session_key
+        query.edit_message_text.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_update_prompt_callback_not_affected(self, tmp_path):

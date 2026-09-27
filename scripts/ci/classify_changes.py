@@ -32,6 +32,9 @@ Lanes:
   shared runner; running them on every Python PR made their timing noise
   everyone's problem. They still run on push (fail-open) and whenever the
   script, its siblings, or their tests change.
+* ``agent_os_e2e`` — production Agent OS Golden Tasks that provision the
+  real browser runtime and native Windows computer-use runtime. Runs for
+  Agent OS, browser, computer-use and their dedicated evaluation surfaces.
 * ``rust``        — ``cargo test`` for the Tauri bootstrap installer. ``.rs``
   lives under ``apps/``, so without this lane a Rust change matched ``frontend``
   and only the TypeScript matrix ran.
@@ -143,6 +146,25 @@ _DESKTOP_UPDATER_FILES = {
     "pyproject.toml",
 }
 
+# Agent OS production E2E surfaces. These jobs provision external/runtime
+# dependencies (Chromium + cua-driver), so keep them off unrelated Python PRs.
+_AGENT_OS_E2E_PATHS = (
+    "agent_os/",
+    "evals/agent_os/",
+    "tests/agent_os/",
+    "tools/computer_use/",
+    "plugins/browser/",
+)
+_AGENT_OS_E2E_PREFIXES = (
+    "tools/browser_",
+    "agent/browser_",
+)
+_AGENT_OS_E2E_FILES = {
+    "tools/computer_use_tool.py",
+    "hermes_cli/subcommands/computer_use.py",
+    "hermes_cli/tools_config_cua.py",
+}
+
 # Rust crates — currently just the Tauri bootstrap installer (Hermes-Setup).
 # These live under ``apps/``, so before this lane existed a ``.rs`` edit matched
 # ``frontend`` and nothing more: the TypeScript matrix built, cargo never ran,
@@ -200,6 +222,14 @@ def _is_desktop_updater(p: str) -> bool:
     )
 
 
+def _is_agent_os_e2e(p: str) -> bool:
+    return (
+        p.startswith(_AGENT_OS_E2E_PATHS)
+        or p.startswith(_AGENT_OS_E2E_PREFIXES)
+        or p in _AGENT_OS_E2E_FILES
+    )
+
+
 def _is_rust(p: str) -> bool:
     return (
         p.endswith(".rs")
@@ -251,6 +281,7 @@ def classify(files: list[str]) -> dict[str, bool]:
             f.startswith(_BOOTSTRAP_PATHS) or f in _BOOTSTRAP_FILES for f in files
         ),
         "desktop_updater": any(_is_desktop_updater(f) for f in files),
+        "agent_os_e2e": any(_is_agent_os_e2e(f) for f in files),
         "rust": any(_is_rust(f) for f in files),
         "mcp_catalog": any(_is_mcp_catalog(f) for f in files),
         "ci_review": any(_is_ci_review(f) for f in files),
@@ -269,6 +300,7 @@ def classify(files: list[str]) -> dict[str, bool]:
         ret["npm_lock"] = True
         ret["bootstrap"] = True
         ret["desktop_updater"] = True
+        ret["agent_os_e2e"] = True
         ret["rust"] = True
         ret["nix"] = True
         ret["ci_review"] = True

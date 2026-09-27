@@ -39,6 +39,20 @@ def _make_event(text: str) -> MessageEvent:
     )
 
 
+def _make_group_source(user_id: str = "u1") -> SessionSource:
+    return SessionSource(
+        platform=Platform.TELEGRAM,
+        user_id=user_id,
+        chat_id="group-1",
+        user_name=user_id,
+        chat_type="group",
+    )
+
+
+def _make_group_event(text: str, user_id: str = "u1") -> MessageEvent:
+    return MessageEvent(text=text, source=_make_group_source(user_id), message_id=f"m-{user_id}")
+
+
 def _make_runner():
     from gateway.run import GatewayRunner
 
@@ -135,6 +149,65 @@ class TestBlockingGatewayApproval:
         unregister_gateway_notify(session_key)
 
 
+    def test_bound_group_approval_rejects_missing_or_wrong_actor(self):
+        from tools.approval import (
+            _gateway_queues,
+            bind_gateway_approval_principal,
+            resolve_gateway_approval,
+        )
+        from tools.approval_gateway_wait import _ApprovalEntry
+
+        session_key = "group-session"
+        entry = _ApprovalEntry({"command": "rm -rf /important", "request_id": "req-1"})
+        _gateway_queues[session_key] = [entry]
+        assert bind_gateway_approval_principal(
+            session_key,
+            "req-1",
+            user_id="owner",
+            chat_id="group-1",
+            chat_type="group",
+        )
+
+        assert resolve_gateway_approval(session_key, "once") == 0
+        assert resolve_gateway_approval(
+            session_key, "once", actor_user_id="participant"
+        ) == 0
+        assert entry.event.is_set() is False
+        assert entry.result is None
+
+        assert resolve_gateway_approval(
+            session_key, "once", actor_user_id="owner"
+        ) == 1
+        assert entry.event.is_set() is True
+        assert entry.result == "once"
+
+    def test_explicit_admin_can_settle_bound_group_approval(self):
+        from tools.approval import (
+            _gateway_queues,
+            bind_gateway_approval_principal,
+            resolve_gateway_approval,
+        )
+        from tools.approval_gateway_wait import _ApprovalEntry
+
+        session_key = "group-session-admin"
+        entry = _ApprovalEntry({"command": "sudo true", "request_id": "req-admin"})
+        _gateway_queues[session_key] = [entry]
+        assert bind_gateway_approval_principal(
+            session_key,
+            "req-admin",
+            user_id="owner",
+            chat_id="group-1",
+            chat_type="group",
+        )
+
+        assert resolve_gateway_approval(
+            session_key,
+            "session",
+            actor_user_id="admin",
+            actor_is_explicit_admin=True,
+        ) == 1
+        assert entry.result == "session"
+
     def test_resolve_single_pops_oldest_fifo(self):
         """resolve_gateway_approval without resolve_all resolves oldest first."""
         from tools.approval import resolve_gateway_approval, _gateway_queues
@@ -200,6 +273,118 @@ class TestApproveCommand:
         assert "session" in result.lower()
         assert e1.result == "session"
         assert e2.result == "session"
+
+
+class TestGroupApprovalAuthorization:
+
+    def setup_method(self):
+        _clear_approval_state()
+
+    @pytest.mark.asyncio
+    async def test_group_participant_cannot_approve_another_users_turn(self):
+        from tools.approval import _gateway_queues
+        from tools.approval_gateway_wait import _ApprovalEntry
+
+        runner = _make_runner()
+        session_key = runner._session_key_for_source(_make_group_source("owner"))
+        entry = _ApprovalEntry({"command": "rm -rf /important"})
+        _gateway_queues[session_key] = [entry]
+        runner._pending_approvals[session_key] = {
+            "command": "rm -rf /important",
+            "_approval_owner_user_id": "owner",
+        }
+
+        result = await runner._handle_approve_command(
+            _make_group_event("/approve always", "participant")
+        )
+
+        assert "Only the user who initiated" in result
+        assert entry.event.is_set() is False
+        assert entry.result is None
+
+    @pytest.mark.asyncio
+    async def test_group_turn_owner_can_approve(self):
+        from tools.approval import _gateway_queues
+        from tools.approval_gateway_wait import _ApprovalEntry
+
+        runner = _make_runner()
+        session_key = runner._session_key_for_source(_make_group_source("owner"))
+        entry = _ApprovalEntry({"command": "rm -rf /important"})
+        _gateway_queues[session_key] = [entry]
+        runner._pending_approvals[session_key] = {
+            "command": "rm -rf /important",
+            "_approval_owner_user_id": "owner",
+        }
+
+        result = await runner._handle_approve_command(
+            _make_group_event("/approve", "owner")
+        )
+
+        assert entry.event.is_set() is True
+        assert entry.result == "once"
+        assert "approved" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_explicit_group_admin_can_approve_another_users_turn(self):
+        from tools.approval import _gateway_queues
+        from tools.approval_gateway_wait import _ApprovalEntry
+
+        runner = _make_runner()
+        runner.config = GatewayConfig(
+            platforms={
+                Platform.TELEGRAM: PlatformConfig(
+                    enabled=True,
+                    token="***",
+                    extra={"group_allow_admin_from": ["admin"]},
+                )
+            }
+        )
+        session_key = runner._session_key_for_source(_make_group_source("owner"))
+        entry = _ApprovalEntry({"command": "rm -rf /important"})
+        _gateway_queues[session_key] = [entry]
+        runner._pending_approvals[session_key] = {
+            "command": "rm -rf /important",
+            "_approval_owner_user_id": "owner",
+        }
+
+        result = await runner._handle_approve_command(
+            _make_group_event("/approve session", "admin")
+        )
+
+        assert entry.event.is_set() is True
+        assert entry.result == "session"
+        assert "session" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_group_user_without_identity_cannot_deny(self):
+        from tools.approval import _gateway_queues
+        from tools.approval_gateway_wait import _ApprovalEntry
+
+        runner = _make_runner()
+        session_key = runner._session_key_for_source(_make_group_source("owner"))
+        entry = _ApprovalEntry({"command": "rm -rf /important"})
+        _gateway_queues[session_key] = [entry]
+        runner._pending_approvals[session_key] = {
+            "command": "rm -rf /important",
+            "_approval_owner_user_id": "owner",
+        }
+        event = MessageEvent(
+            text="/deny",
+            source=SessionSource(
+                platform=Platform.TELEGRAM,
+                user_id=None,
+                chat_id="group-1",
+                chat_type="group",
+            ),
+            message_id="anon",
+        )
+
+        result = await runner._handle_deny_command(event)
+
+        assert "Only the user who initiated" in result
+        assert entry.event.is_set() is False
+        assert entry.result is None
+
 
 
 # ------------------------------------------------------------------

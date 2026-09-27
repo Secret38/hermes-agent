@@ -56,6 +56,51 @@ class TestRegistration:
         assert cua_backend.cua_driver_binary_available() is True
 
 
+
+class TestProductionApprovalPolicy:
+    def test_production_desktop_approval_is_exact_and_non_bypassable(self, monkeypatch):
+        from tools.computer_use import tool as cu_tool
+        from tools import approval_context
+        import tools.approval as approval_module
+
+        monkeypatch.setattr(approval_context, "_confirm_host_mutations", lambda: True)
+        captured = {}
+
+        def gate(**kwargs):
+            captured.update(kwargs)
+            return {"approved": True}
+
+        monkeypatch.setattr(approval_module, "_run_approval_gate", gate)
+
+        assert cu_tool._request_approval(
+            "click", {"action": "click", "coordinate": [10, 20]}
+        ) is None
+        assert captured["bypass_capable"] is False
+        assert captured["session_capable"] is False
+        assert captured["permanent_capable"] is False
+
+    def test_normal_desktop_approval_keeps_existing_scope_behavior(self, monkeypatch):
+        from tools.computer_use import tool as cu_tool
+        from tools import approval_context
+        import tools.approval as approval_module
+
+        monkeypatch.setattr(approval_context, "_confirm_host_mutations", lambda: False)
+        captured = {}
+
+        def gate(**kwargs):
+            captured.update(kwargs)
+            return {"approved": True}
+
+        monkeypatch.setattr(approval_module, "_run_approval_gate", gate)
+
+        assert cu_tool._request_approval(
+            "click", {"action": "click", "coordinate": [10, 20]}
+        ) is None
+        assert captured["bypass_capable"] is True
+        assert captured["session_capable"] is True
+        assert captured["permanent_capable"] is True
+
+
 # ---------------------------------------------------------------------------
 # Dispatch & action routing
 # ---------------------------------------------------------------------------
