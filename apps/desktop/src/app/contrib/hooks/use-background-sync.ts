@@ -14,6 +14,11 @@ import { sessionMessagesSignature } from '@/lib/session-signatures'
 import { latestSessionTodos } from '@/lib/todos'
 import { pendingSessionReplay } from '@/store/gateway'
 import { $sidebarShowArchived } from '@/store/layout'
+import {
+  clearLiveSessionSnapshot,
+  type LiveSessionStatusResponse,
+  publishLiveSessionSnapshot
+} from '@/store/live-sessions'
 import { $changeEventsAvailable, $cronChangeTick, $projectsChangeTick, $sessionsChangeTick } from '@/store/live-sync'
 import { $onBattery, batteryPollInterval } from '@/store/power'
 import { refreshActiveProfile } from '@/store/profile'
@@ -574,17 +579,6 @@ const SESSIONS_LIST_TICK_GAP_MS = 10_000
 // list reconciliation.
 const TYPING_BURST_QUIET_MS = 1_500
 
-interface LiveSessionStatusItem {
-  id?: string
-  last_active?: number
-  session_key?: string
-  status?: 'idle' | 'starting' | 'waiting' | 'working'
-}
-
-interface LiveSessionStatusResponse {
-  sessions?: LiveSessionStatusItem[]
-}
-
 // Runtime ids this poll has seen live, per gateway profile. A profile only
 // ever reaps what its OWN snapshot previously reported: background profiles are
 // served by different gateways and never appear in this profile's active_list,
@@ -1049,6 +1043,12 @@ export function useBackgroundSync({
         const response = await requestGateway<LiveSessionStatusResponse>('session.active_list', {})
 
         if (!cancelled) {
+          publishLiveSessionSnapshot(
+            activeConnectionId,
+            activeGatewayProfile,
+            response.sessions ?? [],
+            Date.now()
+          )
           rehydrateLiveSessionStatuses(response, Date.now(), activeGatewayProfile, stateAtRequest)
         }
       } catch {
@@ -1083,6 +1083,7 @@ export function useBackgroundSync({
       cancelled = true
       unsubscribe()
       dispose()
+      clearLiveSessionSnapshot(activeConnectionId, activeGatewayProfile)
     }
     // Keep the in-flight guard alive across change ticks; a slow response must
     // not create a new request (and invalidate the old result) on every tick.
