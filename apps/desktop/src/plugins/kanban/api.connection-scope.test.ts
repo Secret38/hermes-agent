@@ -13,7 +13,7 @@ vi.mock('@/store/gateway', async importOriginal => ({
   activeGatewayConnectionId: () => routed.id
 }))
 
-const { $boardSlug, bindApi, boardsKey, useKanbanScope } = await import('./api')
+const { $boardSlug, bindApi, boardsKey, fetchOperationsSnapshot, useKanbanScope } = await import('./api')
 const { setConnection } = await import('@/store/session')
 const { queryClient } = await import('@/lib/query-client')
 
@@ -26,6 +26,63 @@ afterEach(() => {
 })
 
 describe('kanban connection scope', () => {
+  it('projects the selected board into Mission Control without adopting the server current board', async () => {
+    const paths: string[] = []
+
+    const dispose = bindApi(async path => {
+      paths.push(path)
+
+      if (path === '/boards') {
+        return { current: 'other', boards: [
+          { slug: 'ops', name: 'Operations', project_id: 'p-ops' },
+          { slug: 'other', name: 'Other', project_id: 'p-other' }
+        ] } as never
+      }
+
+      if (path === '/projects') {
+        return { projects: [{ id: 'p-ops', name: 'OS' }] } as never
+      }
+
+      return { now: 10, latest_event_id: 0, columns: [{ name: 'running', tasks: [
+        { id: 'task', title: 'Build', status: 'running', started_at: 1, current_run_started_at: 8 }
+      ] }] } as never
+    }, noopStorage, () => () => undefined)
+
+    try {
+      $boardSlug.set('ops')
+      const snapshot = await fetchOperationsSnapshot()
+
+      expect(paths).toContain('/board?board=ops')
+      expect(snapshot).toMatchObject({ connectionId: 'local', scopeKey: 'ops', scopeLabel: 'Operations' })
+      expect(snapshot.tasks[0]).toMatchObject({ projectId: 'p-ops', projectName: 'OS', startedAt: 8 })
+    } finally {
+      dispose()
+    }
+  })
+
+  it('rejects an outgoing operations read after switching connection', async () => {
+    let finishBoard!: (value: never) => void
+    const board = new Promise<never>(resolve => { finishBoard = resolve })
+
+    const dispose = bindApi(async path => {
+      if (path === '/boards') {return { current: 'ops', boards: [] } as never}
+
+      if (path === '/projects') {return { projects: [] } as never}
+
+      return board
+    }, noopStorage, () => () => undefined)
+
+    try {
+      const pending = fetchOperationsSnapshot()
+      const rejected = expect(pending).rejects.toThrow('connection changed')
+      setConnection({ connectionId: 'spark', mode: 'remote' } as never)
+      finishBoard({ now: 10, latest_event_id: 0, columns: [] } as never)
+      await rejected
+    } finally {
+      dispose()
+    }
+  })
+
   it('render-time keys follow the active connection', () => {
     const { result } = renderHook(() => useKanbanScope())
 

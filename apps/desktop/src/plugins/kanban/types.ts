@@ -14,6 +14,7 @@ export interface KanbanTask {
   project_id?: null | string
   session_id?: null | string
   current_run_id?: null | number
+  current_run_started_at?: null | number
   worker_session_id?: null | string
   created_at?: number
   latest_summary?: null | string

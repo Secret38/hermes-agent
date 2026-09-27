@@ -113,6 +113,7 @@ import { sessionsHost } from './sessions'
 import { desktopSettings } from './settings'
 
 export type { DesktopSettingKey, DesktopSettingValues } from './settings'
+export * from './operations'
 
 // -- state: readonly views over the app's live atoms -------------------------
 
@@ -682,6 +683,8 @@ export const host = {
     /** Stored (durable) id of the focused session — for navigation and
      *  session-list matching, where runtime ids don't survive reloads. */
     focusedStoredSessionId: readonlyAtom<null | string>($focusedStoredSessionId),
+    /** Primary workspace selection; used to wait for its cwd before opening a pane. */
+    selectedStoredSessionId: readonlyAtom<null | string>($selectedStoredSessionId),
     /** Live usage snapshot of the focused session (`context_used` /
      *  `context_max` / `context_percent`, token counts, `cost_usd`) —
      *  streamed by the backend, no RPC needed. Null while unresolved.
