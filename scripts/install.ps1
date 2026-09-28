@@ -735,6 +735,9 @@ $Stages = @(
     @{ name = "setup"; title = "Configure API keys and settings"; category = "configuration"; needs_user_input = $true },
     @{ name = "gateway"; title = "Configure gateway service"; category = "configuration"; needs_user_input = $true }
 )
+if ($IncludeDesktop) {
+    $Stages += @{ name = "agent-os-runtime"; title = "Prepare automation and verify security"; category = "runtime"; needs_user_input = $false }
+}
 $Stages += @{ name = "complete"; title = "Finish install"; category = "runtime"; needs_user_input = $false }
 function Stage-Prerequisites {
     if (-not (Ensure-Git)) {
@@ -1079,6 +1082,24 @@ function Stage-Gateway {
     Invoke-InstalledHermes @('gateway', 'install', '--if-missing')
 }
 
+function Stage-AgentOSRuntime {
+    # Capture child stdout: only the dispatcher may emit the stage JSON frame.
+    # A desktop installation must not publish its completion receipt before
+    # the installed runtime and the explicit Agent OS security profile are ready.
+    $provisionOutput = @(Invoke-InstalledHermes @('agent-os', 'provision', '--production-security'))
+    foreach ($line in $provisionOutput) { Log "$line" }
+    $healthOutput = @(Invoke-InstalledHermes @('agent-os', 'status', '--require-full', '--require-production-security', '--json'))
+    try {
+        $health = ($healthOutput -join "`n") | ConvertFrom-Json
+    } catch {
+        Fail "Agent OS readiness returned invalid JSON. Run hermes agent-os status --json for details."
+    }
+    if ($health.full_ready -ne $true -or $health.production_security_ready -ne $true) {
+        Fail "Agent OS automation or security is not ready. Run hermes agent-os status --require-full --require-production-security --json for details."
+    }
+    Write-Ok "Agent OS automation and production security verified"
+}
+
 function Stage-Desktop {
     # External-caller contract: -Stage desktop stays dispatchable on its own
     # (see Invoke-StageByName). The work is the same completion call with the
@@ -1221,6 +1242,7 @@ function Invoke-StageByName([string]$name) {
         "setup" { Stage-Setup }
         "gateway" { Stage-Gateway }
         "desktop" { Stage-Desktop }
+        "agent-os-runtime" { Stage-AgentOSRuntime }
         "complete" { Stage-Complete }
         default { Write-Error "unknown stage: $name"; exit 2 }
     }

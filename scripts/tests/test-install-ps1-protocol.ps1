@@ -2,10 +2,14 @@
 # Run under both Windows PowerShell 5.1 and PowerShell 7 before packaging.
 [CmdletBinding()]
 param(
-    [string]$InstallerPath = (Join-Path $PSScriptRoot '..\install.ps1')
+    [string]$InstallerPath = ''
 )
 
 $ErrorActionPreference = 'Stop'
+if (-not $InstallerPath) {
+    $suiteDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+    $InstallerPath = Join-Path $suiteDir '..\install.ps1'
+}
 $shellPath = (Get-Process -Id $PID).Path
 $testRoot = Join-Path ([IO.Path]::GetTempPath()) ('hermes-protocol-' + [Guid]::NewGuid().ToString('N'))
 $homePath = Join-Path $testRoot 'home'
@@ -37,6 +41,10 @@ try {
         }
         if (@($manifest.stages | Where-Object { $_.needs_user_input -isnot [bool] }).Count -gt 0) {
             throw 'Every stage must declare whether user input is required'
+        }
+        if (($names -contains 'agent-os-runtime') -ne $desktop -or
+            ($desktop -and $names[-2] -ne 'agent-os-runtime')) {
+            throw 'Desktop runtime readiness must run immediately before completion, and only for desktop installs'
         }
         Write-Host "PASS: protocol and manifest (desktop=$desktop): $($names -join ' -> ')"
     }

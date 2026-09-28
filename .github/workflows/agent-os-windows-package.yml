@@ -48,7 +48,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           foreach ($engine in @('powershell', 'pwsh')) {
-            foreach ($suite in @('protocol', 'repository-binding')) {
+            foreach ($suite in @('protocol', 'repository-binding', 'agent-os-runtime')) {
               & $engine -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "scripts/tests/test-install-ps1-$suite.ps1"
               if ($LASTEXITCODE -ne 0) {
                 throw "Installer $suite failed under $engine (exit $LASTEXITCODE)"

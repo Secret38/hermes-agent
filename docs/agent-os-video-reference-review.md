@@ -131,10 +131,25 @@ Bindung dem Stand vor der Beschädigung. PowerShell konnte auf diesem Linux-Host
 nicht starten (`Failed to create CoreCLR`); native Windows-Ergebnisse bleiben
 bis zum abgeschlossenen CI-Lauf offen.
 
-Weiter offen: Der aktuelle Installationsablauf enthält noch keinen verbindlichen
-Agent-OS-Provisionierungs-/Produktionssicherheits-Schritt. Die vorhandenen Tests
-in `test_install_ps1_agent_os_runtime.py` lesen einen überholten Skriptaufbau
-statt den Ablauf auszuführen; sie sind kein Nachweis einer installierten Runtime.
-Der Erststart muss Provider-Einrichtung, Runtime-Bereitschaft und die gewünschte
+Die folgende Integrationsänderung fügt für `-IncludeDesktop` wieder eine
+verbindliche `agent-os-runtime`-Stufe vor `complete` ein. Sie ruft über die
+installierte Hermes-Runtime `agent-os provision --production-security` und
+anschließend `agent-os status --require-full --require-production-security --json`
+auf. Ein fehlgeschlagener Prozess, ungültiges JSON oder fehlende Bereitschaft
+verhindert den erfolgreichen Stufenabschluss. Reine CLI-Installationen enthalten
+diese Stufe nicht. Das Desktop-Profil setzt die dokumentierte strenge
+Freigabe-/Scannerkonfiguration; es benötigt Netzwerkzugriff für fehlende Runtimes.
+
+Die bisherigen drei Quelltext-Tests gegen den veralteten Skriptaufbau werden
+durch eine native PowerShell-Verhaltenssuite ersetzt: realer Installerdispatcher,
+realer Kindprozess und temporäre CLI-Fixture für Erfolg, Provisionierungsfehler,
+Statusfehler, ungültiges JSON, fehlende Automation und fehlende Sicherheitsbereitschaft.
+Das prüft die Verbindung und Fehlerweitergabe, nicht die echte Browser-/CUA-Installation.
+Auch diese Suite ist vor der Paketierung unter beiden PowerShell-Versionen Pflicht.
+Der erste native Lauf fand einen PowerShell-5.1-Fehler im neuen Testpfad-Default;
+die Pfadauflösung erfolgt nun nach der Parameterbindung. Noch kein neuer
+Installer wird vor einem grünen nativen Lauf als verwendbar bezeichnet.
+
+Weiter offen: Der Erststart muss Provider-Einrichtung, Runtime-Bereitschaft und die gewünschte
 Kanban-Aktivierung verständlich zusammenführen. Danach folgt der durchgehende
 Capture-/Plan-/Freigabe-/Ergebnis-Ablauf; reine Datenprojektionen reichen nicht.
