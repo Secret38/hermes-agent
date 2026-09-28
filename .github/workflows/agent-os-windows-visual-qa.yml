@@ -78,6 +78,10 @@ jobs:
         working-directory: apps/desktop
         run: npm run build
 
+      - name: Typecheck Windows visual harness
+        working-directory: apps/desktop
+        run: npx tsc --noEmit --target ES2023 --module ESNext --moduleResolution Bundler --skipLibCheck --esModuleInterop --allowImportingTsExtensions --strict --types node e2e/agent-os-windows-visual.spec.ts
+
       - name: Run Agent OS Windows visual QA
         working-directory: apps/desktop
         run: npx playwright test e2e/agent-os-windows-visual.spec.ts --reporter=list
@@ -88,7 +92,8 @@ jobs:
         with:
           name: agent-os-windows-visual-${{ matrix.scale_label }}-${{ github.sha }}
           path: |
-            apps/desktop/test-results/**/*-actual.png
+            apps/desktop/test-results/**/*.png
+            apps/desktop/test-results/**/error-context.md
             apps/desktop/test-results/**/*.zip
             apps/desktop/test-results/**/*.webm
             apps/desktop/playwright-report

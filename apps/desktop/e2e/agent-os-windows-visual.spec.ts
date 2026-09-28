@@ -9,7 +9,7 @@ const scaleLabel = String(Math.round(scale * 100))
 
 let fixture: MockBackendFixture | null = null
 
-function seedAgentOS(sandbox: Sandbox): void {
+function seedAgentOS(sandbox: Sandbox, env: Record<string, string>): void {
   const script = String.raw`
 from agent_os.agents.records import AgentInstanceRecord, AgentInstanceState
 from agent_os.contracts import ActionRecord, TaskRecord
@@ -86,7 +86,7 @@ store.append_event(EventRecord.create(
   const repoRoot = path.resolve(import.meta.dirname, '..', '..', '..')
   execFileSync('uv', ['run', '--python', '3.14', 'python', '-c', script], {
     cwd: repoRoot,
-    env: { ...process.env, HERMES_HOME: sandbox.hermesHome },
+    env: { ...env, HERMES_HOME: sandbox.hermesHome },
     stdio: 'inherit',
   })
 }
@@ -97,6 +97,8 @@ test.beforeAll(async () => {
     prepareSandbox: seedAgentOS,
   })
   await waitForAppReady(fixture, 120_000)
+  // Prove the launch option reached Chromium; labels alone are not DPI evidence.
+  expect(await fixture.page.evaluate(() => window.devicePixelRatio)).toBeCloseTo(scale, 2)
 })
 
 test.afterAll(async () => {
@@ -119,6 +121,9 @@ async function gotoMissionControl(): Promise<void> {
   })
   await expect(page.locator('.agent-os-page')).toBeVisible({ timeout: 30_000 })
   await expect(page.getByRole('heading', { name: 'Mission Control' })).toBeVisible()
+  // Each case starts on the populated overview, independent of prior navigation.
+  await page.getByRole('button', { name: 'Mission Control', exact: true }).click()
+  await expect(page.locator(".aos-state[data-state='RUNNING'] .aos-state-dot").first()).toBeVisible()
 }
 
 test(`Mission Control renders without clipping at ${scaleLabel}% DPI`, async () => {
@@ -249,14 +254,17 @@ test(`Mission Control respects Windows High Contrast at ${scaleLabel}% DPI`, asy
 
 test(`Mission Control honors reduced motion at ${scaleLabel}% DPI`, async () => {
   const { page } = fixture!
-  await page.emulateMedia({ forcedColors: 'none', reducedMotion: 'reduce' })
+  await page.emulateMedia({ forcedColors: 'none', reducedMotion: 'no-preference' })
   await gotoMissionControl()
-
-  const reduced = await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches)
-  expect(reduced).toBe(true)
 
   const runningDot = page.locator(".aos-state[data-state='RUNNING'] .aos-state-dot").first()
   await expect(runningDot).toBeVisible()
+  expect(await runningDot.evaluate(element => getComputedStyle(element).animationName)).not.toBe('none')
+
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  const reduced = await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches)
+  expect(reduced).toBe(true)
+
   const animationMs = await runningDot.evaluate(element => {
     const value = getComputedStyle(element).animationDuration.trim()
     if (value.endsWith('ms')) return Number.parseFloat(value)

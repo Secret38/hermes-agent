@@ -166,3 +166,22 @@ unbeabsichtigter Browserdownload, aber weiterhin keine falsche Full-Ready-Meldun
 Weiter offen: Der Erststart muss Provider-Einrichtung, Runtime-Bereitschaft und die gewünschte
 Kanban-Aktivierung verständlich zusammenführen. Danach folgt der durchgehende
 Capture-/Plan-/Freigabe-/Ergebnis-Ablauf; reine Datenprojektionen reichen nicht.
+
+## Windows-Nachprüfung: tatsächliche DPI und Testdaten
+
+Auf `b324a5d8` ist der Installer-Workflow `36387823509` vollständig erfolgreich.
+Die DPI-Matrix `36387823417` scheiterte jeweils am fehlenden RUNNING-Statuspunkt.
+Die vier übrigen Tests pro Job liefen grün, sind jedoch kein belastbarer
+Nachweis der beschrifteten Skalierungen oder einer gefüllten Oberfläche:
+`setupMockBackend` ignorierte die vom Test übergebenen Optionen `launchArgs`
+und `prepareSandbox`. Der Screenshot bestätigt eine leere Aufgabenliste.
+
+Die Reparatur verbindet beide Optionen mit dem tatsächlichen Electron-Start.
+Die Vorbereitung erhält dieselbe isolierte Umgebung wie die App. Die Suite
+prüft nun `window.devicePixelRatio` gegen die gewünschte Skalierung und verlangt
+vor jedem Test einen sichtbaren laufenden Aufgabenstatus auf der Übersicht.
+Der Bewegungstest prüft zuerst eine aktive Animation und dann deren Reduktion.
+Eine gezielte strikte TypeScript-Prüfung des E2E-Einstiegs läuft künftig in CI;
+der normale Renderer-Typecheck schließt E2E-Dateien aus und konnte diese
+fehlenden Optionen deshalb nicht melden. Fehlerscreenshots und Fehlerkontext
+werden zusätzlich zu den bisherigen Beweisbildern archiviert.
