@@ -4,6 +4,13 @@ on:
   pull_request:
     paths:
       - "apps/desktop/src/plugins/agent-os/**"
+      - "apps/desktop/src/plugins/kanban/**"
+      - "apps/desktop/src/sdk/**"
+      - "apps/desktop/src/contrib/operations.ts"
+      - "apps/desktop/src/store/prompts.ts"
+      - "apps/shared/**"
+      - "apps/desktop/package.json"
+      - "package-lock.json"
       - "apps/desktop/e2e/agent-os-windows-visual.spec.ts"
       - "apps/desktop/e2e/fixtures.ts"
       - ".github/workflows/agent-os-windows-visual-qa.yml"

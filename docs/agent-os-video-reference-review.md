@@ -104,3 +104,37 @@ Ausgangsbelege:
 - `git diff --check` erfolgreich.
 - Rust/Windows-Ausführung lokal nicht verifiziert. Der verfügbare Linux-Host
   ersetzt weder Cargo-Metadatenprüfung noch einen interaktiven Windows-Desktop.
+
+## Folgeprüfung vom 28. September 2026: Installationsblocker
+
+Der Installer-Build für `b9f512e4` war erfolgreich. Das heruntergeladene ZIP
+enthält die EXE, `SHA256SUMS.txt` und `build-metadata.json`; EXE-Prüfsumme und
+Commit-Zuordnung stimmen überein. Das ist ausdrücklich kein Installationsnachweis.
+Der Bootstrapper lädt `scripts/install.ps1` vom eingebetteten Commit nach.
+
+Die erneute Prüfung fand im Commit `2587d76d` eine beschädigte Repository-Prüfung:
+Zwei zusätzliche Kopien des Skriptkörpers waren mitten in Regex-Ausdrücke geraten.
+Der alte Kandidat ist deshalb nicht für den Benutzertest empfohlen.
+
+Die Folgereparatur entfernt ausschließlich diese Duplikate, vervollständigt
+die Slug-Prüfung und erhält die beabsichtigte Repository-Bindung bei Reparaturen.
+Der Kandidaten-Workflow muss nun vor dem Build das echte Protokoll und die
+Repository-Bindung unter Windows PowerShell 5.1 und PowerShell 7 ausführen.
+Die Protokollprüfung startet das Installationsskript als Kindprozess, liest die
+Manifeste mit und ohne Desktop und prüft, dass Abfragen keine Installation anlegen.
+Der Windows-DPI-Workflow erfasst jetzt auch SDK-, Kanban- und gemeinsame
+Operations-Vertragsänderungen.
+
+Lokal bestätigt: Die generierten Bootstrap-Pins sind unverändert aktuell und
+der reparierte Skriptkörper entspricht bis auf die beabsichtigte Repository-
+Bindung dem Stand vor der Beschädigung. PowerShell konnte auf diesem Linux-Host
+nicht starten (`Failed to create CoreCLR`); native Windows-Ergebnisse bleiben
+bis zum abgeschlossenen CI-Lauf offen.
+
+Weiter offen: Der aktuelle Installationsablauf enthält noch keinen verbindlichen
+Agent-OS-Provisionierungs-/Produktionssicherheits-Schritt. Die vorhandenen Tests
+in `test_install_ps1_agent_os_runtime.py` lesen einen überholten Skriptaufbau
+statt den Ablauf auszuführen; sie sind kein Nachweis einer installierten Runtime.
+Der Erststart muss Provider-Einrichtung, Runtime-Bereitschaft und die gewünschte
+Kanban-Aktivierung verständlich zusammenführen. Danach folgt der durchgehende
+Capture-/Plan-/Freigabe-/Ergebnis-Ablauf; reine Datenprojektionen reichen nicht.
