@@ -1086,7 +1086,11 @@ function Stage-AgentOSRuntime {
     # Capture child stdout: only the dispatcher may emit the stage JSON frame.
     # A desktop installation must not publish its completion receipt before
     # the installed runtime and the explicit Agent OS security profile are ready.
-    $provisionOutput = @(Invoke-InstalledHermes @('agent-os', 'provision', '--production-security'))
+    $provisionArgs = @('agent-os', 'provision', '--production-security')
+    # Preserve the caller's explicit download opt-out. Readiness still fails
+    # if no browser is available; opting out must never trigger its download.
+    if ($SkipBrowser) { $provisionArgs += '--skip-browser' }
+    $provisionOutput = @(Invoke-InstalledHermes $provisionArgs)
     foreach ($line in $provisionOutput) { Log "$line" }
     $healthOutput = @(Invoke-InstalledHermes @('agent-os', 'status', '--require-full', '--require-production-security', '--json'))
     try {

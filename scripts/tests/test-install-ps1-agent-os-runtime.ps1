@@ -32,18 +32,21 @@ if ($args[1] -eq 'provision') {
 switch ($env:HERMES_STAGE_PROBE_CASE) {
     'invalid-json' { Write-Output 'not a health report'; exit 0 }
     'degraded' { Write-Output '{"full_ready":false,"production_security_ready":true}'; exit 0 }
+    'skip-browser' { Write-Output '{"full_ready":false,"production_security_ready":true}'; exit 0 }
     'unsafe' { Write-Output '{"full_ready":true,"production_security_ready":false}'; exit 0 }
     'status-failure' { Write-Output '{"full_ready":true,"production_security_ready":true}'; exit 8 }
     default { Write-Output '{"full_ready":true,"production_security_ready":true}'; exit 0 }
 }
 '@ | Set-Content -Encoding utf8 $env:HERMES_STAGE_PROBE_CLI
 
-    foreach ($case in @('ready', 'provision-failure', 'status-failure', 'invalid-json', 'degraded', 'unsafe')) {
+    foreach ($case in @('ready', 'provision-failure', 'status-failure', 'invalid-json', 'degraded', 'unsafe', 'skip-browser')) {
         $env:HERMES_STAGE_PROBE_CASE = $case
         if (Test-Path $env:HERMES_STAGE_PROBE_CALLS) { Remove-Item $env:HERMES_STAGE_PROBE_CALLS }
+        $extraArgs = @()
+        if ($case -eq 'skip-browser') { $extraArgs += '-SkipBrowser' }
         $output = & $shellPath -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $installer `
             -IncludeDesktop -Stage agent-os-runtime -NonInteractive -Json `
-            -HermesHome (Join-Path $testRoot 'home') -InstallDir $checkout
+            -HermesHome (Join-Path $testRoot 'home') -InstallDir $checkout @extraArgs
         $code = $LASTEXITCODE
         $frames = @($output | Where-Object { $_ -match '^\{' } | ForEach-Object { $_ | ConvertFrom-Json })
         $expected = $case -eq 'ready'
@@ -54,7 +57,9 @@ switch ($env:HERMES_STAGE_PROBE_CASE) {
         }
         if (-not $expected -and -not $frames[0].reason) { throw "Missing error detail for $case" }
         $calls = @(Get-Content $env:HERMES_STAGE_PROBE_CALLS)
-        if ((($calls[0] | ConvertFrom-Json) -join ' ') -ne 'agent-os provision --production-security') {
+        $expectedProvision = 'agent-os provision --production-security'
+        if ($case -eq 'skip-browser') { $expectedProvision += ' --skip-browser' }
+        if ((($calls[0] | ConvertFrom-Json) -join ' ') -ne $expectedProvision) {
             throw 'Provisioning must explicitly request the production security profile'
         }
         if ($case -eq 'provision-failure') {

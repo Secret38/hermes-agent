@@ -73,6 +73,12 @@ Ausgangsbelege:
   `OPERATIONS_CAPTURE_SOURCES_AREA` ist im Ausgangsstand lediglich definiert,
   aber nicht als Produzent/Verbraucher verbunden. Die hier wiederhergestellte
   lesende Kanban-Quelle schließt diese Schreib-/Orchestrierungslücke nicht.
+  Präzisierung: `MissionControlActions` → `/missions` →
+  `MissionControlService.submit` → `runtime.submit_goal/run_until_idle` ist
+  bereits ein angeschlossener Missionsweg mit Aktionsfreigaben. Offen ist die
+  einheitliche Video-Pipeline mit einer ausdrücklich sichtbaren Planfreigabe
+  vor Ausführung und einer zugehörigen Ergebnisgalerie. Die ungenutzte Capture-
+  Schnittstelle bedeutet nicht, dass Mission Control überhaupt keine Arbeit startet.
 - Ergebnisgalerie und Detailvorschau mit echten Artefakten durchgängig prüfen.
   Die wiederhergestellten Detail-Projektionen sind noch kein angeschlossener
   Artefakt-Lesezugriff in der Operations-Datenquelle.
@@ -149,6 +155,13 @@ Auch diese Suite ist vor der Paketierung unter beiden PowerShell-Versionen Pflic
 Der erste native Lauf fand einen PowerShell-5.1-Fehler im neuen Testpfad-Default;
 die Pfadauflösung erfolgt nun nach der Parameterbindung. Noch kein neuer
 Installer wird vor einem grünen nativen Lauf als verwendbar bezeichnet.
+
+**Nativer Zwischenbeleg:** Workflow `36387500605` auf `e6a9675d` hat die
+Protokoll-, Repository- und Runtime-Stufensuites unter PowerShell 5.1 und 7
+erfolgreich ausgeführt. Der vollständige EXE-Build und die DPI-Abnahme waren
+zu diesem Zwischenstand noch laufend. Eine zusätzliche Regression prüft nun
+auch, dass `-SkipBrowser` bis zur Provisionierung erhalten bleibt: kein
+unbeabsichtigter Browserdownload, aber weiterhin keine falsche Full-Ready-Meldung.
 
 Weiter offen: Der Erststart muss Provider-Einrichtung, Runtime-Bereitschaft und die gewünschte
 Kanban-Aktivierung verständlich zusammenführen. Danach folgt der durchgehende
