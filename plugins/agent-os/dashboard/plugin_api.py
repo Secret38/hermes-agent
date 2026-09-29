@@ -14,6 +14,7 @@ import asyncio
 from datetime import datetime, timezone
 from functools import lru_cache, partial
 from pathlib import Path
+import threading
 from typing import Literal
 from urllib.parse import urlparse
 
@@ -24,6 +25,8 @@ from starlette.concurrency import run_in_threadpool
 from agent_os.dashboard import build_dashboard_snapshot, dashboard_event_sequence
 from agent_os.live_frames import live_runtime_frames
 from agent_os.mission_control import MissionBusyError, MissionPausedError, MissionRuntimeService
+from agent_os.store import AgentOSStore
+from hermes_constants import hermes_home_key
 
 router = APIRouter()
 
@@ -42,9 +45,18 @@ class MissionResumeRequest(BaseModel):
     confirm: Literal[True] = True
 
 
-@lru_cache(maxsize=1)
+_mission_services_lock = threading.Lock()
+
+
 def _mission_service() -> MissionRuntimeService:
-    return MissionRuntimeService()
+    # Never evict a live profile's service: it owns pending one-shot approvals.
+    with _mission_services_lock:
+        return _mission_service_for_home(hermes_home_key())
+
+
+@lru_cache(maxsize=None)
+def _mission_service_for_home(home: str) -> MissionRuntimeService:
+    return MissionRuntimeService(AgentOSStore(Path(home) / "agent-os" / "agent_os.db"))
 
 
 

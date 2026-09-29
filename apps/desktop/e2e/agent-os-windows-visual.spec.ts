@@ -126,6 +126,18 @@ async function gotoMissionControl(): Promise<void> {
   await expect(page.locator(".aos-state[data-state='RUNNING'] .aos-state-dot").first()).toBeVisible()
 }
 
+async function focusTasksWithKeyboard() {
+  const { page } = fixture!
+  // gotoMissionControl clicks the overview. A programmatic focus after that
+  // retains pointer modality in Chromium and does not match :focus-visible.
+  await page.getByRole('button', { name: 'Mission Control', exact: true }).focus()
+  await page.keyboard.press('Tab')
+  const tasks = page.getByRole('button', { name: 'Tasks', exact: true })
+  await expect(tasks).toBeFocused()
+  expect(await tasks.evaluate(element => element.matches(':focus-visible'))).toBe(true)
+  return tasks
+}
+
 test(`Mission Control renders without clipping at ${scaleLabel}% DPI`, async () => {
   const { page } = fixture!
 
@@ -148,8 +160,8 @@ test(`Mission Control renders without clipping at ${scaleLabel}% DPI`, async () 
   expect(metrics.clientHeight).toBeGreaterThan(400)
   expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 2)
 
-  await page.getByRole('button', { name: 'Tasks', exact: true }).focus()
-  const focusStyle = await page.getByRole('button', { name: 'Tasks', exact: true }).evaluate(element => {
+  const tasks = await focusTasksWithKeyboard()
+  const focusStyle = await tasks.evaluate(element => {
     const style = getComputedStyle(element)
     return { outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth }
   })
@@ -236,9 +248,8 @@ test(`Mission Control respects Windows High Contrast at ${scaleLabel}% DPI`, asy
   expect(surface.backgroundImage).toBe('none')
   expect(surface.color).not.toBe('rgba(0, 0, 0, 0)')
 
-  const mission = page.getByRole('button', { name: 'Mission Control', exact: true })
-  await mission.focus()
-  const focus = await mission.evaluate(element => {
+  const tasks = await focusTasksWithKeyboard()
+  const focus = await tasks.evaluate(element => {
     const style = getComputedStyle(element)
     return { outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth }
   })

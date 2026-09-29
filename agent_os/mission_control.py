@@ -9,10 +9,12 @@ approval resolved by Mission Control.
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
+from agent.memory_provider import spawn_context_thread
 from agent_os.contracts import ActionRecord, new_id, utc_now_iso
 from agent_os.events import EventRecord, EventType
 from agent_os.permissions import PermissionDecision, PermissionOutcome
@@ -20,6 +22,10 @@ from agent_os.risk import RiskAssessment, RiskLevel
 from agent_os.orchestration.plan import PlanState
 from agent_os.states import ActionState, TaskState, task_is_terminal
 from agent_os.store import AgentOSStore
+
+
+# Profile-local services still operate one interactive desktop in this process.
+_INTERACTIVE_MISSION_LOCK = threading.Lock()
 
 
 class MissionBusyError(RuntimeError):
@@ -356,14 +362,11 @@ class MissionRuntimeService:
                 session_id=session,
             )
             self._jobs[job.id] = job
-            worker = threading.Thread(
-                target=self._run_job,
-                args=(job.id,),
-                daemon=True,
-                name=f"agent-os-mission-{job.id[-8:]}",
-            )
-            self._worker = worker
-            worker.start()
+            try:
+                self._start_worker(job.id, self._run_job)
+            except Exception:
+                self._jobs.pop(job.id, None)
+                raise
             return job.to_dict()
 
     def resume(self, job_id: str) -> dict[str, Any]:
@@ -401,18 +404,38 @@ class MissionRuntimeService:
                     f"mission plan is not active: {plan.state.value}"
                 )
 
+            self._start_worker(job.id, self._resume_job)
             job.state = MissionJobState.RUNNING
             job.error = None
             job.updated_at = utc_now_iso()
-            worker = threading.Thread(
-                target=self._resume_job,
-                args=(job.id,),
-                daemon=True,
-                name=f"agent-os-resume-{job.id[-8:]}",
+            return job.to_dict()
+
+    def _start_worker(self, job_id: str, target: Callable[[str], None]) -> None:
+        """Called under the service lock; bind scope and reserve the shared desktop."""
+        if not _INTERACTIVE_MISSION_LOCK.acquire(blocking=False):
+            raise MissionBusyError(
+                "Another interactive Agent OS mission is already running."
+            )
+
+        def run() -> None:
+            try:
+                target(job_id)
+            finally:
+                with self._lock:
+                    self._worker = None
+                    _INTERACTIVE_MISSION_LOCK.release()
+
+        try:
+            worker = spawn_context_thread(
+                target=run,
+                name=f"agent-os-mission-{job_id[-8:]}",
             )
             self._worker = worker
             worker.start()
-            return job.to_dict()
+        except Exception:
+            self._worker = None
+            _INTERACTIVE_MISSION_LOCK.release()
+            raise
 
     def jobs(self, *, limit: int = 20) -> list[dict[str, Any]]:
         limit = max(1, min(int(limit), 100))
@@ -505,10 +528,6 @@ class MissionRuntimeService:
                 state=MissionJobState.FAILED,
                 error=f"{type(exc).__name__}: {exc}",
             )
-        finally:
-            with self._lock:
-                if self._worker is threading.current_thread():
-                    self._worker = None
 
     def _resume_job(self, job_id: str) -> None:
         with self._lock:
@@ -541,10 +560,6 @@ class MissionRuntimeService:
                 state=MissionJobState.FAILED,
                 error=f"{type(exc).__name__}: {exc}",
             )
-        finally:
-            with self._lock:
-                if self._worker is threading.current_thread():
-                    self._worker = None
 
     def _sync_job_from_task(self, job_id: str, task_id: str) -> MissionJob:
         task = self.store.get_task(task_id)
