@@ -12,6 +12,7 @@ on:
       - "apps/desktop/package.json"
       - "package-lock.json"
       - "apps/desktop/e2e/agent-os-windows-visual.spec.ts"
+      - "apps/desktop/e2e/tsconfig.agent-os-visual.json"
       - "apps/desktop/e2e/fixtures.ts"
       - ".github/workflows/agent-os-windows-visual-qa.yml"
   workflow_dispatch:
@@ -74,13 +75,13 @@ jobs:
       - name: Install Node dependencies
         run: npm ci
 
+      - name: Typecheck Windows visual harness
+        working-directory: apps/desktop
+        run: npx tsc -p e2e/tsconfig.agent-os-visual.json
+
       - name: Build desktop
         working-directory: apps/desktop
         run: npm run build
-
-      - name: Typecheck Windows visual harness
-        working-directory: apps/desktop
-        run: npx tsc --noEmit --target ES2023 --module ESNext --moduleResolution Bundler --skipLibCheck --esModuleInterop --allowImportingTsExtensions --strict --types node e2e/agent-os-windows-visual.spec.ts
 
       - name: Run Agent OS Windows visual QA
         working-directory: apps/desktop

@@ -185,3 +185,32 @@ Eine gezielte strikte TypeScript-Prüfung des E2E-Einstiegs läuft künftig in C
 der normale Renderer-Typecheck schließt E2E-Dateien aus und konnte diese
 fehlenden Optionen deshalb nicht melden. Fehlerscreenshots und Fehlerkontext
 werden zusätzlich zu den bisherigen Beweisbildern archiviert.
+
+## Folgeprüfung vom 29. September 2026: Abbruch und Testkonfiguration
+
+Der Installer-Workflow `36401087447` auf `418a138b` ist erfolgreich. Die
+Windows-Visual-Matrix `36401087232` scheiterte vor Playwright an TS5112:
+Einzeldateien auf der TypeScript-Kommandozeile kollidieren mit der vorhandenen
+Desktop-Konfiguration. Eine eigene `e2e/tsconfig.agent-os-visual.json` erweitert
+jetzt die Desktop-Konfiguration und wird mit `tsc -p` vor dem Build geprüft.
+Die tatsächlich gefüllte DPI-Matrix ist weiterhin nicht erfolgreich belegt.
+
+Die Planprüfung reproduzierte einen Laufzeitfehler: Nach gespeichertem Abbruch
+konnte der Scheduler bereits bereite Schritte beanspruchen; der Engine-Pfad
+konnte außerdem eine gebundene, noch nicht gestartete Aktion wiederaufnehmen.
+Die Abfrage innerhalb der bestehenden SQLite-Transaktion verlangt nun einen
+aktiven Plan. Die Engine prüft den Planstatus auch vor der Wiederaufnahme.
+Das verhindert diese Starts nach beobachtetem Abbruch, beendet aber keinen
+bereits laufenden externen Prozess und ist keine atomare globale Stop-Garantie.
+
+Vor der Arbeitsplatzbereinigung wurden beide Regressionen zuerst rot, danach
+grün geprüft; die vollständige Scheduler-Datei bestand mit acht Tests. Der
+veraltete Test auf eine feste Schema-Version prüft nun Migration und erhaltene
+Plan-/Schrittbeziehungen. Der gezielte TypeScript-Projektcheck bestand ebenfalls.
+Die Bereinigung entfernte den nur lokalen Commit `7ba8bf28` und die Testumgebung.
+Die Codeänderungen wurden auf Basis von `418a138b` anhand des dokumentierten
+Diffs wiederhergestellt; diese Notiz ersetzt den verlorenen Berichtszusatz.
+
+Nächster Produktschritt: ein dauerhaft gespeicherter Planentwurf, eine bewusste
+Freigabe des konkreten Plans und danach Ausführung. Ein Neustart darf die
+Planfreigabe nicht ersetzen; Aktionsfreigaben bleiben eigenständig bestehen.

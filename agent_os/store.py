@@ -1118,9 +1118,10 @@ class AgentOSStore:
             row = conn.execute(
                 """SELECT * FROM plan_steps
                     WHERE plan_id = ? AND state = ?
+                      AND EXISTS (SELECT 1 FROM plans WHERE id = ? AND state = ?)
                     ORDER BY priority DESC, created_at, id
                     LIMIT 1""",
-                (plan_id, PlanStepState.READY.value),
+                (plan_id, PlanStepState.READY.value, plan_id, PlanState.ACTIVE.value),
             ).fetchone()
             if row is None:
                 conn.commit()
