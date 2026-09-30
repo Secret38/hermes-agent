@@ -1,3 +1,4 @@
+import { APPROVAL_RESPOND_TIMEOUT_MS } from '@hermes/shared'
 import { JsonRpcGatewayError } from '@hermes/shared'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -8,7 +9,6 @@ import {
   $secretRequest,
   $sudoRequest,
   answerApproval,
-  APPROVAL_RESPOND_REQUEST_TIMEOUT_MS,
   clearAllPrompts,
   clearApprovalRequest,
   clearSecretRequest,
@@ -303,8 +303,8 @@ describe('answerApproval', () => {
     // approvals.timeout; the RPC must carry an explicit longer deadline.
     expect(calls).toHaveLength(1)
     expect(calls[0][0]).toBe('approval.respond')
-    expect(calls[0][2]).toBe(APPROVAL_RESPOND_REQUEST_TIMEOUT_MS)
-    expect(APPROVAL_RESPOND_REQUEST_TIMEOUT_MS).toBeGreaterThanOrEqual(300_000)
+    expect(calls[0][2]).toBe(APPROVAL_RESPOND_TIMEOUT_MS)
+    expect(APPROVAL_RESPOND_TIMEOUT_MS).toBeGreaterThanOrEqual(300_000)
   })
 
   it('retries once when the respond deadline fires behind a stalled WS', async () => {
@@ -339,6 +339,13 @@ describe('answerApproval', () => {
 
     await expect(answerApproval(gateway as never, target, 'once')).rejects.toThrow('session not found')
     expect(calls).toBe(1)
+  })
+
+  it.each([{ requestId: undefined, all: false }, { requestId: 'r1', all: true }])('does not retry an unscoped or batch decision: %j', async ({ requestId, all }) => {
+    const request = vi.fn().mockRejectedValue(new Error('request timed out after 300s: approval.respond'))
+
+    await expect(answerApproval({ request } as never, { requestId, sessionId: 's1' }, 'once', all)).rejects.toThrow('timed out')
+    expect(request).toHaveBeenCalledTimes(1)
   })
 
   it('answers the live server request without any RPC when one is open', async () => {

@@ -4,7 +4,18 @@ on:
   pull_request:
     paths:
       - "apps/desktop/src/plugins/agent-os/**"
+      - "apps/desktop/src/plugins/kanban/**"
+      - "apps/desktop/src/sdk/**"
+      - "apps/desktop/src/contrib/operations.ts"
+      - "apps/desktop/src/store/prompts.ts"
+      - "apps/shared/**"
+      - "agent_os/**"
+      - "plugins/agent-os/dashboard/**"
+      - "tests/agent_os/**"
+      - "apps/desktop/package.json"
+      - "package-lock.json"
       - "apps/desktop/e2e/agent-os-windows-visual.spec.ts"
+      - "apps/desktop/e2e/tsconfig.agent-os-visual.json"
       - "apps/desktop/e2e/fixtures.ts"
       - ".github/workflows/agent-os-windows-visual-qa.yml"
   workflow_dispatch:
@@ -67,6 +78,19 @@ jobs:
       - name: Install Node dependencies
         run: npm ci
 
+      - name: Verify durable plan review and profile ownership on Windows
+        if: matrix.scale == '1'
+        shell: bash
+        env:
+          HERMES_TEST_FILE_RETRIES: "0"
+        run: |
+          export HERMES_PYTHON="$GITHUB_WORKSPACE/.venv/Scripts/python.exe"
+          scripts/run_tests.sh tests/agent_os/test_mission_plan_review.py tests/agent_os/test_mission_profile_scope.py tests/agent_os/test_mission_control_runtime.py tests/agent_os/test_mission_control.py -q
+
+      - name: Typecheck Windows visual harness
+        working-directory: apps/desktop
+        run: npx tsc -p e2e/tsconfig.agent-os-visual.json
+
       - name: Build desktop
         working-directory: apps/desktop
         run: npm run build
@@ -81,7 +105,8 @@ jobs:
         with:
           name: agent-os-windows-visual-${{ matrix.scale_label }}-${{ github.sha }}
           path: |
-            apps/desktop/test-results/**/*-actual.png
+            apps/desktop/test-results/**/*.png
+            apps/desktop/test-results/**/error-context.md
             apps/desktop/test-results/**/*.zip
             apps/desktop/test-results/**/*.webm
             apps/desktop/playwright-report

@@ -132,6 +132,35 @@ def test_engine_resumes_bound_planned_action_without_creating_duplicate(tmp_path
     assert len([e for e in store.list_events(task.id) if e.type.value == "action.created"]) == 1
 
 
+def test_cancelled_plan_does_not_resume_a_bound_action(tmp_path):
+    store = AgentOSStore(tmp_path / "agent_os.db")
+    task = store.create_task(TaskRecord.create("cancel before resuming"))
+    plan = PlanRecord.create(task_id=task.id, objective="do not resume cancelled work")
+    step = PlanStepRecord.create(
+        plan_id=plan.id, task_id=task.id, title="pending action",
+        kind=PlanStepKind.ACTION, spec={"tool": "fixture", "operation": "work"},
+    )
+    store.create_plan(plan, [step], {})
+    store.transition_plan(plan.id, PlanState.ACTIVE)
+    claimed = DurablePlanScheduler(store).claim_next(plan.id)
+    action = store.create_action(ActionRecord.create(task.id, tool="fixture", operation="work"))
+    store.bind_plan_step_execution(claimed.id, action.id)
+    store.transition_plan(plan.id, PlanState.CANCELLED)
+
+    class MustNotExecute:
+        def execute_action(self, action_id):
+            raise AssertionError("cancelled plan reached the action executor")
+
+    reopened = AgentOSStore(store.path)
+    engine = PlanExecutionEngine(
+        reopened, action_kernels={"fixture": MustNotExecute()},
+        agent_supervisor=AgentSupervisor(reopened, []),
+    )
+    assert engine.run_once(plan.id).outcome is EngineOutcome.IDLE
+    assert reopened.get_action(action.id).state is ActionState.PLANNED
+    assert reopened.get_plan(plan.id).state is PlanState.CANCELLED
+
+
 def test_agent_step_is_bound_before_runtime_launch(tmp_path):
     store = AgentOSStore(tmp_path / "agent_os.db")
     task = store.create_task(TaskRecord.create("engine agent"))

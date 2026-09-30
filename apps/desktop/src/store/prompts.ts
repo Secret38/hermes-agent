@@ -1,3 +1,4 @@
+import { APPROVAL_RESPOND_TIMEOUT_MS } from '@hermes/shared'
 import { atom, computed, type ReadableAtom } from 'nanostores'
 
 import { $clarifyRequest, $clarifyRequests } from './clarify'
@@ -375,12 +376,24 @@ export async function answerApproval(
     throw new Error('Hermes gateway is not connected')
   }
 
-  await requestForOwnedSession(request.sessionId, ambientRequestFor(gateway), 'approval.respond', {
+  const respond = () => requestForOwnedSession(request.sessionId, ambientRequestFor(gateway), 'approval.respond', {
     all,
     choice,
     ...(request.requestId ? { request_id: request.requestId } : {}),
     session_id: request.sessionId ?? undefined
-  })
+  }, APPROVAL_RESPOND_TIMEOUT_MS)
+
+  try {
+    await respond()
+  } catch (error) {
+    // Repeating the same exact request is idempotent. Never retry a denial,
+    // missing owner, or other backend error as if it were a transport timeout.
+    if (all || !request.requestId || !(error instanceof Error) || !/^request timed out after .*: approval\.respond$/.test(error.message)) {
+      throw error
+    }
+
+    await respond()
+  }
 }
 
 /** Resolve one queued approval through the same stale-check / owner-routing /

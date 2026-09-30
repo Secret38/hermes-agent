@@ -6,15 +6,18 @@ on:
       - "apps/bootstrap-installer/**"
       - "scripts/install.ps1"
       - "scripts/install.sh"
+      - "scripts/tests/test-install-ps1-*.ps1"
       - "agent_os/**"
       - ".github/workflows/agent-os-windows-package.yml"
   push:
     branches:
       - agent-os-v1
+      - agent-os-v1-release-candidate
     paths:
       - "apps/bootstrap-installer/**"
       - "scripts/install.ps1"
       - "scripts/install.sh"
+      - "scripts/tests/test-install-ps1-*.ps1"
       - "agent_os/**"
       - ".github/workflows/agent-os-windows-package.yml"
 
@@ -39,6 +42,19 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify actual installer protocol and repository binding
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($engine in @('powershell', 'pwsh')) {
+            foreach ($suite in @('protocol', 'repository-binding', 'agent-os-runtime')) {
+              & $engine -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "scripts/tests/test-install-ps1-$suite.ps1"
+              if ($LASTEXITCODE -ne 0) {
+                throw "Installer $suite failed under $engine (exit $LASTEXITCODE)"
+              }
+            }
+          }
 
       - name: Set up Node.js 26
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4

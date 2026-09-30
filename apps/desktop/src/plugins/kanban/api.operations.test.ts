@@ -6,7 +6,7 @@ import {
   toOperationsSnapshot,
   toOperationsTaskExecution,
   toOperationsTaskLog
-} from './api'
+} from './operations'
 import type { KanbanTaskDetail } from './types'
 
 describe('Kanban operations execution projection', () => {

@@ -9,17 +9,24 @@ approval resolved by Mission Control.
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
+from agent.memory_provider import spawn_context_thread
 from agent_os.contracts import ActionRecord, new_id, utc_now_iso
 from agent_os.events import EventRecord, EventType
 from agent_os.permissions import PermissionDecision, PermissionOutcome
 from agent_os.risk import RiskAssessment, RiskLevel
+from agent_os.redaction import redact_display_value
 from agent_os.orchestration.plan import PlanState
 from agent_os.states import ActionState, TaskState, task_is_terminal
 from agent_os.store import AgentOSStore
+
+
+# Profile-local services still operate one interactive desktop in this process.
+_INTERACTIVE_MISSION_LOCK = threading.Lock()
 
 
 class MissionBusyError(RuntimeError):
@@ -33,6 +40,7 @@ class MissionPausedError(RuntimeError):
 class MissionJobState(StrEnum):
     QUEUED = "QUEUED"
     PLANNING = "PLANNING"
+    WAITING_PLAN = "WAITING_PLAN"
     RUNNING = "RUNNING"
     WAITING_APPROVAL = "WAITING_APPROVAL"
     INTERRUPTED = "INTERRUPTED"
@@ -270,7 +278,7 @@ class MissionRuntimeService:
         """Reconstruct Mission Control jobs from the durable Agent OS ledger.
 
         Hydration is deliberately observation-only: non-terminal missions are
-        exposed as INTERRUPTED and require an explicit resume request before
+        exposed as WAITING_PLAN or INTERRUPTED and require explicit intent before
         any executor, browser, terminal or computer-use side effect can run.
         """
 
@@ -295,6 +303,8 @@ class MissionRuntimeService:
                 state = MissionJobState.INTERRUPTED
 
             plan = self.store.latest_plan_for_task(task.id)
+            if plan is not None and plan.state is PlanState.DRAFT and task.state in {TaskState.PLANNING, TaskState.READY}:
+                state = MissionJobState.WAITING_PLAN
             hydrated[job_id] = MissionJob(
                 id=job_id,
                 goal=task.goal,
@@ -356,14 +366,11 @@ class MissionRuntimeService:
                 session_id=session,
             )
             self._jobs[job.id] = job
-            worker = threading.Thread(
-                target=self._run_job,
-                args=(job.id,),
-                daemon=True,
-                name=f"agent-os-mission-{job.id[-8:]}",
-            )
-            self._worker = worker
-            worker.start()
+            try:
+                self._start_worker(job.id, self._run_job)
+            except Exception:
+                self._jobs.pop(job.id, None)
+                raise
             return job.to_dict()
 
     def resume(self, job_id: str) -> dict[str, Any]:
@@ -401,28 +408,129 @@ class MissionRuntimeService:
                     f"mission plan is not active: {plan.state.value}"
                 )
 
+            self._start_worker(job.id, self._resume_job)
             job.state = MissionJobState.RUNNING
             job.error = None
             job.updated_at = utc_now_iso()
-            worker = threading.Thread(
-                target=self._resume_job,
-                args=(job.id,),
-                daemon=True,
-                name=f"agent-os-resume-{job.id[-8:]}",
+            return job.to_dict()
+
+    def plan_review(self, job_id: str) -> dict[str, Any]:
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None:
+                raise KeyError(f"unknown mission: {job_id}")
+            task = self.store.get_task(job.task_id) if job.task_id else None
+            plan = self.store.latest_plan_for_task(job.task_id) if job.task_id else None
+            if task is None or plan is None:
+                raise RuntimeError("This mission has no plan available to review yet.")
+            dependencies = self.store.plan_dependencies(plan.id)
+            return {
+                "job_id": job.id,
+                "task_id": task.id,
+                "plan_id": plan.id,
+                "revision": plan.revision,
+                "state": plan.state.value,
+                "reviewable": plan.state is PlanState.DRAFT and task.state in {TaskState.PLANNING, TaskState.READY},
+                "objective": redact_display_value(plan.objective, bounded=False),
+                "workspace_id": redact_display_value(task.workspace_id, bounded=False),
+                "steps": [
+                    {"id": step.id, "title": redact_display_value(step.title, bounded=False),
+                     "kind": step.kind.value, "priority": step.priority,
+                     "spec": redact_display_value(step.spec, bounded=False),
+                     "depends_on": dependencies.get(step.id, [])}
+                    for step in self.store.list_plan_steps(plan.id)
+                ],
+            }
+
+    def decide_plan(self, job_id: str, plan_id: str, revision: int, choice: str) -> dict[str, Any]:
+        if choice not in {"approve", "discard"}:
+            raise ValueError("plan decision must be approve or discard")
+        if choice == "approve":
+            self._ensure_new_work_allowed()
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None:
+                raise KeyError(f"unknown mission: {job_id}")
+            if job.task_id is None:
+                raise RuntimeError("This mission has no plan available to review yet.")
+
+            committed = False
+
+            def commit_decision() -> None:
+                nonlocal committed
+                self.store.resolve_plan_review(
+                    job.task_id, plan_id, revision, approve=choice == "approve",
+                )
+                committed = True
+                job.plan_id = plan_id
+                job.state = MissionJobState.RUNNING if choice == "approve" else MissionJobState.CANCELLED
+                job.error = None
+                job.updated_at = utc_now_iso()
+
+            if choice == "discard":
+                commit_decision()
+            else:
+                try:
+                    # Reserve the desktop before committing approval. A busy desktop
+                    # must leave the draft unapproved so a later start is still explicit.
+                    self._start_worker(job.id, self._resume_job, before_start=commit_decision)
+                except Exception as exc:
+                    if committed:
+                        # Approval is durable even if starting the thread fails.
+                        job.state = MissionJobState.INTERRUPTED
+                        job.error = str(redact_display_value(str(exc)))
+                    raise
+            return job.to_dict()
+
+    def _start_worker(
+        self, job_id: str, target: Callable[[str], None], *, before_start: Callable[[], None] | None = None,
+    ) -> None:
+        """Called under the service lock; bind scope and reserve the shared desktop."""
+        if not _INTERACTIVE_MISSION_LOCK.acquire(blocking=False):
+            raise MissionBusyError(
+                "Another interactive Agent OS mission is already running."
+            )
+
+        def run() -> None:
+            try:
+                target(job_id)
+            finally:
+                with self._lock:
+                    self._worker = None
+                    _INTERACTIVE_MISSION_LOCK.release()
+
+        try:
+            if before_start is not None:
+                before_start()
+            worker = spawn_context_thread(
+                target=run,
+                name=f"agent-os-mission-{job_id[-8:]}",
             )
             self._worker = worker
             worker.start()
-            return job.to_dict()
+        except Exception:
+            self._worker = None
+            _INTERACTIVE_MISSION_LOCK.release()
+            raise
 
     def jobs(self, *, limit: int = 20) -> list[dict[str, Any]]:
+        """Include pending reviews and active workers, plus bounded recent history."""
         limit = max(1, min(int(limit), 100))
         with self._lock:
             jobs = sorted(
                 self._jobs.values(),
                 key=lambda item: (item.created_at, item.id),
                 reverse=True,
-            )[:limit]
-            return [self._with_live_state(job) for job in jobs]
+            )
+            live_states = {
+                MissionJobState.WAITING_PLAN, MissionJobState.QUEUED, MissionJobState.PLANNING,
+                MissionJobState.RUNNING, MissionJobState.WAITING_APPROVAL,
+            }
+            live = [job for job in jobs if job.state in live_states]
+            recent = [job for job in jobs if job.state not in live_states][:limit]
+            # Completed history must not open thousands of SQLite connections on
+            # every poll, or hide an old draft the user has just approved.
+            return [self._with_live_state(job) for job in live + recent]
 
     def _with_live_state(self, job: MissionJob) -> dict[str, Any]:
         data = job.to_dict()
@@ -442,6 +550,11 @@ class MissionRuntimeService:
             return data
         if task.state is TaskState.BLOCKED:
             data["state"] = MissionJobState.BLOCKED.value
+            return data
+        plan = self.store.latest_plan_for_task(task.id)
+        if plan is not None and plan.state is PlanState.DRAFT and task.state in {TaskState.PLANNING, TaskState.READY}:
+            data["state"] = MissionJobState.WAITING_PLAN.value
+            data["plan_id"] = plan.id
             return data
         if job.state is MissionJobState.INTERRUPTED:
             return data
@@ -485,6 +598,7 @@ class MissionRuntimeService:
                 job.goal,
                 workspace_id=job.workspace_id,
                 session_id=job.session_id,
+                activate=False,
                 metadata={
                     "source": "mission-control",
                     "mission_job_id": job_id,
@@ -492,23 +606,16 @@ class MissionRuntimeService:
             )
             self._set_job(
                 job_id,
-                state=MissionJobState.RUNNING,
+                state=MissionJobState.WAITING_PLAN,
                 task_id=submission.task.id,
                 plan_id=submission.plan.id,
             )
-            runtime.run_until_idle(submission.plan.id, max_ticks=256)
-
-            self._sync_job_from_task(job_id, submission.task.id)
         except Exception as exc:
             self._set_job(
                 job_id,
                 state=MissionJobState.FAILED,
                 error=f"{type(exc).__name__}: {exc}",
             )
-        finally:
-            with self._lock:
-                if self._worker is threading.current_thread():
-                    self._worker = None
 
     def _resume_job(self, job_id: str) -> None:
         with self._lock:
@@ -541,10 +648,6 @@ class MissionRuntimeService:
                 state=MissionJobState.FAILED,
                 error=f"{type(exc).__name__}: {exc}",
             )
-        finally:
-            with self._lock:
-                if self._worker is threading.current_thread():
-                    self._worker = None
 
     def _sync_job_from_task(self, job_id: str, task_id: str) -> MissionJob:
         task = self.store.get_task(task_id)

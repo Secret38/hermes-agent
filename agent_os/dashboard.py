@@ -8,7 +8,6 @@ Control can never migrate, repair, or mutate execution state.
 from __future__ import annotations
 
 import json
-import re
 import sqlite3
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
@@ -16,15 +15,8 @@ from pathlib import Path
 from typing import Any
 
 from .health import AgentOSHealthReport, collect_agent_os_health
+from .redaction import redact_display_value
 from .store import default_db_path
-
-_SECRET_KEY_RE = re.compile(
-    r"(secret|token|password|passwd|api[_-]?key|authorization|cookie|credential|private[_-]?key)",
-    re.IGNORECASE,
-)
-_MAX_STRING = 800
-_MAX_COLLECTION = 80
-_MAX_DEPTH = 5
 
 
 def _json_loads(raw: Any) -> Any:
@@ -36,31 +28,11 @@ def _json_loads(raw: Any) -> Any:
         return {}
 
 
-def _safe_value(value: Any, *, depth: int = 0) -> Any:
-    """Return a bounded, secret-redacted JSON-safe value for UI evidence."""
-
-    if depth >= _MAX_DEPTH:
-        return "[truncated]"
-    if isinstance(value, dict):
-        out: dict[str, Any] = {}
-        for key, item in list(value.items())[:_MAX_COLLECTION]:
-            name = str(key)
-            out[name] = "[redacted]" if _SECRET_KEY_RE.search(name) else _safe_value(item, depth=depth + 1)
-        return out
-    if isinstance(value, (list, tuple)):
-        return [_safe_value(item, depth=depth + 1) for item in list(value)[:_MAX_COLLECTION]]
-    if isinstance(value, str):
-        return value if len(value) <= _MAX_STRING else value[:_MAX_STRING] + "…"
-    if value is None or isinstance(value, (bool, int, float)):
-        return value
-    return str(value)[:_MAX_STRING]
-
-
 def _row_dict(row: sqlite3.Row, *, json_fields: tuple[str, ...] = ()) -> dict[str, Any]:
     out = dict(row)
     for field in json_fields:
         if field in out:
-            out[field.removesuffix("_json")] = _safe_value(_json_loads(out.pop(field)))
+            out[field.removesuffix("_json")] = redact_display_value(_json_loads(out.pop(field)))
     return out
 
 
