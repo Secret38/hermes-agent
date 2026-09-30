@@ -9,6 +9,9 @@ on:
       - "apps/desktop/src/contrib/operations.ts"
       - "apps/desktop/src/store/prompts.ts"
       - "apps/shared/**"
+      - "agent_os/**"
+      - "plugins/agent-os/dashboard/**"
+      - "tests/agent_os/**"
       - "apps/desktop/package.json"
       - "package-lock.json"
       - "apps/desktop/e2e/agent-os-windows-visual.spec.ts"
@@ -74,6 +77,15 @@ jobs:
 
       - name: Install Node dependencies
         run: npm ci
+
+      - name: Verify durable plan review and profile ownership on Windows
+        if: matrix.scale == '1'
+        shell: bash
+        env:
+          HERMES_TEST_FILE_RETRIES: "0"
+        run: |
+          export HERMES_PYTHON="$GITHUB_WORKSPACE/.venv/Scripts/python.exe"
+          scripts/run_tests.sh tests/agent_os/test_mission_plan_review.py tests/agent_os/test_mission_profile_scope.py tests/agent_os/test_mission_control_runtime.py tests/agent_os/test_mission_control.py -q
 
       - name: Typecheck Windows visual harness
         working-directory: apps/desktop

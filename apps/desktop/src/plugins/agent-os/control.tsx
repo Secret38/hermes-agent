@@ -1,4 +1,4 @@
-import { cn, Codicon, host, queryClient, useQuery } from '@hermes/plugin-sdk'
+import { Button, cn, Codicon, host, queryClient, usePluginI18n, useQuery } from '@hermes/plugin-sdk'
 import { useState } from 'react'
 
 import {
@@ -13,6 +13,7 @@ import {
 } from './api'
 import { useAgentOSEstop } from './control-data'
 import { type HumanGate, openHumanGateSession, resolveHumanGateApproval, useHumanGates } from './human-gates'
+import { MissionPlanReview } from './plan-review'
 import type { AgentOSMissionJob, AgentOSPendingApproval } from './types'
 
 const ACTIVE_MISSION_STATES = new Set(['QUEUED', 'PLANNING', 'RUNNING', 'WAITING_APPROVAL'])
@@ -219,6 +220,7 @@ export function MissionControlActions({
   coreReady: boolean
   onSelectTask?: (taskId: string) => void
 }) {
+  const t = usePluginI18n('agent-os')
   const [composerOpen, setComposerOpen] = useState(false)
   const [goal, setGoal] = useState('')
   const [workspace, setWorkspace] = useState('')
@@ -246,7 +248,8 @@ export function MissionControlActions({
   const jobs = missionData?.jobs ?? []
   const approvals = approvalData?.approvals ?? []
   const active = jobs.find(job => ACTIVE_MISSION_STATES.has(job.state))
-  const recent = jobs.slice(0, 4)
+  const pendingPlans = jobs.filter(job => job.state === 'WAITING_PLAN')
+  const recent = jobs.filter(job => job.state !== 'WAITING_PLAN').slice(0, 4)
 
   const invalidateControl = () => {
     void queryClient.invalidateQueries({ queryKey: AGENT_OS_MISSIONS_KEY })
@@ -365,8 +368,8 @@ export function MissionControlActions({
           </div>
           <div className="min-w-0">
             <div className="text-xs font-semibold text-foreground">Mission control</div>
-            <div className="mt-0.5 truncate text-[0.58rem] text-(--ui-text-tertiary)">
-              L0/L1 execute automatically · L2+ pauses here for explicit approval
+            <div className="mt-0.5 text-[0.58rem] text-(--ui-text-tertiary)">
+              {t('reviewIntro')}
             </div>
           </div>
         </div>
@@ -499,17 +502,30 @@ export function MissionControlActions({
               >
                 Cancel
               </button>
-              <button
-                className="inline-flex h-8 items-center gap-1.5 rounded-md bg-(--dt-primary) px-3 text-[0.64rem] font-semibold text-white disabled:opacity-50"
-                disabled={!goal.trim() || submitting}
+              <Button
+                disabled={!goal.trim() || submitting || Boolean(active) || Boolean(estop.data?.engaged) || !coreReady}
                 onClick={() => void submit()}
+                size="sm"
                 type="button"
               >
                 {submitting && <Codicon className="animate-spin" name="loading" size="0.65rem" />}
-                Plan & run
-              </button>
+                {t('createPlan')}
+              </Button>
             </div>
           </div>
+        </div>
+      )}
+
+      {pendingPlans.length > 0 && (
+        <div className="space-y-6 p-3">
+          {pendingPlans.map(job => (
+            <MissionPlanReview
+              job={job}
+              key={job.id}
+              onResolved={invalidateControl}
+              startBlocked={!coreReady ? t('notReady') : estop.data?.engaged ? t('paused') : active ? t('busy') : undefined}
+            />
+          ))}
         </div>
       )}
 

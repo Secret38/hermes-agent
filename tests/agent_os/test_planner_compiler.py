@@ -49,6 +49,7 @@ def test_compiler_rejects_plan_without_verification(tmp_path):
                 key="work",
                 title="Work",
                 kind=PlanStepKind.ACTION,
+                spec={"tool": "terminal", "operation": "build"},
             ),
         ),
     )
@@ -63,12 +64,13 @@ def test_compiler_rejects_terminal_branch_not_covered_by_verification(tmp_path):
     proposal = PlanProposal(
         objective="branch coverage",
         steps=(
-            ProposedStep("a", "A", PlanStepKind.ACTION),
-            ProposedStep("b", "B", PlanStepKind.ACTION),
+            ProposedStep("a", "A", PlanStepKind.ACTION, spec={"tool": "terminal", "operation": "build a"}),
+            ProposedStep("b", "B", PlanStepKind.ACTION, spec={"tool": "terminal", "operation": "build b"}),
             ProposedStep(
                 "verify-a",
                 "Verify A",
                 PlanStepKind.VERIFICATION,
+                spec={"tool": "terminal", "operation": "verify a"},
                 depends_on=("a",),
             ),
         ),

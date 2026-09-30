@@ -841,6 +841,79 @@ class AgentOSStore:
         finally:
             conn.close()
 
+    def plan_dependencies(self, plan_id: str) -> dict[str, list[str]]:
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                """SELECT d.step_id, d.dependency_step_id
+                     FROM plan_step_dependencies d
+                     JOIN plan_steps s ON s.id = d.step_id
+                    WHERE s.plan_id = ? ORDER BY d.step_id, d.dependency_step_id""",
+                (plan_id,),
+            ).fetchall()
+            dependencies: dict[str, list[str]] = {}
+            for row in rows:
+                dependencies.setdefault(row["step_id"], []).append(row["dependency_step_id"])
+            return dependencies
+        finally:
+            conn.close()
+
+    def resolve_plan_review(
+        self, task_id: str, plan_id: str, revision: int, *, approve: bool,
+    ) -> PlanRecord:
+        """Consume one review of the latest immutable draft, with its audit event.
+
+        Checking the version and writing the decision share a SQLite write lock:
+        competing windows and replays cannot start or discard a different plan.
+        """
+        conn = self._connect()
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            task = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            plan = conn.execute(
+                """SELECT * FROM plans WHERE task_id = ?
+                    ORDER BY revision DESC, created_at DESC, id DESC LIMIT 1""",
+                (task_id,),
+            ).fetchone()
+            if (task is None or task["state"] not in {TaskState.PLANNING.value, TaskState.READY.value}
+                    or plan is None or plan["id"] != plan_id
+                    or plan["revision"] != revision or plan["state"] != PlanState.DRAFT.value):
+                raise RuntimeError("The plan changed or is no longer pending review. Reload it before deciding.")
+            now = utc_now_iso()
+            target = PlanState.ACTIVE if approve else PlanState.CANCELLED
+            conn.execute(
+                "UPDATE plans SET state = ?, updated_at = ? WHERE id = ?",
+                (target.value, now, plan_id),
+            )
+            self._insert_event(conn, EventRecord.create(
+                task_id=task_id,
+                type=EventType.PLAN_STATE_CHANGED,
+                payload={"plan_id": plan_id, "revision": revision,
+                         "from": PlanState.DRAFT.value, "to": target.value,
+                         "review_decision": "approve" if approve else "discard"},
+            ))
+            task_target = TaskState.READY if approve else TaskState.CANCELLED
+            if task["state"] != task_target.value:
+                # A crash can occur after compile commits the complete draft but
+                # before intake marks the task READY. Review completes that handoff.
+                conn.execute(
+                    "UPDATE tasks SET state = ?, updated_at = ? WHERE id = ?",
+                    (task_target.value, now, task_id),
+                )
+                self._insert_event(conn, EventRecord.create(
+                    task_id=task_id,
+                    type=EventType.TASK_STATE_CHANGED,
+                    payload={"from": task["state"], "to": task_target.value,
+                             "reason": "plan_approved" if approve else "plan_discarded", "plan_id": plan_id},
+                ))
+            conn.commit()
+            return replace(self._plan_from_row(plan), state=target, updated_at=now)
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
     def bind_plan_step_execution(self, step_id: str, execution_id: str) -> PlanStepRecord:
         if not execution_id.strip():
             raise ValueError("execution_id must not be empty")

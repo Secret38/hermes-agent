@@ -105,12 +105,14 @@ class AgentOSRuntime:
         metadata: dict | None = None,
         session_id: str | None = None,
         workspace_id: str | None = None,
+        activate: bool = True,
     ) -> GoalSubmission:
         return self.goal_orchestrator.submit(
             goal,
             metadata=metadata,
             session_id=session_id,
             workspace_id=workspace_id,
+            activate=activate,
         )
 
     def run_once(self, plan_id: str) -> EngineTickResult:

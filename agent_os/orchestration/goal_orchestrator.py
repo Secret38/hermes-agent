@@ -37,6 +37,7 @@ class GoalOrchestrator:
         metadata: dict | None = None,
         session_id: str | None = None,
         workspace_id: str | None = None,
+        activate: bool = True,
     ) -> GoalSubmission:
         task = self.store.create_task(
             TaskRecord.create(
@@ -50,7 +51,7 @@ class GoalOrchestrator:
             task = self.store.transition_task(task.id, TaskState.INTERPRETING)
             task = self.store.transition_task(task.id, TaskState.PLANNING)
             proposal = self.planner.plan(task)
-            plan = self.compiler.compile(task, proposal, activate=True)
+            plan = self.compiler.compile(task, proposal, activate=activate)
             task = self.store.transition_task(task.id, TaskState.READY)
             return GoalSubmission(task=task, plan=plan)
         except Exception as exc:

@@ -65,7 +65,7 @@ def test_api_keeps_mission_ledgers_and_approval_brokers_in_the_owning_profile(tm
     assert services["a"].approvals is not services["b"].approvals
 
 
-@pytest.mark.parametrize("operation", ["submit", "resume"])
+@pytest.mark.parametrize("operation", ["submit", "resume", "approve"])
 def test_workers_keep_profile_scope_and_serialize_the_shared_desktop(
     tmp_path, monkeypatch, multiplex, operation,
 ):
@@ -83,7 +83,8 @@ def test_workers_keep_profile_scope_and_serialize_the_shared_desktop(
                 plan_id=plan.id, task_id=task.id, title=name, kind=PlanStepKind.MANUAL,
             )
             store.create_plan(plan, [step])
-            store.transition_plan(plan.id, PlanState.ACTIVE)
+            if operation != "approve":
+                store.transition_plan(plan.id, PlanState.ACTIVE)
             services[name] = MissionRuntimeService(store)
 
     seen = []
@@ -111,10 +112,21 @@ def test_workers_keep_profile_scope_and_serialize_the_shared_desktop(
         home = tmp_path / name
         entered.clear()
         release.clear()
-        if operation == "resume":
+        if operation == "approve":
+            task = service.store.list_tasks()[0]
+            plan = service.store.latest_plan_for_task(task.id)
+            if plan.state is PlanState.ACTIVE:
+                plan = PlanRecord.create(task_id=task.id, objective=name, revision=plan.revision + 1)
+                service.store.create_plan(plan, [PlanStepRecord.create(
+                    plan_id=plan.id, task_id=task.id, title=name, kind=PlanStepKind.MANUAL,
+                )])
+        if operation != "submit":
             service._hydrate_jobs()
         with profile(home):
-            job = service.submit(name) if operation == "submit" else service.resume(name)
+            if operation == "approve":
+                job = service.decide_plan(name, plan.id, plan.revision, "approve")
+            else:
+                job = service.submit(name) if operation == "submit" else service.resume(name)
             thread = service._worker
         try:
             assert entered.wait(5)
@@ -122,6 +134,10 @@ def test_workers_keep_profile_scope_and_serialize_the_shared_desktop(
             other = "b" if name == "a" else "a"
             with profile(tmp_path / other), pytest.raises(MissionBusyError):
                 services[other].submit("competing desktop work")
+            if operation == "approve":
+                with profile(home), pytest.raises(MissionBusyError):
+                    service.decide_plan(name, plan.id, plan.revision, "approve")
+                assert service.jobs()[0]["state"] == "RUNNING"
         finally:
             release.set()
             thread.join(timeout=5)

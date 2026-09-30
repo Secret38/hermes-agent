@@ -81,6 +81,24 @@ store.append_event(EventRecord.create(
     type=EventType.APPROVAL_REQUESTED,
     payload={"reason": "controlled Windows interaction"},
 ))
+
+review_task = store.create_task(TaskRecord.create(
+    "Review the release notes before saving them",
+    workspace_id="visual-workspace",
+    metadata={"source": "mission-control", "mission_job_id": "visual-plan-review"},
+))
+store.transition_task(review_task.id, TaskState.PLANNING)
+draft = PlanRecord.create(task_id=review_task.id, objective="Save release notes and verify their contents")
+write = PlanStepRecord.create(
+    plan_id=draft.id, task_id=review_task.id, title="Save release notes", kind=PlanStepKind.ACTION,
+    spec={"tool": "file", "operation": "write_file", "input": {"path": "release-notes.txt", "content": "Reviewed release notes"}},
+)
+verify = PlanStepRecord.create(
+    plan_id=draft.id, task_id=review_task.id, title="Verify saved notes", kind=PlanStepKind.VERIFICATION,
+    spec={"tool": "file", "operation": "read_file", "input": {"path": "release-notes.txt"}, "expected_state": {"contains": "Reviewed release notes"}},
+)
+store.create_plan(draft, [write, verify], {verify.id: [write.id]})
+store.transition_task(review_task.id, TaskState.READY)
 `
 
   const repoRoot = path.resolve(import.meta.dirname, '..', '..', '..')
@@ -283,4 +301,29 @@ test(`Mission Control honors reduced motion at ${scaleLabel}% DPI`, async () => 
     return Number.POSITIVE_INFINITY
   })
   expect(animationMs).toBeLessThanOrEqual(0.011)
+})
+
+test(`A saved plan stays pending after reload and can be discarded at ${scaleLabel}% DPI`, async () => {
+  const { page } = fixture!
+  await page.emulateMedia({ forcedColors: 'none', reducedMotion: 'reduce' })
+  await setWindowSize(820, 640)
+  await gotoMissionControl()
+
+  await page.getByRole('button', { name: 'Review plan', exact: true }).click()
+  const review = page.getByRole('region', { name: 'Waiting for plan review' })
+  await expect(review.getByText('Save release notes and verify their contents')).toBeVisible()
+  await expect(review.getByText('Requires: Save release notes')).toBeVisible()
+  const width = await review.evaluate(element => ({ client: element.clientWidth, scroll: element.scrollWidth }))
+  expect(width.scroll).toBeLessThanOrEqual(width.client + 2)
+  await review.screenshot({ animations: 'disabled', path: test.info().outputPath(`agent-os-windows-${scaleLabel}-plan-review-actual.png`) })
+
+  await page.reload()
+  await gotoMissionControl()
+  await page.getByRole('button', { name: 'Review plan', exact: true }).click()
+  await expect(review.getByText('Save release notes and verify their contents')).toBeVisible()
+  const discard = review.getByRole('button', { name: 'Discard plan', exact: true })
+  await expect(discard).toBeEnabled()
+  await discard.focus()
+  await page.keyboard.press('Enter')
+  await expect(review).toHaveCount(0)
 })

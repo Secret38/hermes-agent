@@ -45,6 +45,12 @@ class MissionResumeRequest(BaseModel):
     confirm: Literal[True] = True
 
 
+class PlanDecisionRequest(BaseModel):
+    plan_id: str = Field(min_length=1, max_length=512)
+    revision: int = Field(ge=1, strict=True)
+    choice: Literal["approve", "discard"]
+
+
 _mission_services_lock = threading.Lock()
 
 
@@ -216,6 +222,29 @@ async def resume_mission(job_id: str, _request: MissionResumeRequest):
 @router.get("/approvals")
 async def pending_approvals():
     return {"approvals": _mission_service().approvals.pending()}
+
+
+@router.get("/missions/{job_id}/plan")
+async def mission_plan(job_id: str):
+    try:
+        return await run_in_threadpool(_mission_service().plan_review, job_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/missions/{job_id}/plan/decision")
+async def decide_mission_plan(job_id: str, request: PlanDecisionRequest):
+    try:
+        job = await run_in_threadpool(
+            _mission_service().decide_plan, job_id, request.plan_id, request.revision, request.choice,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"ok": True, "job": job}
 
 
 @router.post("/approvals/{request_id}")

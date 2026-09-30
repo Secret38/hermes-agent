@@ -265,6 +265,7 @@ export interface AgentOSMissionJob {
   state:
     | 'QUEUED'
     | 'PLANNING'
+    | 'WAITING_PLAN'
     | 'RUNNING'
     | 'WAITING_APPROVAL'
     | 'INTERRUPTED'
@@ -290,4 +291,23 @@ export interface AgentOSPendingApproval {
   reason: string
   target: string
   requested_at: string
+}
+
+export interface AgentOSPlanReview {
+  job_id: string
+  task_id: string
+  plan_id: string
+  revision: number
+  objective: string
+  workspace_id: string | null
+  state: string
+  reviewable: boolean
+  steps: Array<{
+    id: string
+    title: string
+    kind: string
+    priority: number
+    spec: Record<string, unknown>
+    depends_on: string[]
+  }>
 }

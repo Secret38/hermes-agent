@@ -214,3 +214,18 @@ Diffs wiederhergestellt; diese Notiz ersetzt den verlorenen Berichtszusatz.
 Nächster Produktschritt: ein dauerhaft gespeicherter Planentwurf, eine bewusste
 Freigabe des konkreten Plans und danach Ausführung. Ein Neustart darf die
 Planfreigabe nicht ersetzen; Aktionsfreigaben bleiben eigenständig bestehen.
+
+## Folgeprüfung vom 30. September 2026: Planfreigabe
+
+Die gefüllte Windows-Matrix besteht auf `7dc3c38d` in allen vier Skalierungen
+([36616065165](https://github.com/Secret38/hermes-agent/actions/runs/36616065165));
+auch der Installer-Kandidatenbuild
+([36616065088](https://github.com/Secret38/hermes-agent/actions/runs/36616065088))
+ist erfolgreich. Die anschließende Fortsetzung ergänzt den oben beschriebenen
+Missionsweg um einen dauerhaft wartenden Entwurf, dessen konkrete Version
+ausdrücklich freigegeben oder verworfen werden muss. Details und neue
+Prüfgrenzen: [agent-os-plan-review.md](agent-os-plan-review.md).
+
+Die Ergebnisgalerie und die vollständige Erstinstallation auf einem frischen
+Windows-PC sind weiterhin offen. Der erweiterte Windows-Lauf muss die neue
+Planansicht noch bestätigen; die vorherigen grünen Jobs enthalten sie nicht.

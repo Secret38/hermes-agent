@@ -1,6 +1,6 @@
 # Ergänzende Videoauswertung und Umsetzungsentscheidung
 
-Stand: 29. September 2026. Referenz: [Julian Goldie, Hermes Agent OS Makes Your AI 100X More Powerful](https://www.youtube.com/watch?v=YDf_wy6ITDc), veröffentlicht am 28. September.
+Stand: 30. September 2026. Referenz: [Julian Goldie, Hermes Agent OS Makes Your AI 100X More Powerful](https://www.youtube.com/watch?v=YDf_wy6ITDc), veröffentlicht am 28. September.
 
 ## Belegumfang
 
@@ -32,7 +32,7 @@ vorhandenen Code, keine gemessene Leistungsbewertung des Videos.
 | Idee | Nutzen | Aufwand / Voraussetzung | Entscheidung |
 |---|---|---|---|
 | Verlässliche Auftragszustände und Kontextzuordnung | Sehr hoch | Bestehende Laufzeitgrenzen absichern | P0: jetzt; Abbruch und Profilgrenzen reparieren |
-| Ziel → Plan prüfen → starten → Ergebnis prüfen | Sehr hoch | Dauerhafter Entwurf, explizite Aktivierung, Neustartverhalten, UI | P1: nächster zusammenhängender Produktabschnitt |
+| Ziel → Plan prüfen → starten → Ergebnis prüfen | Sehr hoch | Dauerhafter Entwurf, explizite Aktivierung, Neustartverhalten, UI | P1: erste Planprüfung implementiert; siehe Folgeabschnitt |
 | Ergebnisse zentral wiederfinden | Sehr hoch | Aufgabenbezogene Artefakte, Vorschau und Herkunft | P1: direkt an den Plan-/Ausführungsablauf anschließen |
 | Gemeinsam nutzbarer Projektkontext | Hoch | Expliziter Geltungsbereich, Herkunft und Änderungsverlauf | P2: bestehende Memory-/Projektpfade erweitern |
 | Hintergrundaufträge und Zeitpläne | Hoch | Laufzeit unabhängig vom Fenster, Wiederaufnahme, Budgets | P2: bestehende Scheduler nutzen; kein zweiter Scheduler |
@@ -75,14 +75,29 @@ Seitenwechsel nötigen Mausklick benutzten sie nur programmatischen Fokus,
 der Chromium im Mausmodus nicht zu `:focus-visible` verpflichtet. Die Suite
 navigiert für diese Prüfungen nun mit echter Tab-Taste und prüft sowohl Fokus
 als auch `:focus-visible`, bevor sie den unverändert geforderten Rahmen misst.
-Der neue native Lauf muss diese Diagnose noch bestätigen.
+Der native Folgelauf [36616065165](https://github.com/Secret38/hermes-agent/actions/runs/36616065165)
+auf `7dc3c38d` besteht in allen vier Skalierungen. Das 100-%-Jobprotokoll bestätigt
+fünf bestandene Prüfungen ohne Wiederholung. Normalansicht und High-Contrast-
+Screenshot dieses Jobs wurden zusätzlich gesichtet. Der Installer-Kandidatenlauf
+[36616065088](https://github.com/Secret38/hermes-agent/actions/runs/36616065088)
+ist ebenfalls erfolgreich. Diese Ergebnisse betreffen den Stand vor der neuen
+Planprüfung und ersetzen keine Installation auf einem frischen Windows-Rechner.
 
-## Nächster Abnahmeabschnitt
+## Fortsetzung: ausdrückliche Planprüfung
 
-Ein Planentwurf muss mit konkreten Schritten, Abhängigkeiten und erwarteten
-Ergebnissen sichtbar sein. Freigabe bindet sich an die angezeigte Plan-ID und
-Revision. Verwerfen verhindert Start; Wiederherstellung bleibt im Reviewzustand.
-Aktionsfreigaben bleiben zusätzlich bestehen. Änderungen an einem Entwurf
-erfordern eine neue prüfbare Revision. Erst danach folgt die Ergebnisansicht
-mit derselben Auftragsidentität. Diese Funktionen sind hier spezifiziert,
-noch nicht als fertig implementiert ausgewiesen.
+Mission Control erstellt jetzt dauerhafte Entwürfe und zeigt einen eigenen
+Prüfschritt vor dem Start. Freigabe bindet sich an die angezeigte Plan-ID und
+Revision; SQLite nimmt nur eine Entscheidung über den neuesten Entwurf an.
+Verwerfen storniert Plan und Aufgabe zusammen. Neustarts führen keine
+ungeprüften Pläne aus. Aktionsfreigaben bleiben zusätzlich bestehen.
+
+Die Ansicht zeigt die vollständigen Schritte, Abhängigkeiten und Parameter;
+Geheimwerte werden maskiert. Offene Planprüfungen fallen nicht aus der kurzen
+Missionshistorie. Ungültige Antworten und fehlgeschlagene Entscheidungen sperren
+die Freigabe bis zum erneuten Laden. Neue Texte sind in allen neun App-Sprachen
+vorhanden. Die native DPI-Suite wurde um Planprüfung, Neuladen und Verwerfen
+erweitert; ihr Ergebnis für diesen neuen Stand ist noch offen.
+
+Belege und Grenzen stehen in [agent-os-plan-review.md](agent-os-plan-review.md).
+Als nächster Produktabschnitt bleiben Änderungen an Entwürfen und eine
+Ergebnisansicht mit echten Artefakten unter derselben Auftragsidentität.
