@@ -68,10 +68,26 @@ dadurch nicht zu einer maschinenweiten Warteschlange.
   auf `7dc3c38d` enthalten diese Erweiterung noch nicht. Der neue Lauf bleibt
   bis zu seinem Abschluss ein offener Nachweis.
 
-## Verbleibender Umfang
+## Erweiterung vom 4. Oktober 2026
 
-Es gibt noch keinen Editor für einzelne Planschritte: Ein ungeeigneter Entwurf
-kann verworfen und als neue Mission erstellt werden. Die Ergebnisgalerie mit
-echten Artefakten und die vollständige Erstinstallation, Reparatur und native
-Computer-Use-Abnahme auf einem frischen Windows-PC bleiben gesonderte Arbeit.
-Diese Änderung ist keine Erklärung der allgemeinen V1-Produktionsreife.
+Bestehende Schritte können vor der Freigabe bearbeitet werden. Titel und
+Aktionsparameter werden über `POST /missions/{job_id}/plan/edit` mit Plan-ID,
+Revision und den geänderten Schritten gesendet. Der bestehende Runtime-Compiler
+prüft die verfügbaren Fähigkeiten und den Verifikationsgraphen erneut.
+Die Ablösung des alten Entwurfs, die neue Revision und der Audit-Eintrag
+werden atomar gespeichert. Ein konkurrierender Start oder eine Änderung
+macht die alte Anfrage ungültig. Die neue Version bleibt `DRAFT`.
+Ausgeblendete Werte werden unverändert übernommen und können im Editor
+nicht geändert werden.
+
+Die Ergebnisansicht verwendet verifizierte Datei-Schreibaktionen mit ihren
+persistierten Nachweisen. Vorschauen prüfen den aktuell gelesenen Inhalt
+gegen die gespeicherte Prüfsumme. Downloads verwenden die bestehende,
+bei der Abfrage gebundene Profil-/Verbindungsroute des Desktop-SDK.
+Details, Grenzen und Installationsabnahme: `agent-os-windows-user-test.md`.
+
+Der Windows-Nachweis für die vorherige Version `8db2597c` ist inzwischen grün:
+Installer-Lauf `36699186894`, Visual-QA-Lauf `36699186904` mit allen vier
+DPI-Stufen und 20 nativen Backend-Prüffällen. Die oben beschriebenen neuen
+Änderungen benötigen ihren eigenen Windows-Lauf; der alte Nachweis gilt
+nicht automatisch für diese Erweiterung.

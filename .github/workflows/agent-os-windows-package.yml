@@ -79,12 +79,15 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          npm run tauri:build --workspace @hermes/bootstrap-installer -- --no-bundle
+          npm run tauri:build --workspace @hermes/bootstrap-installer -- --bundles nsis
 
-          $exe = 'apps/bootstrap-installer/src-tauri/target/release/Hermes-Setup.exe'
-          if (-not (Test-Path $exe -PathType Leaf)) {
-            throw "Expected Hermes-Setup.exe was not produced"
+          # Ship the installer bundle: the raw Tauri executable alone cannot
+          # provision WebView2 on a fresh Windows machine.
+          $bundles = @(Get-ChildItem 'apps/bootstrap-installer/src-tauri/target/release/bundle/nsis/*-setup.exe')
+          if ($bundles.Count -ne 1) {
+            throw "Expected exactly one NSIS setup executable"
           }
+          $exe = $bundles[0].FullName
 
           git diff --exit-code -- apps/bootstrap-installer/src-tauri/Cargo.lock
           New-Item -ItemType Directory -Force -Path dist | Out-Null
@@ -98,6 +101,8 @@ jobs:
             commit = $env:HERMES_BUILD_PIN_COMMIT
             branch = $env:HERMES_BUILD_PIN_BRANCH
             sha256 = $hash
+            installer_kind = "nsis-with-webview2-bootstrapper"
+            requires_network = $true
             signed = $false
             production_release = $false
           } | ConvertTo-Json | Set-Content -Encoding utf8 dist/build-metadata.json
@@ -111,4 +116,4 @@ jobs:
             dist/SHA256SUMS.txt
             dist/build-metadata.json
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 30

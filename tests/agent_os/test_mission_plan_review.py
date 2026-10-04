@@ -167,3 +167,38 @@ def test_plan_review_rejects_superseded_plans_and_commits_only_one_decision(tmp_
     assert len(decisions) == 1
     assert decisions[0].payload["revision"] == current.revision
     assert store.get_plan(old.id).state is PlanState.DRAFT
+
+
+def test_edit_creates_durable_unapproved_revision_and_preserves_hidden_values(tmp_path, monkeypatch):
+    monkeypatch.setattr(HermesPlanner, "plan", lambda self, task: proposal())
+    service = MissionRuntimeService(AgentOSStore(tmp_path / 'edit.db'))
+    job = service.submit('Prepare an editable outcome')
+    join_worker(service)
+    first = service.plan_review(job['id'])
+    edit = dict(first['steps'][0])
+    edit['title'] = 'Review the corrected instructions'
+    edit['spec'] = {**edit['spec'], 'instructions': 'Updated instructions'}
+    revised = service.edit_plan(job['id'], first['plan_id'], first['revision'], [edit])
+    assert revised['revision'] == first['revision'] + 1
+    assert revised['reviewable'] and revised['state'] == 'DRAFT'
+    assert revised['plan_id'] != first['plan_id']
+    assert service.store.get_plan(first['plan_id']).state is PlanState.CANCELLED
+    step = service.store.list_plan_steps(revised['plan_id'])[0]
+    assert step.spec['password'] == 'private-value'
+    assert step.spec['instructions'] == 'Updated instructions'
+    assert service.store.list_actions() == []
+    with pytest.raises(RuntimeError):
+        service.decide_plan(job['id'], first['plan_id'], first['revision'], 'approve')
+    with pytest.raises(RuntimeError):
+        service.edit_plan(job['id'], first['plan_id'], first['revision'], [edit])
+    reopened = MissionRuntimeService(AgentOSStore(service.store.path))
+    assert reopened.plan_review(job['id'])['plan_id'] == revised['plan_id']
+    invalid = dict(revised['steps'][1])
+    invalid['spec'] = {**invalid['spec'], 'tool': 'not-installed'}
+    with pytest.raises(ValueError):
+        reopened.edit_plan(job['id'], revised['plan_id'], revised['revision'], [invalid])
+    assert reopened.plan_review(job['id'])['plan_id'] == revised['plan_id']
+    assert reopened.store.get_plan(revised['plan_id']).state is PlanState.DRAFT
+    reopened.decide_plan(job['id'], revised['plan_id'], revised['revision'], 'discard')
+    with pytest.raises(RuntimeError):
+        reopened.edit_plan(job['id'], revised['plan_id'], revised['revision'], [edit])

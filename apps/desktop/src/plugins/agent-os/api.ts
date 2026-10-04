@@ -1,4 +1,4 @@
-import { type PluginRestOptions, queryClient } from '@hermes/plugin-sdk'
+import { captureGatewayFileDownload, type PluginRestOptions, queryClient } from '@hermes/plugin-sdk'
 
 import type { AgentOSContextSnapshot, AgentOSMissionJob, AgentOSPendingApproval, AgentOSPlanReview, AgentOSSnapshot } from './types'
 
@@ -106,6 +106,25 @@ export async function fetchAgentOSPlanReview(jobId: string): Promise<AgentOSPlan
   return plan
 }
 
+export async function editAgentOSPlan(
+  jobId: string,
+  plan: Pick<AgentOSPlanReview, 'plan_id' | 'revision'>,
+  steps: Pick<AgentOSPlanReview['steps'][number], 'id' | 'title' | 'spec'>[]
+): Promise<AgentOSPlanReview> {
+  if (!rest) {throw new Error('Agent OS Mission Control API is not ready')}
+  await rest(`/missions/${encodeURIComponent(jobId)}/plan/edit`, {
+    method: 'POST', body: { plan_id: plan.plan_id, revision: plan.revision, steps }
+  })
+
+  const updated = await fetchAgentOSPlanReview(jobId)
+
+  if (updated.plan_id === plan.plan_id || updated.revision <= plan.revision) {
+    throw new Error('The new plan version was not confirmed. Reload before deciding.')
+  }
+
+  return updated
+}
+
 export function decideAgentOSPlan(
   jobId: string,
   plan: Pick<AgentOSPlanReview, 'plan_id' | 'revision'>,
@@ -161,4 +180,31 @@ export function subscribeAgentOSLiveFrame(
     `/live/${encodeURIComponent(taskKey)}?session_id=${encodeURIComponent(sessionKey)}`,
     data => onFrame(data as AgentOSLiveFrameMessage)
   )
+}
+
+export interface AgentOSFileResult {
+  id: string
+  task_id: string
+  name: string
+  path: string
+  sha256: string
+  bytes: number | null
+  verified_at: string
+}
+
+export async function fetchAgentOSResults(taskId: string) {
+  const request = rest
+
+  if (!request) {throw new Error('Agent OS Mission Control API is not ready')}
+  const download = captureGatewayFileDownload()
+  const path = `/tasks/${encodeURIComponent(taskId)}/results`
+  const data = await request<{ task_id: string; results: AgentOSFileResult[] }>(path)
+
+  if (data.task_id !== taskId || !Array.isArray(data.results)
+    || data.results.some(result => result.task_id !== taskId || typeof result.id !== 'string'
+      || typeof result.path !== 'string' || typeof result.name !== 'string' || typeof result.sha256 !== 'string')) {
+    throw new Error('Invalid mission results response')
+  }
+
+  return { ...data, download, preview: (id: string) => request<AgentOSFileResult & { preview: string; truncated: boolean }>(`${path}/${encodeURIComponent(id)}`) }
 }

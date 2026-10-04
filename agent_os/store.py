@@ -460,20 +460,21 @@ class AgentOSStore:
         self,
         *,
         states: set[ActionState] | None = None,
+        task_id: str | None = None,
     ) -> list[ActionRecord]:
         conn = self._connect()
         try:
+            filters, values = [], []
             if states:
-                values = sorted(state.value for state in states)
-                marks = ",".join("?" for _ in values)
-                rows = conn.execute(
-                    f"SELECT * FROM actions WHERE state IN ({marks}) ORDER BY created_at, id",
-                    values,
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    "SELECT * FROM actions ORDER BY created_at, id"
-                ).fetchall()
+                states_values = sorted(state.value for state in states)
+                marks = ",".join("?" for _ in states_values)
+                filters.append(f"state IN ({marks})")
+                values.extend(states_values)
+            if task_id is not None:
+                filters.append("task_id = ?")
+                values.append(task_id)
+            where = " WHERE " + " AND ".join(filters) if filters else ""
+            rows = conn.execute("SELECT * FROM actions" + where + " ORDER BY created_at, id", values).fetchall()
             return [self._action_from_row(row) for row in rows]
         finally:
             conn.close()
@@ -707,6 +708,7 @@ class AgentOSStore:
         plan: PlanRecord,
         steps: list[PlanStepRecord],
         dependencies: dict[str, list[str]] | None = None,
+        *, replaces: tuple[str, int] | None = None,
     ) -> PlanRecord:
         dependencies = dependencies or {}
         validate_plan_graph(steps, dependencies)
@@ -718,6 +720,26 @@ class AgentOSStore:
             conn.execute("BEGIN IMMEDIATE")
             if conn.execute("SELECT 1 FROM tasks WHERE id = ?", (plan.task_id,)).fetchone() is None:
                 raise KeyError(f"unknown task: {plan.task_id}")
+            if replaces is not None:
+                old_id, old_revision = replaces
+                current = conn.execute(
+                    "SELECT * FROM plans WHERE task_id = ? ORDER BY revision DESC, created_at DESC, id DESC LIMIT 1",
+                    (plan.task_id,),
+                ).fetchone()
+                task = conn.execute("SELECT state FROM tasks WHERE id = ?", (plan.task_id,)).fetchone()
+                if (current is None or current["id"] != old_id or current["revision"] != old_revision
+                        or current["state"] != PlanState.DRAFT.value
+                        or task["state"] not in {TaskState.PLANNING.value, TaskState.READY.value}
+                        or plan.revision != old_revision + 1 or plan.state is not PlanState.DRAFT):
+                    raise RuntimeError("The plan changed or is no longer editable. Reload it before editing.")
+                conn.execute("UPDATE plans SET state = ?, updated_at = ? WHERE id = ?",
+                             (PlanState.CANCELLED.value, utc_now_iso(), old_id))
+                self._insert_event(conn, EventRecord.create(
+                    task_id=plan.task_id, type=EventType.PLAN_STATE_CHANGED,
+                    payload={"plan_id": old_id, "from": PlanState.DRAFT.value,
+                             "to": PlanState.CANCELLED.value, "review_decision": "revised",
+                             "replacement_plan_id": plan.id},
+                ))
             conn.execute(
                 """INSERT INTO plans(id, task_id, objective, revision, state, metadata_json, created_at, updated_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",

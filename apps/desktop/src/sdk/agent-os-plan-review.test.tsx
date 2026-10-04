@@ -8,6 +8,7 @@ import { registerPluginLocales } from '@/i18n/plugin-i18n'
 import { bindAgentOSApi } from '../plugins/agent-os/api'
 import { AGENT_OS_LOCALES } from '../plugins/agent-os/i18n'
 import { MissionPlanReview } from '../plugins/agent-os/plan-review'
+import { MissionResults } from '../plugins/agent-os/results'
 import type { AgentOSMissionJob, AgentOSPlanReview } from '../plugins/agent-os/types'
 
 const job: AgentOSMissionJob = {
@@ -117,4 +118,62 @@ it('allows discard while starting is blocked and rejects an incomplete review re
   expect(onResolved).not.toHaveBeenCalled()
   await act(async () => finishDecision({ ok: true, job: { ...job, state: 'CANCELLED' } }))
   expect(onResolved).toHaveBeenCalledOnce()
+})
+
+it('saves edited steps as a new draft and requires a separate explicit approval', async () => {
+  let current = structuredClone(plan)
+  const writes: { path: string; body: unknown }[] = []
+  dispose = bindAgentOSApi(async <T,>(path: string, options?: PluginRestOptions): Promise<T> => {
+    if (!options) {return structuredClone(current) as T}
+    writes.push({ path, body: options.body })
+
+    if (path.endsWith('/edit')) {
+      const body = options.body as { steps: typeof plan.steps }
+      current = { ...current, plan_id: 'edited-plan', revision: 2,
+        steps: current.steps.map((step, index) => ({ ...step, title: body.steps[index].title })) }
+
+      return structuredClone(current) as T
+    }
+
+    return { ok: true, job: { ...job, state: 'RUNNING' } } as T
+  }, () => () => undefined)
+  const onResolved = vi.fn()
+  render(<QueryClientProvider client={client}><MissionPlanReview job={job} onResolved={onResolved} /></QueryClientProvider>)
+  fireEvent.click(screen.getByRole('button', { name: 'Review plan' }))
+  await screen.findByText(plan.objective)
+  fireEvent.click(screen.getByRole('button', { name: 'Edit steps' }))
+  fireEvent.change(screen.getAllByRole('textbox', { name: 'Step title' })[0], { target: { value: 'Read the corrected result' } })
+  expect((screen.getByRole('button', { name: 'Approve and start' }) as HTMLButtonElement).disabled).toBe(true)
+  fireEvent.click(screen.getByRole('button', { name: 'Save new version' }))
+  await screen.findByText('Read the corrected result')
+  expect(writes).toHaveLength(1)
+  expect(onResolved).not.toHaveBeenCalled()
+  expect(writes[0].body).toMatchObject({ plan_id: plan.plan_id, revision: 1 })
+  fireEvent.click(screen.getByRole('button', { name: 'Approve and start' }))
+  await waitFor(() => expect(onResolved).toHaveBeenCalledOnce())
+  expect(writes[1].body).toEqual({ plan_id: 'edited-plan', revision: 2, choice: 'approve' })
+})
+
+
+it('loads task-owned files on demand and renders verified preview as inert text', async () => {
+  const calls: string[] = []
+
+  const result = { id: 'action-1', task_id: 'task-1', name: 'result.txt', path: '/workspace/result.txt',
+    sha256: 'saved-proof', bytes: 25, verified_at: '2026-10-04T10:00:00Z' }
+
+  dispose = bindAgentOSApi(async <T,>(path: string): Promise<T> => {
+    calls.push(path)
+
+    return (path.endsWith('/action-1')
+      ? { ...result, preview: '<img src=x onerror=alert(1)>', truncated: false }
+      : { task_id: 'task-1', results: [result] }) as T
+  }, () => () => undefined)
+  render(<QueryClientProvider client={client}><MissionResults taskId="task-1" /></QueryClientProvider>)
+  expect(calls).toEqual([])
+  fireEvent.click(screen.getByRole('button', { name: 'Result files' }))
+  await screen.findByText('result.txt')
+  fireEvent.click(screen.getByRole('button', { name: 'Preview' }))
+  await screen.findByText('<img src=x onerror=alert(1)>')
+  expect(screen.queryByRole('img')).toBeNull()
+  expect(calls).toEqual(['/tasks/task-1/results', '/tasks/task-1/results/action-1'])
 })

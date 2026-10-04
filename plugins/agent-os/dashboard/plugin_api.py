@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from functools import lru_cache, partial
 from pathlib import Path
 import threading
-from typing import Literal
+from typing import Any, Literal
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
@@ -49,6 +49,18 @@ class PlanDecisionRequest(BaseModel):
     plan_id: str = Field(min_length=1, max_length=512)
     revision: int = Field(ge=1, strict=True)
     choice: Literal["approve", "discard"]
+
+
+class PlanStepEdit(BaseModel):
+    id: str = Field(min_length=1, max_length=512)
+    title: str = Field(min_length=1, max_length=4096)
+    spec: dict[str, Any]
+
+
+class PlanEditRequest(BaseModel):
+    plan_id: str = Field(min_length=1, max_length=512)
+    revision: int = Field(ge=1, strict=True)
+    steps: list[PlanStepEdit] = Field(min_length=1, max_length=100)
 
 
 _mission_services_lock = threading.Lock()
@@ -219,6 +231,26 @@ async def resume_mission(job_id: str, _request: MissionResumeRequest):
     return {"ok": True, "job": job}
 
 
+@router.get("/tasks/{task_id}/results")
+async def mission_results(task_id: str):
+    from agent_os.results import task_results
+    try:
+        return await run_in_threadpool(task_results, _mission_service().store, task_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/tasks/{task_id}/results/{result_id}")
+async def mission_result_preview(task_id: str, result_id: str):
+    from agent_os.results import preview_result
+    try:
+        return await run_in_threadpool(preview_result, _mission_service().store, task_id, result_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 @router.get("/approvals")
 async def pending_approvals():
     return {"approvals": _mission_service().approvals.pending()}
@@ -232,6 +264,21 @@ async def mission_plan(job_id: str):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/missions/{job_id}/plan/edit")
+async def edit_mission_plan(job_id: str, request: PlanEditRequest):
+    try:
+        return await run_in_threadpool(
+            _mission_service().edit_plan, job_id, request.plan_id, request.revision,
+            [step.model_dump() for step in request.steps],
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/missions/{job_id}/plan/decision")

@@ -11,6 +11,7 @@ let fixture: MockBackendFixture | null = null
 
 function seedAgentOS(sandbox: Sandbox, env: Record<string, string>): void {
   const script = String.raw`
+import os
 from agent_os.agents.records import AgentInstanceRecord, AgentInstanceState
 from agent_os.contracts import ActionRecord, TaskRecord
 from agent_os.events import EventRecord, EventType
@@ -99,6 +100,29 @@ verify = PlanStepRecord.create(
 )
 store.create_plan(draft, [write, verify], {verify.id: [write.id]})
 store.transition_task(review_task.id, TaskState.READY)
+
+from dataclasses import asdict
+from pathlib import Path
+from agent_os.adapters.hermes_file import HermesFileExecutor, HermesFileVerifier
+output_task = store.create_task(TaskRecord.create(
+    "Create a downloadable test result",
+    metadata={"source": "mission-control", "mission_job_id": "visual-results"},
+))
+for state in (TaskState.PLANNING, TaskState.READY, TaskState.RUNNING):
+    store.transition_task(output_task.id, state)
+output_path = str(Path(os.environ["HERMES_HOME"]) / "visual-result.txt")
+output_action = store.create_action(ActionRecord.create(
+    output_task.id, tool="file", operation="write_file",
+    input={"path": output_path, "content": "A verified file from the Windows test"},
+))
+store.start_action_execution(output_action.id)
+actual = HermesFileExecutor().execute(output_action).actual_state
+proof = HermesFileVerifier().verify(output_action, actual)
+assert proof.passed, proof
+store.transition_action(output_action.id, ActionState.VERIFYING, actual_state=actual)
+store.transition_action(output_action.id, ActionState.SUCCEEDED, verification_result=asdict(proof))
+store.transition_task(output_task.id, TaskState.VERIFYING)
+store.transition_task(output_task.id, TaskState.COMPLETED)
 `
 
   const repoRoot = path.resolve(import.meta.dirname, '..', '..', '..')
@@ -303,6 +327,18 @@ test(`Mission Control honors reduced motion at ${scaleLabel}% DPI`, async () => 
   expect(animationMs).toBeLessThanOrEqual(0.011)
 })
 
+test(`Verified mission files can be previewed at ${scaleLabel}% DPI`, async () => {
+  const { page } = fixture!
+  await gotoMissionControl()
+  const results = page.getByRole('region', { name: 'Result files', exact: true })
+  await results.getByRole('button', { name: 'Result files', exact: true }).click()
+  await expect(results.getByText('visual-result.txt', { exact: true })).toBeVisible()
+  await results.getByRole('button', { name: 'Preview', exact: true }).click()
+  await expect(results.getByText('A verified file from the Windows test', { exact: true })).toBeVisible()
+  await expect(results.getByRole('button', { name: 'Download file', exact: true })).toBeEnabled()
+  await results.screenshot({ animations: 'disabled', path: test.info().outputPath(`agent-os-windows-${scaleLabel}-results-actual.png`) })
+})
+
 test(`A saved plan stays pending after reload and can be discarded at ${scaleLabel}% DPI`, async () => {
   const { page } = fixture!
   await page.emulateMedia({ forcedColors: 'none', reducedMotion: 'reduce' })
@@ -321,6 +357,17 @@ test(`A saved plan stays pending after reload and can be discarded at ${scaleLab
   await gotoMissionControl()
   await page.getByRole('button', { name: 'Review plan', exact: true }).click()
   await expect(review.getByText('Save release notes and verify their contents')).toBeVisible()
+  await review.getByRole('button', { name: 'Edit steps', exact: true }).click()
+  await review.getByRole('textbox', { name: 'Step title', exact: true }).first().fill('Save corrected release notes')
+  await expect(review.getByRole('button', { name: 'Approve and start', exact: true })).toBeDisabled()
+  await review.getByRole('button', { name: 'Save new version', exact: true }).click()
+  await expect(review.getByText('Save corrected release notes', { exact: true })).toBeVisible()
+  await expect(review.getByText('Version: 2', { exact: true })).toBeVisible()
+  await review.screenshot({ animations: 'disabled', path: test.info().outputPath(`agent-os-windows-${scaleLabel}-plan-edited-actual.png`) })
+  await page.reload()
+  await gotoMissionControl()
+  await page.getByRole('button', { name: 'Review plan', exact: true }).click()
+  await expect(review.getByText('Save corrected release notes', { exact: true })).toBeVisible()
   const discard = review.getByRole('button', { name: 'Discard plan', exact: true })
   await expect(discard).toBeEnabled()
   await discard.focus()

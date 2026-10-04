@@ -120,7 +120,10 @@ class PlanCompiler:
         *,
         revision: int = 1,
         activate: bool = True,
+        replaces: tuple[str, int] | None = None,
     ) -> PlanRecord:
+        if replaces is not None and activate:
+            raise ValueError("a revised plan must wait for explicit review")
         self._validate_proposal(proposal)
         plan = PlanRecord.create(
             task_id=task.id,
@@ -146,7 +149,7 @@ class PlanCompiler:
             if step.depends_on
         }
         validate_plan_graph(list(by_key.values()), dependencies)
-        self.store.create_plan(plan, list(by_key.values()), dependencies)
+        self.store.create_plan(plan, list(by_key.values()), dependencies, replaces=replaces)
         if activate:
             plan = self.store.transition_plan(plan.id, PlanState.ACTIVE)
         return plan

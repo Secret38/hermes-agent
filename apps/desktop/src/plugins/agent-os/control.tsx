@@ -14,6 +14,7 @@ import {
 import { useAgentOSEstop } from './control-data'
 import { type HumanGate, openHumanGateSession, resolveHumanGateApproval, useHumanGates } from './human-gates'
 import { MissionPlanReview } from './plan-review'
+import { MissionResults } from './results'
 import type { AgentOSMissionJob, AgentOSPendingApproval } from './types'
 
 const ACTIVE_MISSION_STATES = new Set(['QUEUED', 'PLANNING', 'RUNNING', 'WAITING_APPROVAL'])
@@ -48,6 +49,7 @@ function MissionRow({
           <span className={stateClass(job.state)}>{job.state.replaceAll('_', ' ')}</span>
           {job.workspace_id && <span className="max-w-48 truncate">{job.workspace_id}</span>}
         </div>
+        {job.task_id && <MissionResults taskId={job.task_id} />}
         {job.error && <div className="mt-1.5 line-clamp-3 text-[0.6rem] leading-relaxed text-destructive">{job.error}</div>}
       </div>
       {job.state === 'INTERRUPTED' && onResume && (

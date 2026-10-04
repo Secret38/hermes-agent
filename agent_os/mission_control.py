@@ -442,6 +442,32 @@ class MissionRuntimeService:
                 ],
             }
 
+    def edit_plan(self, job_id: str, plan_id: str, revision: int, edits: list[dict]) -> dict[str, Any]:
+        from agent_os.hermes_runtime import build_hermes_agent_os_runtime
+        from agent_os.plan_edit import edited_proposal
+
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None:
+                raise KeyError(f"unknown mission: {job_id}")
+            task = self.store.get_task(job.task_id) if job.task_id else None
+            plan = self.store.latest_plan_for_task(job.task_id) if job.task_id else None
+            if (task is None or plan is None or plan.id != plan_id or plan.revision != revision
+                    or plan.state is not PlanState.DRAFT
+                    or task.state not in {TaskState.PLANNING, TaskState.READY}):
+                raise RuntimeError("The plan changed. Reload it before editing.")
+            proposal = edited_proposal(self.store, plan, edits)
+            runtime = build_hermes_agent_os_runtime(
+                self.store, permission_gate=self.approvals, host_local_terminal=True,
+            )
+            updated = runtime.compiler.compile(
+                task, proposal, revision=revision + 1, activate=False, replaces=(plan_id, revision),
+            )
+            job.plan_id = updated.id
+            job.state = MissionJobState.WAITING_PLAN
+            job.updated_at = utc_now_iso()
+            return self.plan_review(job_id)
+
     def decide_plan(self, job_id: str, plan_id: str, revision: int, choice: str) -> dict[str, Any]:
         if choice not in {"approve", "discard"}:
             raise ValueError("plan decision must be approve or discard")
