@@ -15,7 +15,7 @@ from agent_os.store import AgentOSStore
 from agent_os.supervisor import AgentSupervisor
 from agent_os.task_supervisor import TaskSupervisor
 
-from .plan import PlanStepKind, PlanStepRecord, PlanStepState
+from .plan import PlanState, PlanStepKind, PlanStepRecord, PlanStepState
 from .scheduler import DurablePlanScheduler
 
 
@@ -67,6 +67,10 @@ class PlanExecutionEngine:
         plan = self.store.get_plan(plan_id)
         if plan is None:
             raise KeyError(f"unknown plan: {plan_id}")
+        # A persisted cancellation also closes the crash-resume path; ready
+        # steps and bound PLANNED actions may still exist in the ledger.
+        if plan.state is not PlanState.ACTIVE:
+            return EngineTickResult(plan_id, EngineOutcome.IDLE)
 
         self.action_supervisor.reconcile_inflight()
         self.agent_supervisor.reconcile_active()

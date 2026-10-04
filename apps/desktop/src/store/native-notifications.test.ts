@@ -1,3 +1,4 @@
+import { APPROVAL_RESPOND_TIMEOUT_MS } from '@hermes/shared'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createClientSessionState } from '@/lib/chat-runtime'
@@ -16,7 +17,7 @@ import {
   setNativeNotifyKind
 } from './native-notifications'
 import { __resetNativeNotifyBaselineForTests, markNativeNotifyBaseline } from './notify-baseline'
-import { $approvalRequest, APPROVAL_RESPOND_REQUEST_TIMEOUT_MS, clearAllPrompts, setApprovalRequest } from './prompts'
+import { $approvalRequest, clearAllPrompts, setApprovalRequest } from './prompts'
 import { markSessionGone, resetBackgroundPollingGuard } from './runtime-gone'
 import { setActiveSessionId } from './session'
 import { dropSessionState, publishSessionState } from './session-states'
@@ -323,7 +324,7 @@ describe('respondToApprovalAction', () => {
       'approval.respond',
       { all: false, choice: 'once', session_id: 'bg' },
       // #55433: the respond RPC carries an explicit deadline covering the backend's approvals window.
-      APPROVAL_RESPOND_REQUEST_TIMEOUT_MS,
+      APPROVAL_RESPOND_TIMEOUT_MS,
       undefined
     )
     expect($approvalRequest.get()).toBeNull()
@@ -343,7 +344,7 @@ describe('respondToApprovalAction', () => {
         session_id: 'bg'
       },
       // #55433: the respond RPC carries an explicit deadline covering the backend's approvals window.
-      APPROVAL_RESPOND_REQUEST_TIMEOUT_MS,
+      APPROVAL_RESPOND_TIMEOUT_MS,
       undefined
     )
     expect($approvalRequest.get()?.requestId).toBe('r2')
@@ -357,7 +358,7 @@ describe('respondToApprovalAction', () => {
       'approval.respond',
       { all: false, choice: 'deny', session_id: 'bg' },
       // #55433: the respond RPC carries an explicit deadline covering the backend's approvals window.
-      APPROVAL_RESPOND_REQUEST_TIMEOUT_MS,
+      APPROVAL_RESPOND_TIMEOUT_MS,
       undefined
     )
   })

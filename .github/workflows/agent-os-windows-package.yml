@@ -6,15 +6,18 @@ on:
       - "apps/bootstrap-installer/**"
       - "scripts/install.ps1"
       - "scripts/install.sh"
+      - "scripts/tests/test-install-ps1-*.ps1"
       - "agent_os/**"
       - ".github/workflows/agent-os-windows-package.yml"
   push:
     branches:
       - agent-os-v1
+      - agent-os-v1-release-candidate
     paths:
       - "apps/bootstrap-installer/**"
       - "scripts/install.ps1"
       - "scripts/install.sh"
+      - "scripts/tests/test-install-ps1-*.ps1"
       - "agent_os/**"
       - ".github/workflows/agent-os-windows-package.yml"
 
@@ -40,6 +43,19 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
+      - name: Verify actual installer protocol and repository binding
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($engine in @('powershell', 'pwsh')) {
+            foreach ($suite in @('protocol', 'repository-binding', 'agent-os-runtime')) {
+              & $engine -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "scripts/tests/test-install-ps1-$suite.ps1"
+              if ($LASTEXITCODE -ne 0) {
+                throw "Installer $suite failed under $engine (exit $LASTEXITCODE)"
+              }
+            }
+          }
+
       - name: Set up Node.js 26
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -63,12 +79,15 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          npm run tauri:build --workspace @hermes/bootstrap-installer -- --no-bundle
+          npm run tauri:build --workspace @hermes/bootstrap-installer -- --bundles nsis
 
-          $exe = 'apps/bootstrap-installer/src-tauri/target/release/Hermes-Setup.exe'
-          if (-not (Test-Path $exe -PathType Leaf)) {
-            throw "Expected Hermes-Setup.exe was not produced"
+          # Ship the installer bundle: the raw Tauri executable alone cannot
+          # provision WebView2 on a fresh Windows machine.
+          $bundles = @(Get-ChildItem 'apps/bootstrap-installer/src-tauri/target/release/bundle/nsis/*-setup.exe')
+          if ($bundles.Count -ne 1) {
+            throw "Expected exactly one NSIS setup executable"
           }
+          $exe = $bundles[0].FullName
 
           git diff --exit-code -- apps/bootstrap-installer/src-tauri/Cargo.lock
           New-Item -ItemType Directory -Force -Path dist | Out-Null
@@ -82,6 +101,8 @@ jobs:
             commit = $env:HERMES_BUILD_PIN_COMMIT
             branch = $env:HERMES_BUILD_PIN_BRANCH
             sha256 = $hash
+            installer_kind = "nsis-with-webview2-bootstrapper"
+            requires_network = $true
             signed = $false
             production_release = $false
           } | ConvertTo-Json | Set-Content -Encoding utf8 dist/build-metadata.json
@@ -95,4 +116,4 @@ jobs:
             dist/SHA256SUMS.txt
             dist/build-metadata.json
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 30

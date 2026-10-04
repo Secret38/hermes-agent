@@ -276,6 +276,7 @@ export function findElectron(): string {
  */
 export async function launchDesktop(
   env: Record<string, string>,
+  launchArgs: string[] = [],
 ): Promise<{ app: ElectronApplication; page: Page }> {
   assertDistBuilt()
 
@@ -289,6 +290,7 @@ export async function launchDesktop(
       DESKTOP_ROOT, // `electron .` — the `.` is the desktop package dir
       '--disable-gpu',
       '--no-sandbox',
+      ...launchArgs,
     ],
     env,
     cwd: DESKTOP_ROOT,
@@ -315,6 +317,10 @@ export interface MockBackendFixture {
 }
 
 export interface MockBackendOptions {
+  /** Prepare isolated runtime state before the backend starts. */
+  prepareSandbox?: (sandbox: Sandbox, env: Record<string, string>) => void | Promise<void>
+  /** Electron/Chromium flags, such as the device scale used by Windows QA. */
+  launchArgs?: string[]
   /**
    * Script and stream behavior for the mock inference server.
    */
@@ -356,7 +362,16 @@ export async function setupMockBackend(options: MockBackendOptions = {}): Promis
 
   // 3. Build env + launch
   const env = buildAppEnv(sandbox)
-  const { app, page } = await launchDesktop(env)
+  let launched: Awaited<ReturnType<typeof launchDesktop>>
+  try {
+    await options.prepareSandbox?.(sandbox, env)
+    launched = await launchDesktop(env, options.launchArgs)
+  } catch (error) {
+    await mock.close()
+    sandbox.cleanup()
+    throw error
+  }
+  const { app, page } = launched
 
   return {
     app,

@@ -76,7 +76,7 @@ def test_production_mutation_approval_denial_blocks_before_dispatch(monkeypatch)
 
 def test_production_mutation_approval_is_exact_and_non_bypassable(monkeypatch):
     import tools.approval
-    import tools.approval_context
+    from tools import approval_context
 
     seen: dict = {}
     monkeypatch.setattr(approval_context, "_confirm_host_mutations", lambda: True)
@@ -98,7 +98,7 @@ def test_production_mutation_approval_is_exact_and_non_bypassable(monkeypatch):
 
 
 def test_production_mutation_approval_is_inactive_outside_production_mode(monkeypatch):
-    import tools.approval_context
+    from tools import approval_context
 
     monkeypatch.setattr(approval_context, "_confirm_host_mutations", lambda: False)
 

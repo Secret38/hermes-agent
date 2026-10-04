@@ -14,15 +14,19 @@ Use the signed `Hermes-Setup.exe` attached to an `agent-os-v*` GitHub Release. D
 After installation, open PowerShell and verify the complete automation substrate:
 
 ```powershell
-hermes agent-os status --require-full
+hermes agent-os status --require-full --require-production-security
 ```
 
-A production-ready Windows installation reports both the Agent OS core and full automation as ready. Full readiness requires the durable store, browser runtime, and native computer-use runtime to be healthy.
+A production-ready Windows installation reports the Agent OS core, full automation and production security as ready. Full readiness requires the durable store, browser runtime, and native computer-use runtime to be healthy. Production security additionally checks the approval policy and a working scanner.
+
+The Agent OS fork's Windows desktop installer provisions these runtimes and applies the production security profile before marking installation complete. That profile requires manual approvals for host mutations, denies unattended approvals, and refuses execution when the scanner is unavailable. A plain CLI installation does not apply this profile automatically.
+
+The bootstrap installer needs network access to obtain missing dependencies. An explicit `-SkipBrowser` opt-out is preserved; if no browser is already available, the desktop readiness check fails instead of reporting a complete Agent OS installation.
 
 For machine-readable diagnostics:
 
 ```powershell
-hermes agent-os status --require-full --json
+hermes agent-os status --require-full --require-production-security --json
 ```
 
 ## Repair and provisioning
@@ -30,13 +34,13 @@ hermes agent-os status --require-full --json
 The read-only status command never installs external runtimes. To explicitly install or repair the browser and computer-use substrate:
 
 ```powershell
-hermes agent-os provision
+hermes agent-os provision --production-security
 ```
 
 Then re-run:
 
 ```powershell
-hermes agent-os status --require-full
+hermes agent-os status --require-full --require-production-security
 ```
 
 For local state diagnosis and safe store repair:
@@ -77,7 +81,7 @@ The release publishes the installer together with SHA-256 and qualification evid
 
 ## Development checkout
 
-The `agent-os-v1` branch is the release-candidate source branch. A branch checkout is useful for development and validation, but is not a substitute for a signed `agent-os-v*` release.
+The production release workflow currently targets `agent-os-v1`. The ongoing integration candidate is `agent-os-v1-release-candidate`; fixes in open review branches must still be reviewed and integrated before a release. A branch checkout is useful for development and validation, but is not a substitute for a signed `agent-os-v*` release.
 
 Developers can inspect the runtime with:
 

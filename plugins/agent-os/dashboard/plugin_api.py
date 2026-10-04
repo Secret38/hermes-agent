@@ -14,7 +14,8 @@ import asyncio
 from datetime import datetime, timezone
 from functools import lru_cache, partial
 from pathlib import Path
-from typing import Literal
+import threading
+from typing import Any, Literal
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
@@ -24,6 +25,8 @@ from starlette.concurrency import run_in_threadpool
 from agent_os.dashboard import build_dashboard_snapshot, dashboard_event_sequence
 from agent_os.live_frames import live_runtime_frames
 from agent_os.mission_control import MissionBusyError, MissionPausedError, MissionRuntimeService
+from agent_os.store import AgentOSStore
+from hermes_constants import hermes_home_key
 
 router = APIRouter()
 
@@ -42,9 +45,36 @@ class MissionResumeRequest(BaseModel):
     confirm: Literal[True] = True
 
 
-@lru_cache(maxsize=1)
+class PlanDecisionRequest(BaseModel):
+    plan_id: str = Field(min_length=1, max_length=512)
+    revision: int = Field(ge=1, strict=True)
+    choice: Literal["approve", "discard"]
+
+
+class PlanStepEdit(BaseModel):
+    id: str = Field(min_length=1, max_length=512)
+    title: str = Field(min_length=1, max_length=4096)
+    spec: dict[str, Any]
+
+
+class PlanEditRequest(BaseModel):
+    plan_id: str = Field(min_length=1, max_length=512)
+    revision: int = Field(ge=1, strict=True)
+    steps: list[PlanStepEdit] = Field(min_length=1, max_length=100)
+
+
+_mission_services_lock = threading.Lock()
+
+
 def _mission_service() -> MissionRuntimeService:
-    return MissionRuntimeService()
+    # Never evict a live profile's service: it owns pending one-shot approvals.
+    with _mission_services_lock:
+        return _mission_service_for_home(hermes_home_key())
+
+
+@lru_cache(maxsize=None)
+def _mission_service_for_home(home: str) -> MissionRuntimeService:
+    return MissionRuntimeService(AgentOSStore(Path(home) / "agent-os" / "agent_os.db"))
 
 
 
@@ -201,9 +231,67 @@ async def resume_mission(job_id: str, _request: MissionResumeRequest):
     return {"ok": True, "job": job}
 
 
+@router.get("/tasks/{task_id}/results")
+async def mission_results(task_id: str):
+    from agent_os.results import task_results
+    try:
+        return await run_in_threadpool(task_results, _mission_service().store, task_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/tasks/{task_id}/results/{result_id}")
+async def mission_result_preview(task_id: str, result_id: str):
+    from agent_os.results import preview_result
+    try:
+        return await run_in_threadpool(preview_result, _mission_service().store, task_id, result_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 @router.get("/approvals")
 async def pending_approvals():
     return {"approvals": _mission_service().approvals.pending()}
+
+
+@router.get("/missions/{job_id}/plan")
+async def mission_plan(job_id: str):
+    try:
+        return await run_in_threadpool(_mission_service().plan_review, job_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/missions/{job_id}/plan/edit")
+async def edit_mission_plan(job_id: str, request: PlanEditRequest):
+    try:
+        return await run_in_threadpool(
+            _mission_service().edit_plan, job_id, request.plan_id, request.revision,
+            [step.model_dump() for step in request.steps],
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/missions/{job_id}/plan/decision")
+async def decide_mission_plan(job_id: str, request: PlanDecisionRequest):
+    try:
+        job = await run_in_threadpool(
+            _mission_service().decide_plan, job_id, request.plan_id, request.revision, request.choice,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"ok": True, "job": job}
 
 
 @router.post("/approvals/{request_id}")

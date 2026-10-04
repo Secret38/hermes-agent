@@ -14,6 +14,7 @@ import {
 
 import { bindAgentOSApi } from './api'
 import { AgentOSForensicsPage } from './forensics'
+import { AGENT_OS_LOCALES } from './i18n'
 import { AgentOSMissionControl, AgentOSStatusChip } from './page'
 
 const openMissionControl = () => host.navigate('/agent-os')
@@ -27,6 +28,7 @@ const plugin: HermesPlugin = {
   defaultEnabled: true,
 
   register(ctx) {
+    ctx.i18n.register(AGENT_OS_LOCALES)
     ctx.onDispose(bindAgentOSApi(ctx.rest, ctx.socket))
 
     ctx.registerMany([

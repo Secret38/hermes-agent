@@ -1,4 +1,5 @@
 import { AssistantRuntimeProvider, type ThreadMessage, useExternalStoreRuntime } from '@assistant-ui/react'
+import { APPROVAL_RESPOND_TIMEOUT_MS } from '@hermes/shared'
 import { act, cleanup, fireEvent, render as renderUi, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -8,7 +9,6 @@ import { handleApprovalKey, releaseApprovalKey } from '@/lib/keybinds/approval-k
 import { $gateway } from '@/store/gateway'
 import {
   $approvalRequest,
-  APPROVAL_RESPOND_REQUEST_TIMEOUT_MS,
   clearAllPrompts,
   sessionApprovalRequests,
   setApprovalRequest
@@ -228,7 +228,7 @@ describe('PendingApprovalStack', () => {
           session_id: 'sess-1'
         },
         // #55433: the respond RPC carries an explicit deadline covering the backend's approvals window.
-        APPROVAL_RESPOND_REQUEST_TIMEOUT_MS,
+        APPROVAL_RESPOND_TIMEOUT_MS,
         undefined
       )
     })
@@ -349,7 +349,7 @@ describe('PendingApprovalStack', () => {
             session_id: 'sess-1'
           },
           // #55433: the respond RPC carries an explicit deadline covering the backend's approvals window.
-          APPROVAL_RESPOND_REQUEST_TIMEOUT_MS,
+          APPROVAL_RESPOND_TIMEOUT_MS,
           undefined
         )
       )

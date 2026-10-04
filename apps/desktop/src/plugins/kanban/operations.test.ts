@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { toOperationsSnapshot } from './api'
+import { toOperationsSnapshot } from './operations'
 import type { BoardsResponse, KanbanBoard, KanbanProject } from './types'
 
 describe('Kanban operations projection', () => {

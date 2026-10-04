@@ -19,6 +19,7 @@ import {
   atom,
   captureGatewayFileDownload,
   host,
+  type OperationsTaskSnapshot,
   type PluginOs,
   type PluginRestOptions,
   type PluginStorage,
@@ -29,6 +30,7 @@ import {
 
 // Native completion notification.
 import { bindCompletionNotify, type CompletionEvent, onKanbanEventsFrame } from './completion-notify'
+import { toOperationsSnapshot } from './operations'
 import type {
   BoardExportResult,
   BoardImportResult,
@@ -375,6 +377,26 @@ export const fetchProfiles = () => call<{ profiles: KanbanProfile[] }>('/profile
 export const fetchProjects = () => call<{ projects: KanbanProject[] }>('/projects')
 
 export const fetchOrchestration = () => call<OrchestrationSettings>('/orchestration')
+
+/** Read the producer's live board without moving its current-board pointer.
+ * A connection/profile switch must not publish the old board into the new scope.
+ */
+export async function fetchOperationsSnapshot(): Promise<OperationsTaskSnapshot> {
+  const connectionId = kanbanConnectionScope()
+  const profile = host.state.profile.get() || 'default'
+  const scopeKey = $boardSlug.get()
+  const [board, boards, projects] = await Promise.all([fetchBoard(false), fetchBoards(), fetchProjects()])
+
+  if (connectionId !== kanbanConnectionScope() || profile !== (host.state.profile.get() || 'default')) {
+    throw new Error('Kanban connection changed while loading operations.')
+  }
+
+  return {
+    ...toOperationsSnapshot(board, boards, projects.projects, scopeKey || boards.current),
+    connectionId,
+    profile
+  }
+}
 
 // ── writes ────────────────────────────────────────────────────────────────────
 

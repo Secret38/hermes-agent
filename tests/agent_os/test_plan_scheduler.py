@@ -96,6 +96,19 @@ def test_failed_dependency_blocks_downstream_and_fails_plan(tmp_path):
     assert store.get_plan(plan.id).state is PlanState.FAILED
 
 
+def test_cancelled_plan_cannot_claim_previously_ready_work(tmp_path):
+    store = AgentOSStore(tmp_path / "agent_os.db")
+    plan, first, _ = make_plan(store)
+    store.refresh_plan_readiness(plan.id)
+    assert store.get_plan_step(first.id).state is PlanStepState.READY
+    store.transition_plan(plan.id, PlanState.CANCELLED)
+
+    reopened = AgentOSStore(store.path)
+    assert DurablePlanScheduler(reopened).claim_next(plan.id) is None
+    assert reopened.get_plan_step(first.id).state is PlanStepState.READY
+    assert reopened.get_plan(plan.id).state is PlanState.CANCELLED
+
+
 def test_claim_is_single_winner(tmp_path):
     store = AgentOSStore(tmp_path / "agent_os.db")
     plan, first, _ = make_plan(store)
@@ -110,9 +123,12 @@ def test_claim_is_single_winner(tmp_path):
 
 def test_schema_version_contains_plan_tables(tmp_path):
     store = AgentOSStore(tmp_path / "agent_os.db")
-    make_plan(store)
+    plan, first, _ = make_plan(store)
 
-    assert SCHEMA_VERSION == 3
+    reopened = AgentOSStore(store.path)
+    assert reopened.initialize()["schema_version"] == SCHEMA_VERSION
+    assert reopened.get_plan(plan.id) is not None
+    assert reopened.get_plan_step(first.id).plan_id == plan.id
 
 
 def test_claim_records_owner_token_and_lease(tmp_path):
