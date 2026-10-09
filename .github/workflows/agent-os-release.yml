@@ -79,13 +79,14 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          npm run tauri:build --workspace @hermes/bootstrap-installer -- --no-bundle
+          npm run tauri:build --workspace @hermes/bootstrap-installer -- --bundles nsis
           git diff --exit-code -- apps/bootstrap-installer/src-tauri/Cargo.lock
 
-          $exe = 'apps/bootstrap-installer/src-tauri/target/release/Hermes-Setup.exe'
-          if (-not (Test-Path $exe -PathType Leaf)) {
-            throw "Expected bootstrap executable was not produced: $exe"
+          $bundles = @(Get-ChildItem 'apps/bootstrap-installer/src-tauri/target/release/bundle/nsis/*-setup.exe')
+          if ($bundles.Count -ne 1) {
+            throw "Expected exactly one NSIS setup executable"
           }
+          $exe = $bundles[0].FullName
 
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item -LiteralPath $exe -Destination dist/Hermes-Setup.exe -Force
@@ -97,6 +98,7 @@ jobs:
             branch = $env:HERMES_BUILD_PIN_BRANCH
             tag = $env:GITHUB_REF_NAME
             unsigned_sha256 = $hash
+            installer_kind = "nsis-with-webview2-bootstrapper"
           } | ConvertTo-Json | Set-Content -Encoding utf8 dist/source-build-metadata.json
 
       - name: Upload immutable unsigned build
@@ -625,3 +627,4 @@ jobs:
             if (Test-Path $optional) { $assets += $optional }
           }
           gh release create $env:GITHUB_REF_NAME @assets --verify-tag --title "Agent OS $env:GITHUB_REF_NAME" --generate-notes
+

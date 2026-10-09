@@ -1,10 +1,13 @@
 name: Agent OS Windows Installer Candidate
 
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - "apps/bootstrap-installer/**"
       - "scripts/install.ps1"
+      - "scripts/agent_os_user_test.ps1"
+      - "docs/agent-os-user-test-kit/**"
       - "scripts/install.sh"
       - "scripts/tests/test-install-ps1-*.ps1"
       - "agent_os/**"
@@ -13,9 +16,12 @@ on:
     branches:
       - agent-os-v1
       - agent-os-v1-release-candidate
+      - agent-os-user-test-20261009
     paths:
       - "apps/bootstrap-installer/**"
       - "scripts/install.ps1"
+      - "scripts/agent_os_user_test.ps1"
+      - "docs/agent-os-user-test-kit/**"
       - "scripts/install.sh"
       - "scripts/tests/test-install-ps1-*.ps1"
       - "agent_os/**"
@@ -48,7 +54,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           foreach ($engine in @('powershell', 'pwsh')) {
-            foreach ($suite in @('protocol', 'repository-binding', 'agent-os-runtime')) {
+            foreach ($suite in @('protocol', 'repository-binding', 'agent-os-runtime', 'user-kit')) {
               & $engine -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "scripts/tests/test-install-ps1-$suite.ps1"
               if ($LASTEXITCODE -ne 0) {
                 throw "Installer $suite failed under $engine (exit $LASTEXITCODE)"
@@ -107,6 +113,12 @@ jobs:
             production_release = $false
           } | ConvertTo-Json | Set-Content -Encoding utf8 dist/build-metadata.json
 
+      - name: Assemble user test kit
+        shell: pwsh
+        run: |
+          Copy-Item docs/agent-os-user-test-kit/* dist/ -Force
+          Copy-Item scripts/agent_os_user_test.ps1 dist/ -Force
+
       - name: Upload unsigned release candidate
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
         with:
@@ -115,5 +127,10 @@ jobs:
             dist/Hermes-Setup.exe
             dist/SHA256SUMS.txt
             dist/build-metadata.json
+            dist/*.cmd
+            dist/*.ps1
+            dist/*.md
+            dist/*.txt
           if-no-files-found: error
           retention-days: 30
+
