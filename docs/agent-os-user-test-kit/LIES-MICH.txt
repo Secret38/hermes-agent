@@ -1,0 +1,95 @@
+AGENT OS - WINDOWS-NUTZERTEST
+
+1. STARTEN
+Das gesamte ZIP in einen beschreibbaren Ordner entpacken. Nicht direkt aus
+dem ZIP starten. Windows x64 und eine Internetverbindung sind erforderlich.
+Nutze einen frischen Windows-Testbenutzer oder eine VM, wenn Hermes schon
+installiert ist. START-TEST.cmd verweigert den Teststart bei einer bestehenden
+Installation, damit sie nicht versehentlich durch diesen Kandidaten ersetzt wird.
+
+START-TEST.cmd doppelklicken. Es prüft zuerst den Installer gegen die beiliegende
+SHA-256-Prüfsumme und erstellt Arbeitsordner/Testaufgaben.txt. Dann startet es
+Hermes-Setup.exe. Die Prüfung bestätigt die Paketkonsistenz; der Kandidat ist
+unsigniert und Windows kann einen unbekannten Herausgeber anzeigen.
+Die CMD-Helfer erlauben ihre lokale PowerShell-Ausführung nur für diesen Prozess;
+sie ändern keine dauerhafte Windows-Ausführungsrichtlinie.
+
+2. INSTALLIEREN
+Den Windows-Assistenten abschließen. Danach im Hermes-Installationsfenster
+Install wählen und warten, bis alle Stufen erfolgreich abgeschlossen sind.
+Das Setup richtet WebView2 bei Bedarf ein und lädt Laufzeit, Quellcode und
+Komponenten nach. Es ist kein Offline-Installer. Bei Fehlern Open logs verwenden.
+Anschließend Launch wählen. Nicht mehrere Installationsversuche zugleich starten.
+
+Die Standardpfade sind:
+  Daten und Konfiguration: %LOCALAPPDATA%\hermes
+  Programmquellen:          %LOCALAPPDATA%\hermes\hermes-agent
+Ein schon gesetztes HERMES_HOME hat Vorrang. Die Helfer verwenden denselben Pfad.
+
+3. MODELL EINRICHTEN
+Im normalen Hermes-Einrichtungsdialog einen angebotenen Modellanbieter wählen
+und dessen Anmeldung bzw. API-Schlüssel einrichten. Modellzugang und mögliche
+Nutzungskosten sind nicht im Paket enthalten. API-Schlüssel bleiben in Hermes;
+sie gehören nicht in Testprotokolle oder Nachrichten.
+Zuerst im Chat eine kurze Nachricht senden und eine Antwort abwarten.
+Danach Agent OS / Mission Control öffnen. Falls die Laufzeit nicht bereit ist,
+STATUS.cmd starten. Das prüft Automation und Sicherheitskonfiguration der
+installierten Version; es prüft keine echte Modellaufgabe.
+
+4. WIE EINE ECHTE MISSION ABLÄUFT
+Eine Aufgabe aus Arbeitsordner/Testaufgaben.txt kopieren und Plan erstellen wählen.
+Plan prüfen: Ziel, Pfade, Aktionen, Abhängigkeiten und Prüfungen ansehen.
+Vor der Freigabe darf die geplante Aktion noch nicht laufen.
+Freigeben und starten startet genau die angezeigte Version. Zusätzliche
+Aktionsfreigaben bewusst beantworten. Eine Planfreigabe ersetzt diese nicht.
+Ergebnisdateien öffnen, Vorschau prüfen und die Datei herunterladen.
+Die heruntergeladene Datei zusätzlich mit Windows Notepad öffnen.
+
+5. TESTREIHENFOLGE
+Die Erwartungen stehen im TESTPROTOKOLL.txt. Ergebnisse dort eintragen.
+  A. Chatantwort und Laufzeitstatus
+  B. Datei erstellen, Vorschau und Download außerhalb der App prüfen
+  C. Plan ändern; die neue Version muss wieder auf Freigabe warten
+  D. App mit ungeprüftem Plan schließen und neu starten; weiterhin keine Ausführung
+  E. Browser öffnen und die tatsächliche sichtbare Überschrift prüfen
+  F. Notepad über Computersteuerung bedienen und den Text visuell prüfen
+  G. Einen Plan verwerfen; die geplante Datei darf nicht entstehen
+  H. Bereits geprüfte Datei extern ändern; erneute Vorschau muss Änderung melden
+  I. App schließen, REPARIEREN.cmd ausführen, neu starten und Entwürfe/Ergebnisse prüfen
+
+Bei Computersteuerung zunächst keine eigenen Maus-/Tastatureingaben parallel
+ausführen. Ein blockierter oder fehlgeschlagener Schritt ist ein Testergebnis,
+kein erfolgreicher Abschluss. STATUS.cmd erstellt Testdiagnose.json mit
+Bereitschaftsstatus und Versionsidentität. Es sammelt keine Rohlogs, Chats,
+Konfigurationsdateien oder Zugangsdaten und lädt nichts automatisch hoch.
+
+6. REPARATUR UND UPDATE
+REPARIEREN.cmd verwendet das vorhandene Installationsskript mit genau dem Commit
+dieses Pakets. Es installiert dieselbe Version erneut; es ist kein Versionsupdate.
+Kein allgemeines Update auf main durchführen, während du diesen Kandidaten prüfst.
+Für einen späteren Versionssprung wird ein neuer geprüfter Kandidat benötigt.
+Eine fehlgeschlagene Erstinstallation im Installer über Retry install fortsetzen.
+Ist dessen Fenster geschlossen, Hermes-Setup.exe direkt erneut starten.
+
+7. WAS DIESE VERSION ABDECKT
+Mission Control, dauerhafte Planfreigabe, Änderungen an Titeln und JSON-Parametern
+bestehender Schritte, einzelne Aktionsfreigaben, Hermes-Werkzeugadapter und
+verifizierte Datei-Schreibausgaben mit Textvorschau und Download.
+Die Desktopreservierung wird zwischen Threads und Backend-Prozessen desselben
+Windows-Benutzers geteilt. Sie ist keine Sperre für beliebige fremde Programme
+oder manuelle Eingaben. Nach Prozessverlust bleibt zweifelhafte Arbeit blockiert.
+
+8. OFFENE PRODUKTGRENZEN
+Dies ist ein Testkandidat. Vollständige Produktionsfreigabe und Signierung fehlen.
+Die echte Installation und Live-Aufgaben auf deinem Rechner sind noch abzunehmen.
+Einfügen/Entfernen/Umordnen von Planschritten und natürlichsprachliches Umplanen
+sind nicht enthalten. Die Ergebnisliste ist noch kein universeller Katalog für
+beliebige Browser-, Terminal- oder Subagent-Ausgaben. Bild-/PDF-Vorschauen sowie
+Wiederaufnahme sämtlicher Fehlerklassen und sämtliche Referenzvideo-Abläufe sind
+nicht als vollständig umgesetzt belegt. Ein echtes Versionsupdate ist offen.
+
+9. FEHLER MELDEN
+Im TESTPROTOKOLL.txt den ersten fehlgeschlagenen Schritt, Erwartung und sichtbares
+Ergebnis notieren. Windows-Version und Modellname ergänzen, keine API-Schlüssel.
+Bei Bedarf Testdiagnose.json beilegen; Inhalte vorher kurz prüfen. Rohlogs nur
+gezielt und nach Prüfung auf persönliche Inhalte weitergeben.

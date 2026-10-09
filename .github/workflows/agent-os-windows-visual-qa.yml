@@ -85,7 +85,7 @@ jobs:
           HERMES_TEST_FILE_RETRIES: "0"
         run: |
           export HERMES_PYTHON="$GITHUB_WORKSPACE/.venv/Scripts/python.exe"
-          scripts/run_tests.sh tests/agent_os/test_mission_plan_review.py tests/agent_os/test_mission_profile_scope.py tests/agent_os/test_mission_control_runtime.py tests/agent_os/test_mission_control.py tests/agent_os/test_mission_results.py -q
+          scripts/run_tests.sh tests/agent_os/test_mission_plan_review.py tests/agent_os/test_mission_profile_scope.py tests/agent_os/test_mission_control_runtime.py tests/agent_os/test_mission_control.py tests/agent_os/test_mission_results.py tests/agent_os/test_desktop_lock.py -q
 
       - name: Typecheck Windows visual harness
         working-directory: apps/desktop
@@ -112,3 +112,4 @@ jobs:
             apps/desktop/playwright-report
           retention-days: 14
           if-no-files-found: warn
+

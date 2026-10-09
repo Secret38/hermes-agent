@@ -16,6 +16,7 @@ from typing import Any
 
 from agent.memory_provider import spawn_context_thread
 from agent_os.contracts import ActionRecord, new_id, utc_now_iso
+from agent_os.desktop_lock import InteractiveDesktopLock
 from agent_os.events import EventRecord, EventType
 from agent_os.permissions import PermissionDecision, PermissionOutcome
 from agent_os.risk import RiskAssessment, RiskLevel
@@ -25,8 +26,8 @@ from agent_os.states import ActionState, TaskState, task_is_terminal
 from agent_os.store import AgentOSStore
 
 
-# Profile-local services still operate one interactive desktop in this process.
-_INTERACTIVE_MISSION_LOCK = threading.Lock()
+# Profiles and separate backend processes share this user's interactive input.
+_INTERACTIVE_MISSION_LOCK = InteractiveDesktopLock()
 
 
 class MissionBusyError(RuntimeError):
@@ -688,3 +689,4 @@ class MissionRuntimeService:
             MissionJobState.BLOCKED,
         )
         return self._set_job(job_id, state=state)
+
