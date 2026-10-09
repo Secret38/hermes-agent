@@ -18,6 +18,9 @@ on:
       - "apps/desktop/e2e/tsconfig.agent-os-visual.json"
       - "apps/desktop/e2e/fixtures.ts"
       - ".github/workflows/agent-os-windows-visual-qa.yml"
+  push:
+    branches:
+      - agent-os-user-test-20261009
   workflow_dispatch:
 
 permissions:

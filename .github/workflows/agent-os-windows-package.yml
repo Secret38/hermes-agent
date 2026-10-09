@@ -15,6 +15,7 @@ on:
     branches:
       - agent-os-v1
       - agent-os-v1-release-candidate
+      - agent-os-user-test-20261009
     paths:
       - "apps/bootstrap-installer/**"
       - "scripts/install.ps1"

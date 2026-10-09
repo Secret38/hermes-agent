@@ -20,9 +20,9 @@ function Get-TestCandidate([string]$Directory) {
     return $metadata
 }
 
-function Prepare-TestWorkspace([string]$Directory, [string]$Home, [switch]$Launch) {
+function Prepare-TestWorkspace([string]$Directory, [string]$TestHome, [switch]$Launch) {
     $candidate = Get-TestCandidate $Directory
-    $root = Join-Path $Home 'hermes-agent'
+    $root = Join-Path $TestHome 'hermes-agent'
     if (Test-Path -LiteralPath $root) {
         throw 'Eine Hermes-Installation besteht bereits. Nutze einen neuen Windows-Testbenutzer oder eine VM. STATUS.cmd kann die bestehende Installation pruefen.'
     }
@@ -47,21 +47,21 @@ Plane im Ordner "$workspace" die Datei abgelehnt.txt mit dem Inhalt "Darf nicht 
     Write-Host "Pruefsumme bestaetigt. Testordner: $workspace"
     Write-Host "Kandidat: $($candidate.commit)"
     if ($Launch) {
-        $env:HERMES_HOME = $Home
+        $env:HERMES_HOME = $TestHome
         Start-Process -FilePath (Join-Path $Directory 'Hermes-Setup.exe')
     }
 }
 
-function Get-TestDiagnostic([string]$Directory, [string]$Home) {
+function Get-TestDiagnostic([string]$Directory, [string]$TestHome) {
     $reportPath = Join-Path $Directory 'Testdiagnose.json'
     if (Test-Path -LiteralPath $reportPath) { Remove-Item -LiteralPath $reportPath -Force }
     $candidate = Get-TestCandidate $Directory
-    $root = Join-Path $Home 'hermes-agent'
+    $root = Join-Path $TestHome 'hermes-agent'
     $marker = Get-Content -LiteralPath (Join-Path $root '.hermes-bootstrap-complete') -Raw | ConvertFrom-Json
     if ($marker.pinnedCommit -ne $candidate.commit) {
         throw 'Die installierte Version passt nicht zu diesem Testpaket. Keine Testfreigabe fuer diesen Stand.'
     }
-    $env:HERMES_HOME = $Home
+    $env:HERMES_HOME = $TestHome
     . (Join-Path $root 'scripts/desktop-update/runtime.ps1')
     $command = @(Get-HermesRuntimeCommand -InstallRoot $root)
     $prefix = @()
@@ -92,9 +92,9 @@ function Get-TestDiagnostic([string]$Directory, [string]$Home) {
     Write-Host 'Laufzeit und Sicherheitskonfiguration sind bereit. Die Nutzertests bleiben separat zu pruefen.'
 }
 
-function Repair-TestInstallation([string]$Directory, [string]$Home) {
+function Repair-TestInstallation([string]$Directory, [string]$TestHome) {
     $candidate = Get-TestCandidate $Directory
-    $root = Join-Path $Home 'hermes-agent'
+    $root = Join-Path $TestHome 'hermes-agent'
     $markerPath = Join-Path $root '.hermes-bootstrap-complete'
     if (Test-Path -LiteralPath $markerPath) {
         $marker = Get-Content -LiteralPath $markerPath -Raw | ConvertFrom-Json
@@ -102,10 +102,10 @@ function Repair-TestInstallation([string]$Directory, [string]$Home) {
     }
     $script = Join-Path $root 'scripts/install.ps1'
     if (-not (Test-Path -LiteralPath $script -PathType Leaf)) { throw 'Installationsskript fehlt. Installer erneut starten.' }
-    $env:HERMES_HOME = $Home
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Repository $candidate.repository -Branch $candidate.branch -Commit $candidate.commit -HermesHome $Home -InstallDir $root -IncludeDesktop -NonInteractive -Json
+    $env:HERMES_HOME = $TestHome
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Repository $candidate.repository -Branch $candidate.branch -Commit $candidate.commit -HermesHome $TestHome -InstallDir $root -IncludeDesktop -NonInteractive -Json
     if ($LASTEXITCODE -ne 0) { throw 'Reparatur fehlgeschlagen. Im Installer Open logs verwenden.' }
-    Get-TestDiagnostic $Directory $Home
+    Get-TestDiagnostic $Directory $TestHome
 }
 
 if ($MyInvocation.InvocationName -ne '.') {
