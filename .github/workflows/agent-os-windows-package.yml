@@ -1,6 +1,7 @@
 name: Agent OS Windows Installer Candidate
 
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - "apps/bootstrap-installer/**"
