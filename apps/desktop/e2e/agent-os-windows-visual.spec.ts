@@ -221,7 +221,7 @@ test(`Mission Control renders without clipping at ${scaleLabel}% DPI`, async () 
 test(`Mission Control navigation remains operable at ${scaleLabel}% DPI`, async () => {
   const { page } = fixture!
   await gotoMissionControl()
-  const sections = ['Tasks', 'Operations', 'Projects', 'Fleet', 'Memory', 'Connections', 'Security']
+  const sections = ['Tasks', 'Results', 'Operations', 'Projects', 'Fleet', 'Memory', 'Connections', 'Security']
 
   for (const section of sections) {
     const button = page.getByRole('button', { name: section, exact: true })
@@ -360,6 +360,13 @@ test(`A saved plan stays pending after reload and can be discarded at ${scaleLab
   await review.getByRole('button', { name: 'Edit steps', exact: true }).click()
   await review.getByRole('textbox', { name: 'Step title', exact: true }).first().fill('Save corrected release notes')
   await expect(review.getByRole('button', { name: 'Approve and start', exact: true })).toBeDisabled()
+  const details = review.getByRole('textbox', { name: 'Action details: Save release notes', exact: true })
+  const originalSpec = await details.inputValue()
+  await details.fill('{broken')
+  await review.getByRole('button', { name: 'Save new version', exact: true }).click()
+  await expect(review.getByRole('alert')).toBeVisible()
+  await expect(review.getByRole('button', { name: 'Save new version', exact: true })).toBeEnabled()
+  await details.fill(originalSpec)
   await review.getByRole('button', { name: 'Save new version', exact: true }).click()
   await expect(review.getByText('Save corrected release notes', { exact: true })).toBeVisible()
   await expect(review.getByText('Version: 2', { exact: true })).toBeVisible()
@@ -373,4 +380,24 @@ test(`A saved plan stays pending after reload and can be discarded at ${scaleLab
   await discard.focus()
   await page.keyboard.press('Enter')
   await expect(review).toHaveCount(0)
+})
+
+test(`Results stay searchable and readable in a compact window at ${scaleLabel}% DPI`, async () => {
+  const { page } = fixture!
+  await page.emulateMedia({ forcedColors: 'none', reducedMotion: 'reduce' })
+  await setWindowSize(820, 640)
+  await gotoMissionControl()
+  const resultsTab = page.getByRole('button', { name: 'Results', exact: true })
+  await resultsTab.focus()
+  await page.keyboard.press('Enter')
+  await expect(resultsTab).toHaveAttribute('aria-pressed', 'true')
+  const gallery = page.getByRole('region', { name: 'Results', exact: true })
+  await gallery.getByRole('textbox', { name: 'Find mission or workspace', exact: true }).fill('downloadable')
+  await gallery.getByRole('button', { name: 'Create a downloadable test result', exact: true }).click()
+  await expect(gallery.getByText('visual-result.txt', { exact: true })).toBeVisible()
+  await gallery.getByRole('button', { name: 'Preview', exact: true }).click()
+  await expect(gallery.getByText('A verified file from the Windows test', { exact: true })).toBeVisible()
+  const width = await gallery.evaluate(element => ({ client: element.clientWidth, scroll: element.scrollWidth }))
+  expect(width.scroll).toBeLessThanOrEqual(width.client + 2)
+  await gallery.screenshot({ animations: 'disabled', path: test.info().outputPath(`agent-os-windows-${scaleLabel}-results-gallery-actual.png`) })
 })

@@ -1,6 +1,14 @@
 import type { Locale, PluginLocaleBundles } from '@hermes/plugin-sdk'
 
 const en = {
+  resultsGallery: "Results",
+  resultsScope: "Verified file outputs from the missions in the current overview. This is not a complete file history. Choose a mission to inspect its files.",
+  findResultMission: "Find mission or workspace",
+  resultMissions: "Missions with result access",
+  noResultMissions: "No matching missions in this overview.",
+  missionIdentity: "Mission",
+  retryResults: "Retry",
+  invalidStepDetails: "Use a non-empty title and a valid JSON object for each step. Your edits are kept; correct them and save again.",
   results: "Result files",
   resultsNote: "Verified file writes from this mission. Downloads retrieve the current file; previews check it against the saved proof.",
   loadingResults: "Loading results…",
@@ -49,6 +57,14 @@ type Messages = Record<keyof typeof en, string>
 export const AGENT_OS_LOCALES = {
   en,
   de: {
+  resultsGallery: "Ergebnisse",
+  resultsScope: "Geprüfte Dateiausgaben aus den Missionen der aktuellen Übersicht. Dies ist kein vollständiger Dateiverlauf. Wähle eine Mission, um ihre Dateien zu prüfen.",
+  findResultMission: "Mission oder Arbeitsbereich suchen",
+  resultMissions: "Missionen mit Ergebniszugriff",
+  noResultMissions: "Keine passenden Missionen in dieser Übersicht.",
+  missionIdentity: "Mission",
+  retryResults: "Erneut versuchen",
+  invalidStepDetails: "Jeder Schritt braucht einen Titel und ein gültiges JSON-Objekt. Deine Änderungen bleiben erhalten; korrigiere sie und speichere erneut.",
   results: "Ergebnisdateien",
   resultsNote: "Geprüfte Dateiausgaben dieser Mission. Downloads laden die aktuelle Datei; Vorschauen vergleichen sie mit dem gespeicherten Prüfnachweis.",
   loadingResults: "Ergebnisse werden geladen…",
@@ -82,6 +98,14 @@ export const AGENT_OS_LOCALES = {
     ACTION: 'Aktion', AGENT: 'Agent', VERIFICATION: 'Ergebnisprüfung', MANUAL: 'Deine Eingabe'
   },
   fr: {
+  resultsGallery: "Résultats",
+  resultsScope: "Fichiers vérifiés des missions de la vue actuelle, pas un historique complet. Sélectionnez une mission pour consulter ses fichiers.",
+  findResultMission: "Rechercher une mission ou un espace",
+  resultMissions: "Missions et accès aux résultats",
+  noResultMissions: "Aucune mission correspondante dans cette vue.",
+  missionIdentity: "Mission",
+  retryResults: "Réessayer",
+  invalidStepDetails: "Chaque étape nécessite un titre non vide et un objet JSON valide. Vos modifications sont conservées ; corrigez-les puis enregistrez à nouveau.",
   results: "Fichiers résultats",
   resultsNote: "Fichiers vérifiés de cette mission. Le téléchargement récupère le fichier actuel ; l’aperçu le compare à la preuve enregistrée.",
   loadingResults: "Chargement…",
@@ -115,6 +139,14 @@ export const AGENT_OS_LOCALES = {
     ACTION: 'Action', AGENT: 'Agent', VERIFICATION: 'Vérification', MANUAL: 'Votre intervention'
   },
   es: {
+  resultsGallery: "Resultados",
+  resultsScope: "Archivos verificados de las misiones de la vista actual, no un historial completo. Selecciona una misión para consultar sus archivos.",
+  findResultMission: "Buscar misión o espacio de trabajo",
+  resultMissions: "Misiones y acceso a resultados",
+  noResultMissions: "No hay misiones coincidentes en esta vista.",
+  missionIdentity: "Misión",
+  retryResults: "Reintentar",
+  invalidStepDetails: "Cada paso necesita un título y un objeto JSON válido. Tus cambios se conservan; corrígelos y vuelve a guardar.",
   results: "Archivos de resultados",
   resultsNote: "Archivos verificados de esta misión. La descarga obtiene el archivo actual; la vista previa lo compara con la prueba guardada.",
   loadingResults: "Cargando…",
@@ -148,6 +180,14 @@ export const AGENT_OS_LOCALES = {
     ACTION: 'Acción', AGENT: 'Agente', VERIFICATION: 'Verificación', MANUAL: 'Tu intervención'
   },
   zh: {
+  resultsGallery: "结果",
+  resultsScope: "当前概览中各任务的已验证文件输出，并非完整文件历史。选择任务以检查其文件。",
+  findResultMission: "搜索任务或工作区",
+  resultMissions: "任务及结果访问",
+  noResultMissions: "当前概览中没有匹配的任务。",
+  missionIdentity: "任务",
+  retryResults: "重试",
+  invalidStepDetails: "每个步骤都需要非空标题和有效的 JSON 对象。修改已保留，请更正后重新保存。",
   results: "结果文件",
   resultsNote: "此任务中已验证的输出文件。下载获取当前文件；预览会与保存的验证记录比较。",
   loadingResults: "正在加载…",
@@ -178,6 +218,14 @@ export const AGENT_OS_LOCALES = {
     ACTION: '操作', AGENT: '智能体', VERIFICATION: '验证', MANUAL: '需要你的输入'
   },
   'zh-hant': {
+  resultsGallery: "結果",
+  resultsScope: "目前總覽中各任務的已驗證檔案輸出，並非完整檔案歷史。選擇任務以檢查其檔案。",
+  findResultMission: "搜尋任務或工作區",
+  resultMissions: "任務及結果存取",
+  noResultMissions: "目前總覽中沒有符合的任務。",
+  missionIdentity: "任務",
+  retryResults: "重試",
+  invalidStepDetails: "每個步驟都需要非空標題和有效的 JSON 物件。修改已保留，請更正後重新儲存。",
   results: "結果檔案",
   resultsNote: "此任務中已驗證的輸出檔案。下載取得目前檔案；預覽會與儲存的驗證記錄比較。",
   loadingResults: "正在載入…",
@@ -208,6 +256,14 @@ export const AGENT_OS_LOCALES = {
     ACTION: '操作', AGENT: '代理程式', VERIFICATION: '驗證', MANUAL: '需要你的輸入'
   },
   ja: {
+  resultsGallery: "結果",
+  resultsScope: "現在の一覧にあるミッションの検証済みファイルです。すべてのファイル履歴ではありません。ミッションを選択してファイルを確認してください。",
+  findResultMission: "ミッションまたはワークスペースを検索",
+  resultMissions: "ミッションと結果へのアクセス",
+  noResultMissions: "この一覧に一致するミッションはありません。",
+  missionIdentity: "ミッション",
+  retryResults: "再試行",
+  invalidStepDetails: "各ステップには空でないタイトルと有効な JSON オブジェクトが必要です。編集内容は保持されます。修正して再度保存してください。",
   results: "結果ファイル",
   resultsNote: "このミッションで検証された出力です。ダウンロードは現在のファイルを取得し、プレビューは保存された証拠と照合します。",
   loadingResults: "読み込み中…",
@@ -238,6 +294,14 @@ export const AGENT_OS_LOCALES = {
     ACTION: '操作', AGENT: 'エージェント', VERIFICATION: '検証', MANUAL: 'ユーザーの入力'
   },
   ru: {
+  resultsGallery: "Результаты",
+  resultsScope: "Проверенные файлы миссий текущего обзора, а не полная история файлов. Выберите миссию для просмотра её файлов.",
+  findResultMission: "Найти миссию или рабочую область",
+  resultMissions: "Миссии и доступ к результатам",
+  noResultMissions: "В этом обзоре нет подходящих миссий.",
+  missionIdentity: "Миссия",
+  retryResults: "Повторить",
+  invalidStepDetails: "Каждому шагу нужны непустое название и корректный объект JSON. Правки сохранены в редакторе; исправьте их и повторите сохранение.",
   results: "Файлы результатов",
   resultsNote: "Проверенные файлы этой миссии. Скачивается текущий файл; просмотр сравнивает его с сохранённым подтверждением.",
   loadingResults: "Загрузка…",
@@ -268,6 +332,14 @@ export const AGENT_OS_LOCALES = {
     ACTION: 'Действие', AGENT: 'Агент', VERIFICATION: 'Проверка', MANUAL: 'Ваше участие'
   },
   ar: {
+  resultsGallery: "النتائج",
+  resultsScope: "ملفات موثّقة من مهام العرض الحالي، وليست سجلًا كاملًا للملفات. اختر مهمة لفحص ملفاتها.",
+  findResultMission: "البحث عن مهمة أو مساحة عمل",
+  resultMissions: "المهام والوصول إلى النتائج",
+  noResultMissions: "لا توجد مهام مطابقة في هذا العرض.",
+  missionIdentity: "المهمة",
+  retryResults: "إعادة المحاولة",
+  invalidStepDetails: "تحتاج كل خطوة إلى عنوان غير فارغ وكائن JSON صالح. تبقى تعديلاتك في المحرر؛ صححها ثم احفظ من جديد.",
   results: "ملفات النتائج",
   resultsNote: "ملفات هذه المهمة التي تم التحقق منها. يجلب التنزيل الملف الحالي وتقارنه المعاينة بدليل التحقق المحفوظ.",
   loadingResults: "جارٍ التحميل…",

@@ -206,5 +206,19 @@ export async function fetchAgentOSResults(taskId: string) {
     throw new Error('Invalid mission results response')
   }
 
-  return { ...data, download, preview: (id: string) => request<AgentOSFileResult & { preview: string; truncated: boolean }>(`${path}/${encodeURIComponent(id)}`) }
+  return { ...data, download, preview: async (id: string) => {
+    const expected = data.results.find(result => result.id === id)
+
+    if (!expected) {throw new Error('Unknown mission result')}
+
+    const preview = await request<AgentOSFileResult & { preview: string; truncated: boolean }>(`${path}/${encodeURIComponent(id)}`)
+
+    if (!preview || preview.task_id !== taskId || preview.id !== expected.id
+      || preview.path !== expected.path || preview.sha256 !== expected.sha256
+      || typeof preview.preview !== 'string' || typeof preview.truncated !== 'boolean') {
+      throw new Error('The preview does not match the selected verified mission result')
+    }
+
+    return preview
+  } }
 }

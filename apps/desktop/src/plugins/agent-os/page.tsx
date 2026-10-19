@@ -1,6 +1,6 @@
 import './agent-os.css'
 
-import { cn, Codicon, host, queryClient, useQuery } from '@hermes/plugin-sdk'
+import { cn, Codicon, host, queryClient, usePluginI18n, useQuery } from '@hermes/plugin-sdk'
 import { useMemo, useState } from 'react'
 
 import {
@@ -15,6 +15,7 @@ import { ExternalConnectionsSection, SemanticMemorySection } from './context'
 import { MissionControlActions } from './control'
 import { useHermesOperations, useLiveFleet } from './operations-data'
 import { ProjectsView } from './projects'
+import { ResultsGallery } from './results-gallery'
 import { useComputerUseSecurity, useNetworkSecurity, useTelemetrySecurity } from './security-data'
 import { exactOperationsRoute, exactWorkerRoute } from './selectors'
 import { openHermesSession } from './session-navigation'
@@ -29,7 +30,7 @@ import type {
 } from './types'
 import { ExecutionCanvas, RuntimeObservatory, RuntimeTopologyCanvas } from './visual-intelligence'
 
-type MissionTab = 'overview' | 'tasks' | 'operations' | 'projects' | 'fleet' | 'memory' | 'connections' | 'security'
+type MissionTab = 'overview' | 'tasks' | 'results' | 'operations' | 'projects' | 'fleet' | 'memory' | 'connections' | 'security'
 
 const ACTIVE_TASK_STATES = new Set([
   'CREATED',
@@ -1958,6 +1959,7 @@ function EmptyStore({ snapshot }: { snapshot: AgentOSSnapshot }) {
 }
 
 export function AgentOSMissionControl() {
+  const t = usePluginI18n('agent-os')
   const [tab, setTab] = useState<MissionTab>('overview')
   const [selectedId, setSelectedId] = useState<string>()
   const [query, setQuery] = useState('')
@@ -1981,6 +1983,7 @@ export function AgentOSMissionControl() {
   const tabs: Array<{ id: MissionTab; label: string; icon: string }> = [
     { id: 'overview', label: 'Mission Control', icon: 'dashboard' },
     { id: 'tasks', label: 'Tasks', icon: 'checklist' },
+    { id: 'results', label: t('resultsGallery'), icon: 'files' },
     { id: 'operations', label: 'Operations', icon: 'server-process' },
     { id: 'projects', label: 'Projects', icon: 'project' },
     { id: 'fleet', label: 'Fleet', icon: 'hubot' },
@@ -2125,6 +2128,7 @@ export function AgentOSMissionControl() {
               />
             )}
             {tab === 'operations' && <OperationsView />}
+            {tab === 'results' && <ResultsGallery onSelect={setSelectedId} selectedId={selected?.id} tasks={snapshot.tasks} />}
             {tab === 'projects' && <ProjectsView />}
             {tab === 'fleet' && <FleetView />}
             {tab === 'memory' && <MemoryView snapshot={snapshot} />}

@@ -5,7 +5,6 @@
  */
 
 import { useStore } from '@nanostores/react'
-import { Puzzle } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { useSessionView } from '@/app/chat/session-view'
@@ -21,6 +20,7 @@ import {
   orderConnectorPicks
 } from '@/components/onboarding-chat/options'
 import type { LayoutNode } from '@/components/pane-shell/tree/model'
+import { Codicon } from '@/components/ui/codicon'
 import { ConnectorLogo } from '@/components/ui/connector-logo'
 import { SearchField } from '@/components/ui/search-field'
 import { registry } from '@/contrib/registry'
@@ -135,7 +135,7 @@ export function ConnectorPicks({ catalog, commit, done, locked, plugins }: Conne
                 className={cn(pluginNeedsApp(plugin) && 'opacity-60')}
                 icon={
                   <span className="grid size-7 shrink-0 place-items-center rounded-full bg-background text-muted-foreground">
-                    <Puzzle className="size-4" />
+                    <Codicon name="extensions" />
                   </span>
                 }
                 key={`plugin:${plugin.name}`}
