@@ -1,7 +1,8 @@
 # Agent OS: Produkt- und Umsetzungsreview
 
 Stand: 19. Oktober 2026. Geprüfte Basis: PR #34,
-`6bfccfef9593f48a42c6885dfd99659942c01b62`.
+`6bfccfef9593f48a42c6885dfd99659942c01b62`; Fortsetzung auf
+`6b703494d0ec56dca76b7d69dbda88ee5238076c`.
 Die Änderungen dieses Reviews werden auf demselben Integrationsbranch fortgeführt.
 
 ## Projektentscheidung
@@ -34,7 +35,7 @@ nicht eine neue bildgenaue Video-Parität.
 | Pipeline und Ergebnisansicht als eigene Einstiege | Neu: eigener Ergebnisse-Einstieg in Mission Control, suchbare Missionsliste und Dateidetails nebeneinander | Auf Missionen der aktuellen Übersicht begrenzt; keine vollständige paginierte Dateihistorie |
 | Artefakte tatsächlich prüfen und wiederfinden | Vorhandene verifizierte Dateischreibausgaben, Textvorschau, Download und Missions-/Workspace-Identität wiederverwendet | Kein universeller Katalog für Browser-, Terminal-, Bild-, PDF- und Subagent-Ausgaben |
 | Plan verstehen und ändern | Titel und JSON-Parameter bestehender Schritte bearbeitbar; lokale Eingabefehler jetzt korrigierbar | Einfügen, Entfernen, Umordnen von Schritten und natürlichsprachliches Umplanen fehlen |
-| Memory-Graph, Suche und begleitende Liste | Memory-/Skill-Graph, Auswahl, Zoom und Herkunftsdetails existieren | Gemeinsame Suche und vollständige synchronisierte Notizenliste fehlen; Kantenmodell transportiert nur Quelle/Ziel, keine individuelle Beleg-/Konfidenzinformation |
+| Memory-Graph, Suche und begleitende Liste | Gemeinsame Suche über geladene Titel, Notizauszüge und Quellen; Liste aller Treffer, synchronisierte Graph-/Detailauswahl, Inhaltsidentität geprüft | Backend liefert Notiztexte nur bis 1.200 Zeichen; Volltextabruf und Kantenmodell transportiert nur Quelle/Ziel, keine individuelle Beleg-/Konfidenzinformation |
 | Agenten- und Prozesszusammenhänge | Execution Canvas verwendet vorhandene Plan-/Agent-/Aktionsidentitäten; Zugehörigkeit und Ausführung werden unterschieden | Noch keine vollständige praktische Prüfung mit realer Delegation und komplexen Fehlerfällen |
 | Live-Computeransicht und Medienzustände | Live-Ansicht ist ausdrücklich einzuschalten; Frame-Ablauf und falsche Task-Zuordnung werden getestet | Opt-in-Ansicht ist keine belegte vollständige Jarvis-/Wake-Word-/Sprachsteuerungsparität |
 | Windows-Bedienbarkeit und visuelle Qualität | Historischer PR33-Stand hatte erfolgreiche DPI-Matrix; neuer Renderer baut lokal | Neue Windows-DPI-Bilder, Tastaturbedienung, High Contrast und Erstinstallation am neuen Commit fehlen |
@@ -64,6 +65,20 @@ nicht eine neue bildgenaue Video-Parität.
 4. **Onboarding ohne undeclared Icon-Abhängigkeit.** Der Desktop-Workspace
    importierte `lucide-react`, ohne es selbst zu deklarieren. Ein vorhandenes
    Codicon ersetzt den Import. Es wird kein zusätzliches Paket benötigt.
+5. **Memory-Suche und synchronisierte Liste.** Die Liste enthält alle passenden
+   geladenen Memory-/Skill-Knoten, unabhängig von der begrenzten Graph-Auswahl.
+   Eine Auswahl aus der Liste wird auch außerhalb der bisherigen Graph-Auswahl
+   eingeblendet; nach Wegfall des Knotens wird ein gültiger Treffer angezeigt.
+   Verknüpfungen im Detail dürfen die Suche bewusst zurücksetzen, um ihr Ziel
+   anzuzeigen. Neue Texte sind in allen neun App-Sprachen vorhanden.
+6. **Memory-Inhalt korrekt zuordnen.** Der tatsächliche Backend-Vertrag in
+   `agent/learning_graph.py` verwendet IDs mit Quelle, Index und Fingerabdruck.
+   Die vorherige UI erkannte nur die alte Form ohne Fingerabdruck und zeigte
+   deshalb aktuelle Notiztexte nicht. Quelle und Fingerabdruck müssen nun zum
+   gelieferten Eintrag passen. Ältere Antworten ohne Fingerabdruck auf beiden
+   Seiten bleiben lesbar. Die Suche verwendet gelieferte Auszüge, keinen
+   behaupteten Volltext; Beziehungen bleiben als deklarierte oder lexikalisch
+   abgeleitete Verbindungen beschrieben, ohne erfundene Einzelbelege.
 
 ## Prüfung und Aussagegrenzen
 
@@ -77,14 +92,22 @@ nicht eine neue bildgenaue Video-Parität.
 - Sechs neue Verhaltenstests verwenden echte React-Komponenten, vorhandene
   UI-Primitives und React Query. Die API-Grenze erhält kontrollierte Antworten;
   sie ersetzen keinen echten Modell- oder Windows-Lauf.
-- Gezielte lokale UI-Regression: 11 Testdateien, 41 bestandene Tests, einschließlich
-  der sechs neuen Fälle und der vorhandenen Onboarding-Connector-Prüfung.
+- Memory-Fortsetzung: zwei UI-Fälle mit 36 Notizen prüfen Inhaltssuche,
+  Quellensuche, Verknüpfungsnavigation, Auswahl außerhalb der Graph-Begrenzung
+  und Datenaktualisierung. Beide scheiterten auf der vorherigen UI; die Umstellung
+  der Testdaten auf echte Backend-ID-Formate reproduzierte zusätzlich den
+  Fingerabdruckfehler. Zwei weitere Tests prüfen Quellen-/Inhaltsidentität,
+  ältere Antworten und unveränderte Kartenindizes beim Filtern.
+- Gezielte lokale UI-Regression: 13 Testdateien, 45 bestandene Tests einschließlich
+  der vorhandenen Onboarding-Connector-Prüfung.
 - Renderer- und Windows-Harness-Typecheck, gezieltes ESLint sowie
   Vite-Produktionsbuild lokal erfolgreich. Das ist ein
   Renderer-Build auf Linux, kein vollständiges Electron-/Windows-Installationspaket.
 - Die Windows-DPI-Suite wurde um Navigation zum Ergebnisse-Einstieg, kompakte
   Ergebnisansicht, Such-/Vorschauablauf und korrigierbare Plan-JSON-Fehler erweitert.
-  Diese neuen Windows-Fälle sind vorbereitet, noch nicht ausgeführt.
+  Diese neuen Windows-Fälle sind vorbereitet, noch nicht ausgeführt. Die neue
+  Memory-Ansicht hat ebenfalls noch keine native visuelle Abnahme; lokale
+  DOM-Tests belegen Interaktionen, keine Pixel- oder DPI-Qualität.
 - Der neue Quellstand hat noch keinen erfolgreichen Windows-Workflow. Am
   9. Oktober zeigte GitHub die Fork-Workflows wegen Actions-Nutzung als deaktiviert;
   für den bisherigen PR34-Commit gibt es weiterhin keinen Lauf. Ein erneuter
@@ -99,7 +122,7 @@ nicht eine neue bildgenaue Video-Parität.
 | P0 | Einen reproduzierbaren Kandidaten übergeben | Installer-Metadaten und SHA256 passen zum geprüften Commit; Anleitung nennt Grenzen; Update auf eine zweite Version separat geprüft |
 | P1 | Vollständige Ergebnis-Historie | Backendseitig paginierte/verifizierte Dateireferenzen mit Mission, Workspace, Suche und Fehlerzuständen; alte Ergebnisse fallen nicht aus dem Suchraum |
 | P1 | Planeditor für normale Nutzer | Strukturierte Felder für unterstützte Werkzeuge; DAG-Änderungen mit Abhängigkeitsprüfung; jede Änderung erzeugt eine neue freizugebende Revision |
-| P1 | Memory-Ansicht wie vereinbart vervollständigen | Graph und Notizenliste verwenden dieselbe Suchmenge; Auswahl bleibt sichtbar; deklarierte und lexikalisch abgeleitete Beziehungen haben nachvollziehbare Herkunft |
+| P1 | Memory-Ansicht wie vereinbart vervollständigen | Suche und synchronisierte Liste implementiert; offen sind vollständiger Notizabruf sowie individuelle Herkunft deklarierter und lexikalisch abgeleiteter Beziehungen |
 | P1 | Visuelle Konsistenz und Lokalisierung | Bestehende englische Alttexte und eigene Steuerflächen schrittweise auf gemeinsame Primitives/Übersetzungen migriert; reale kleine Fenster, lange Texte und Tastaturbedienung geprüft |
 | P2 | Langzeitbetrieb und große Datenmengen | Messungen zu Reconnect, Wiederaufnahme, Hintergrundarbeit, vielen Missionen, Cachebedarf und Antwortzeiten; keine unbewiesenen Prozent-Fortschrittswerte |
 | Release | Produktionsfreigabe | Geschützte, konsolidierte Quelle, Signierung und vollständige Qualifikation am exakten Releasekandidaten |

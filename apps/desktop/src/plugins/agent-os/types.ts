@@ -197,6 +197,7 @@ export interface AgentOSLearningNode {
 
 export interface AgentOSLearningMemoryCard {
   source: string
+  fingerprint?: string
   timestamp?: null | number
   title: string
   body: string

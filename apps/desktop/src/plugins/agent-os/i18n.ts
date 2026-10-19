@@ -1,6 +1,11 @@
 import type { Locale, PluginLocaleBundles } from '@hermes/plugin-sdk'
 
 const en = {
+  findMemory: "Search memories, skills or sources",
+  memorySearchScope: "Search covers the loaded entries, including the supplied note excerpts. The graph shows a limited selection of matching entries; the list includes all matches. Connections may be declared or inferred from shared words.",
+  memoryEntries: "Memories and skills",
+  noMemoryMatches: "No matching entries",
+
   resultsGallery: "Results",
   resultsScope: "Verified file outputs from the missions in the current overview. This is not a complete file history. Choose a mission to inspect its files.",
   findResultMission: "Find mission or workspace",
@@ -57,6 +62,11 @@ type Messages = Record<keyof typeof en, string>
 export const AGENT_OS_LOCALES = {
   en,
   de: {
+  findMemory: "Erinnerungen, Fähigkeiten oder Quellen suchen",
+  memorySearchScope: "Die Suche erfasst die geladenen Einträge einschließlich der gelieferten Notizauszüge. Der Graph zeigt eine begrenzte Auswahl passender Einträge; die Liste enthält alle Treffer. Verbindungen können angegeben oder aus gemeinsamen Wörtern abgeleitet sein.",
+  memoryEntries: "Erinnerungen und Fähigkeiten",
+  noMemoryMatches: "Keine passenden Einträge",
+
   resultsGallery: "Ergebnisse",
   resultsScope: "Geprüfte Dateiausgaben aus den Missionen der aktuellen Übersicht. Dies ist kein vollständiger Dateiverlauf. Wähle eine Mission, um ihre Dateien zu prüfen.",
   findResultMission: "Mission oder Arbeitsbereich suchen",
@@ -98,6 +108,11 @@ export const AGENT_OS_LOCALES = {
     ACTION: 'Aktion', AGENT: 'Agent', VERIFICATION: 'Ergebnisprüfung', MANUAL: 'Deine Eingabe'
   },
   fr: {
+  findMemory: "Rechercher des souvenirs, compétences ou sources",
+  memorySearchScope: "La recherche couvre les entrées chargées, y compris les extraits de notes fournis. Le graphe affiche une sélection limitée ; la liste inclut tous les résultats. Les liens peuvent être déclarés ou déduits de mots communs.",
+  memoryEntries: "Souvenirs et compétences",
+  noMemoryMatches: "Aucune entrée correspondante",
+
   resultsGallery: "Résultats",
   resultsScope: "Fichiers vérifiés des missions de la vue actuelle, pas un historique complet. Sélectionnez une mission pour consulter ses fichiers.",
   findResultMission: "Rechercher une mission ou un espace",
@@ -139,6 +154,11 @@ export const AGENT_OS_LOCALES = {
     ACTION: 'Action', AGENT: 'Agent', VERIFICATION: 'Vérification', MANUAL: 'Votre intervention'
   },
   es: {
+  findMemory: "Buscar recuerdos, habilidades o fuentes",
+  memorySearchScope: "La búsqueda abarca las entradas cargadas, incluidos los extractos de notas proporcionados. El grafo muestra una selección limitada; la lista incluye todos los resultados. Las conexiones pueden ser declaradas o deducidas de palabras compartidas.",
+  memoryEntries: "Recuerdos y habilidades",
+  noMemoryMatches: "No hay entradas coincidentes",
+
   resultsGallery: "Resultados",
   resultsScope: "Archivos verificados de las misiones de la vista actual, no un historial completo. Selecciona una misión para consultar sus archivos.",
   findResultMission: "Buscar misión o espacio de trabajo",
@@ -180,6 +200,11 @@ export const AGENT_OS_LOCALES = {
     ACTION: 'Acción', AGENT: 'Agente', VERIFICATION: 'Verificación', MANUAL: 'Tu intervención'
   },
   zh: {
+  findMemory: "搜索记忆、技能或来源",
+  memorySearchScope: "搜索涵盖已加载的条目及提供的笔记摘录。图谱仅显示部分匹配条目；列表包含所有匹配项。关联可能由明确声明或共同词语推断得出。",
+  memoryEntries: "记忆和技能",
+  noMemoryMatches: "没有匹配条目",
+
   resultsGallery: "结果",
   resultsScope: "当前概览中各任务的已验证文件输出，并非完整文件历史。选择任务以检查其文件。",
   findResultMission: "搜索任务或工作区",
@@ -218,6 +243,11 @@ export const AGENT_OS_LOCALES = {
     ACTION: '操作', AGENT: '智能体', VERIFICATION: '验证', MANUAL: '需要你的输入'
   },
   'zh-hant': {
+  findMemory: "搜尋記憶、技能或來源",
+  memorySearchScope: "搜尋涵蓋已載入的項目及提供的筆記摘錄。圖譜僅顯示部分符合項目；清單包含所有符合項目。關聯可能由明確聲明或共同詞語推斷而來。",
+  memoryEntries: "記憶和技能",
+  noMemoryMatches: "沒有符合項目",
+
   resultsGallery: "結果",
   resultsScope: "目前總覽中各任務的已驗證檔案輸出，並非完整檔案歷史。選擇任務以檢查其檔案。",
   findResultMission: "搜尋任務或工作區",
@@ -256,6 +286,11 @@ export const AGENT_OS_LOCALES = {
     ACTION: '操作', AGENT: '代理程式', VERIFICATION: '驗證', MANUAL: '需要你的輸入'
   },
   ja: {
+  findMemory: "記憶・スキル・出典を検索",
+  memorySearchScope: "読み込み済みの項目と提供されたノートの抜粋を検索します。グラフには一致項目の一部、一覧にはすべての一致項目を表示します。接続は明示されたもの、または共通の単語から推定されたものです。",
+  memoryEntries: "記憶とスキル",
+  noMemoryMatches: "一致する項目はありません",
+
   resultsGallery: "結果",
   resultsScope: "現在の一覧にあるミッションの検証済みファイルです。すべてのファイル履歴ではありません。ミッションを選択してファイルを確認してください。",
   findResultMission: "ミッションまたはワークスペースを検索",
@@ -294,6 +329,11 @@ export const AGENT_OS_LOCALES = {
     ACTION: '操作', AGENT: 'エージェント', VERIFICATION: '検証', MANUAL: 'ユーザーの入力'
   },
   ru: {
+  findMemory: "Поиск воспоминаний, навыков или источников",
+  memorySearchScope: "Поиск охватывает загруженные записи, включая предоставленные фрагменты заметок. Граф показывает ограниченную выборку совпадений, список — все совпадения. Связи могут быть указаны явно или выведены из общих слов.",
+  memoryEntries: "Воспоминания и навыки",
+  noMemoryMatches: "Совпадений нет",
+
   resultsGallery: "Результаты",
   resultsScope: "Проверенные файлы миссий текущего обзора, а не полная история файлов. Выберите миссию для просмотра её файлов.",
   findResultMission: "Найти миссию или рабочую область",
@@ -332,6 +372,11 @@ export const AGENT_OS_LOCALES = {
     ACTION: 'Действие', AGENT: 'Агент', VERIFICATION: 'Проверка', MANUAL: 'Ваше участие'
   },
   ar: {
+  findMemory: "البحث في الذكريات والمهارات والمصادر",
+  memorySearchScope: "يشمل البحث العناصر المحملة ومقتطفات الملاحظات المتاحة. يعرض الرسم مجموعة محدودة من النتائج وتعرض القائمة جميع النتائج. قد تكون الروابط معلنة أو مستنتجة من كلمات مشتركة.",
+  memoryEntries: "الذكريات والمهارات",
+  noMemoryMatches: "لا توجد عناصر مطابقة",
+
   resultsGallery: "النتائج",
   resultsScope: "ملفات موثّقة من مهام العرض الحالي، وليست سجلًا كاملًا للملفات. اختر مهمة لفحص ملفاتها.",
   findResultMission: "البحث عن مهمة أو مساحة عمل",
