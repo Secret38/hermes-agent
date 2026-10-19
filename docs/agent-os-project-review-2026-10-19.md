@@ -2,7 +2,8 @@
 
 Stand: 19. Oktober 2026. Geprüfte Basis: PR #34,
 `6bfccfef9593f48a42c6885dfd99659942c01b62`; Fortsetzung auf
-`6b703494d0ec56dca76b7d69dbda88ee5238076c`.
+`6b703494d0ec56dca76b7d69dbda88ee5238076c` und
+`38a462ea22c85df2284e4552f7e3f3f304ae629c`.
 Die Änderungen dieses Reviews werden auf demselben Integrationsbranch fortgeführt.
 
 ## Projektentscheidung
@@ -35,7 +36,7 @@ nicht eine neue bildgenaue Video-Parität.
 | Pipeline und Ergebnisansicht als eigene Einstiege | Neu: eigener Ergebnisse-Einstieg in Mission Control, suchbare Missionsliste und Dateidetails nebeneinander | Auf Missionen der aktuellen Übersicht begrenzt; keine vollständige paginierte Dateihistorie |
 | Artefakte tatsächlich prüfen und wiederfinden | Vorhandene verifizierte Dateischreibausgaben, Textvorschau, Download und Missions-/Workspace-Identität wiederverwendet | Kein universeller Katalog für Browser-, Terminal-, Bild-, PDF- und Subagent-Ausgaben |
 | Plan verstehen und ändern | Titel und JSON-Parameter bestehender Schritte bearbeitbar; lokale Eingabefehler jetzt korrigierbar | Einfügen, Entfernen, Umordnen von Schritten und natürlichsprachliches Umplanen fehlen |
-| Memory-Graph, Suche und begleitende Liste | Gemeinsame Suche über geladene Titel, Notizauszüge und Quellen; Liste aller Treffer, synchronisierte Graph-/Detailauswahl, Inhaltsidentität geprüft | Backend liefert Notiztexte nur bis 1.200 Zeichen; Volltextabruf und Kantenmodell transportiert nur Quelle/Ziel, keine individuelle Beleg-/Konfidenzinformation |
+| Memory-Graph, Suche und begleitende Liste | Gemeinsame Suche über geladene Titel, Notizauszüge und Quellen; Liste aller Treffer, synchronisierte Graph-/Detailauswahl, Inhaltsidentität geprüft | Suche weiterhin auf gelieferte Auszüge bis 1.200 Zeichen begrenzt; vollständige Notiz auf Anfrage lesbar; deklarierende Skills bzw. gemeinsame Begriffe jetzt pro Verbindung vorhanden. Lexikalische Verbindungen sind keine bestätigten Fakten |
 | Agenten- und Prozesszusammenhänge | Execution Canvas verwendet vorhandene Plan-/Agent-/Aktionsidentitäten; Zugehörigkeit und Ausführung werden unterschieden | Noch keine vollständige praktische Prüfung mit realer Delegation und komplexen Fehlerfällen |
 | Live-Computeransicht und Medienzustände | Live-Ansicht ist ausdrücklich einzuschalten; Frame-Ablauf und falsche Task-Zuordnung werden getestet | Opt-in-Ansicht ist keine belegte vollständige Jarvis-/Wake-Word-/Sprachsteuerungsparität |
 | Windows-Bedienbarkeit und visuelle Qualität | Historischer PR33-Stand hatte erfolgreiche DPI-Matrix; neuer Renderer baut lokal | Neue Windows-DPI-Bilder, Tastaturbedienung, High Contrast und Erstinstallation am neuen Commit fehlen |
@@ -79,6 +80,21 @@ nicht eine neue bildgenaue Video-Parität.
    Seiten bleiben lesbar. Die Suche verwendet gelieferte Auszüge, keinen
    behaupteten Volltext; Beziehungen bleiben als deklarierte oder lexikalisch
    abgeleitete Verbindungen beschrieben, ohne erfundene Einzelbelege.
+7. **Vollständige Notizen auf Anfrage.** „Vollständige Notiz lesen“ nutzt den
+   vorhandenen `learning.detail`-Gateway-Aufruf. Die Antwort muss zur gewählten
+   Memory-ID gehören. Backendseitig wird der Inhaltsfingerabdruck erneut gegen
+   die aktuelle Datei aufgelöst. Ladefehler, entfernte/geänderte Inhalte und
+   erneutes Laden sind eigene UI-Zustände; während eines Abrufs oder nach Fehler
+   wird kein alter Volltext als aktueller Inhalt angezeigt. Query-Schlüssel
+   enthalten Verbindung, Profil und Knoten-ID. Der Graph lässt sich explizit
+   aktualisieren. Die Suche bleibt eine Suche in den gelieferten Auszügen.
+8. **Herkunft einzelner Verbindungen.** Das gemeinsame Graph-Modell liefert
+   additive Felder: `declared` mit den tatsächlich deklarierenden Skill-Namen
+   aus `related_skills`, oder `lexical` mit gemeinsamen Begriffen und einem
+   expliziten Namens-Treffer. Der Ranking-Score ist keine Wahrscheinlichkeit.
+   Die Detailansicht zeigt alle Verbindungen in einer begrenzten Scrollfläche.
+   Ältere Antworten ohne diese Felder werden als „kein Herkunftsnachweis“
+   gekennzeichnet. Es wird keine geprüfte inhaltliche Beziehung behauptet.
 
 ## Prüfung und Aussagegrenzen
 
@@ -98,15 +114,25 @@ nicht eine neue bildgenaue Video-Parität.
   der Testdaten auf echte Backend-ID-Formate reproduzierte zusätzlich den
   Fingerabdruckfehler. Zwei weitere Tests prüfen Quellen-/Inhaltsidentität,
   ältere Antworten und unveränderte Kartenindizes beim Filtern.
-- Gezielte lokale UI-Regression: 13 Testdateien, 45 bestandene Tests einschließlich
+- Gezielte lokale UI-Regression: 14 Testdateien, 47 bestandene Tests einschließlich
   der vorhandenen Onboarding-Connector-Prüfung.
+- Weitere UI-Fälle prüfen den bewussten Volltextabruf, Antwortidentität,
+  Wiederholung nach Fehler und verspätete Antworten nach Auswahlwechsel sowie
+  die Kennzeichnung lexikalischer und unbekannter Herkunft.
+- Backend: vier Learning-Testdateien mit 25 bestandenen Tests über
+  `scripts/run_tests.sh` in einer isolierten Python-3.14-Umgebung mit aus dem
+  Projekt-Lock übernommenen Testabhängigkeiten. Echte temporäre Memory- und
+  Skill-Dateien belegen deklarierte/lexikalische Herkunft, vollständige Inhalte,
+  A → B → A, Indexverschiebung und Ablehnung veränderter Inhalte.
 - Renderer- und Windows-Harness-Typecheck, gezieltes ESLint sowie
   Vite-Produktionsbuild lokal erfolgreich. Das ist ein
   Renderer-Build auf Linux, kein vollständiges Electron-/Windows-Installationspaket.
 - Die Windows-DPI-Suite wurde um Navigation zum Ergebnisse-Einstieg, kompakte
   Ergebnisansicht, Such-/Vorschauablauf und korrigierbare Plan-JSON-Fehler erweitert.
   Diese neuen Windows-Fälle sind vorbereitet, noch nicht ausgeführt. Die neue
-  Memory-Ansicht hat ebenfalls noch keine native visuelle Abnahme; lokale
+  Memory-Ansicht hat ebenfalls noch keine native visuelle Abnahme. Ein neuer
+  Fall mit echten Seed-Dateien prüft Suche, Volltext und Herkunft bei vier
+  DPI-Stufen; die Windows-Lane führt nun auch die Learning-Backendfälle aus. Lokale
   DOM-Tests belegen Interaktionen, keine Pixel- oder DPI-Qualität.
 - Der neue Quellstand hat noch keinen erfolgreichen Windows-Workflow. Am
   9. Oktober zeigte GitHub die Fork-Workflows wegen Actions-Nutzung als deaktiviert;
@@ -122,7 +148,7 @@ nicht eine neue bildgenaue Video-Parität.
 | P0 | Einen reproduzierbaren Kandidaten übergeben | Installer-Metadaten und SHA256 passen zum geprüften Commit; Anleitung nennt Grenzen; Update auf eine zweite Version separat geprüft |
 | P1 | Vollständige Ergebnis-Historie | Backendseitig paginierte/verifizierte Dateireferenzen mit Mission, Workspace, Suche und Fehlerzuständen; alte Ergebnisse fallen nicht aus dem Suchraum |
 | P1 | Planeditor für normale Nutzer | Strukturierte Felder für unterstützte Werkzeuge; DAG-Änderungen mit Abhängigkeitsprüfung; jede Änderung erzeugt eine neue freizugebende Revision |
-| P1 | Memory-Ansicht wie vereinbart vervollständigen | Suche und synchronisierte Liste implementiert; offen sind vollständiger Notizabruf sowie individuelle Herkunft deklarierter und lexikalisch abgeleiteter Beziehungen |
+| P1 | Memory-Ansicht wie vereinbart vervollständigen | Suche, synchronisierte Liste, Volltextabruf und individuelle Herkunft implementiert; offen bleiben native visuelle Abnahme und bei Bedarf serverseitige Volltextsuche jenseits der Auszüge |
 | P1 | Visuelle Konsistenz und Lokalisierung | Bestehende englische Alttexte und eigene Steuerflächen schrittweise auf gemeinsame Primitives/Übersetzungen migriert; reale kleine Fenster, lange Texte und Tastaturbedienung geprüft |
 | P2 | Langzeitbetrieb und große Datenmengen | Messungen zu Reconnect, Wiederaufnahme, Hintergrundarbeit, vielen Missionen, Cachebedarf und Antwortzeiten; keine unbewiesenen Prozent-Fortschrittswerte |
 | Release | Produktionsfreigabe | Geschützte, konsolidierte Quelle, Signierung und vollständige Qualifikation am exakten Releasekandidaten |

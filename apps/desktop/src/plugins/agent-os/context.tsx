@@ -1,7 +1,9 @@
-import { cn, Codicon, host, usePluginI18n, useQuery } from '@hermes/plugin-sdk'
+import { Button, cn, Codicon, host, usePluginI18n, useQuery } from '@hermes/plugin-sdk'
 import { useState } from 'react'
 
 import { AGENT_OS_CONTEXT_KEY, fetchAgentOSContext } from './api'
+import { MemoryDetail } from './memory-detail'
+import { MemoryEvidence } from './memory-evidence'
 import { memoryCardForNode, MemorySearch, searchMemoryGraph } from './memory-search'
 import type {
   AgentOSMcpConnection,
@@ -71,7 +73,7 @@ function formatMemoryTimestamp(value: null | number | undefined): string {
 export function SemanticMemorySection() {
   const t = usePluginI18n('agent-os')
 
-  const { data, error } = useQuery({
+  const { data, error, refetch, isFetching } = useQuery({
     queryFn: fetchAgentOSContext,
     queryKey: AGENT_OS_CONTEXT_KEY,
     refetchInterval: 60_000
@@ -127,6 +129,7 @@ export function SemanticMemorySection() {
               </div>
             </div>
           </div>
+          <Button disabled={isFetching} onClick={() => void refetch()} size="sm" variant="ghost">{t('refreshMemoryGraph')}</Button>
           {graph.error && <span className="text-[0.6rem] text-destructive">{graph.error}</span>}
         </div>
 
@@ -196,31 +199,30 @@ export function SemanticMemorySection() {
                 </div>
 
                 {selectedCard && (
-                  <div className="aos-scrollbar mt-3 max-h-72 overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-(--ui-stroke-tertiary) bg-(--ui-bg-primary) p-2.5 text-[0.65rem] leading-relaxed text-(--ui-text-secondary)">
-                    {selectedCard.body}
-                  </div>
+                  <MemoryDetail excerpt={selectedCard.body} key={selected.id} nodeId={selected.id} />
                 )}
 
                 <div className="mt-3 border-t border-(--ui-stroke-tertiary) pt-2">
                   <div className="aos-kicker">Connected to</div>
-                  <div className="mt-2 flex flex-wrap gap-1">
+                  <div className="aos-scrollbar mt-2 max-h-64 space-y-3 overflow-y-auto">
                     {graph.edges
                       .filter(edge => edge.source === selected.id || edge.target === selected.id)
-                      .slice(0, 12)
                       .map(edge => {
                         const other = edge.source === selected.id ? edge.target : edge.source
                         const node = graph.nodes.find(item => item.id === other)
 
                         return (
-                          <button
-                            aria-label={node?.label || other}
-                            className="max-w-full truncate rounded border border-(--ui-stroke-tertiary) px-1.5 py-1 text-[0.58rem] text-(--ui-text-secondary) hover:bg-(--ui-control-hover-background)"
-                            key={`${edge.source}->${edge.target}`}
-                            onClick={() => { setQuery(''); setSelectedId(other) }}
-                            type="button"
-                          >
-                            {node?.label || other}
-                          </button>
+                          <div className="min-w-0 space-y-1" key={`${edge.source}->${edge.target}`}>
+                            <button
+                              aria-label={node?.label || other}
+                              className="max-w-full truncate rounded border border-(--ui-stroke-tertiary) px-1.5 py-1 text-[0.58rem] text-(--ui-text-secondary) hover:bg-(--ui-control-hover-background)"
+                              onClick={() => { setQuery(''); setSelectedId(other) }}
+                              type="button"
+                            >
+                              {node?.label || other}
+                            </button>
+                            <MemoryEvidence edge={edge} />
+                          </div>
                         )
                       })}
                   </div>

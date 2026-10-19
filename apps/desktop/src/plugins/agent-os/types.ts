@@ -203,9 +203,19 @@ export interface AgentOSLearningMemoryCard {
   body: string
 }
 
+export interface AgentOSLearningEdge {
+  source: string
+  target: string
+  kind?: 'declared' | 'lexical'
+  declared_by?: string[]
+  shared_terms?: string[]
+  name_match?: boolean
+  score?: number
+}
+
 export interface AgentOSLearningGraph {
   nodes: AgentOSLearningNode[]
-  edges: Array<{ source: string; target: string }>
+  edges: AgentOSLearningEdge[]
   clusters: Array<{ category: string; count: number }>
   memory: AgentOSLearningMemoryCard[]
   stats: {

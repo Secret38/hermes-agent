@@ -1,6 +1,17 @@
 import type { Locale, PluginLocaleBundles } from '@hermes/plugin-sdk'
 
 const en = {
+  refreshMemoryGraph: "Refresh memory graph",
+  readFullMemory: "Read full note",
+  reloadMemory: "Reload note",
+  loadingMemory: "Loading note…",
+  memoryReadFailed: "Could not read this note. It may have changed or been removed. Refresh the graph or retry.",
+  declaredRelation: "Declared in related_skills by",
+  lexicalRelation: "Shared words; inferred connection, not a verified fact",
+  sharedTerms: "Shared terms",
+  matchedSkillName: "Skill name found in note excerpt",
+  unknownEvidence: "No provenance supplied by this runtime",
+
   findMemory: "Search memories, skills or sources",
   memorySearchScope: "Search covers the loaded entries, including the supplied note excerpts. The graph shows a limited selection of matching entries; the list includes all matches. Connections may be declared or inferred from shared words.",
   memoryEntries: "Memories and skills",
@@ -62,6 +73,17 @@ type Messages = Record<keyof typeof en, string>
 export const AGENT_OS_LOCALES = {
   en,
   de: {
+  refreshMemoryGraph: "Memory-Graph aktualisieren",
+  readFullMemory: "Vollständige Notiz lesen",
+  reloadMemory: "Notiz erneut laden",
+  loadingMemory: "Notiz wird geladen…",
+  memoryReadFailed: "Notiz konnte nicht gelesen werden. Sie wurde möglicherweise geändert oder entfernt. Graph aktualisieren oder erneut versuchen.",
+  declaredRelation: "In related_skills angegeben von",
+  lexicalRelation: "Gemeinsame Wörter; abgeleitete Verbindung, keine bestätigte Tatsache",
+  sharedTerms: "Gemeinsame Begriffe",
+  matchedSkillName: "Fähigkeitsname im Notizauszug gefunden",
+  unknownEvidence: "Diese Laufzeit liefert keinen Herkunftsnachweis",
+
   findMemory: "Erinnerungen, Fähigkeiten oder Quellen suchen",
   memorySearchScope: "Die Suche erfasst die geladenen Einträge einschließlich der gelieferten Notizauszüge. Der Graph zeigt eine begrenzte Auswahl passender Einträge; die Liste enthält alle Treffer. Verbindungen können angegeben oder aus gemeinsamen Wörtern abgeleitet sein.",
   memoryEntries: "Erinnerungen und Fähigkeiten",
@@ -108,6 +130,17 @@ export const AGENT_OS_LOCALES = {
     ACTION: 'Aktion', AGENT: 'Agent', VERIFICATION: 'Ergebnisprüfung', MANUAL: 'Deine Eingabe'
   },
   fr: {
+  refreshMemoryGraph: "Actualiser le graphe mémoire",
+  readFullMemory: "Lire la note complète",
+  reloadMemory: "Recharger la note",
+  loadingMemory: "Chargement de la note…",
+  memoryReadFailed: "Lecture impossible. La note a peut-être changé ou été supprimée. Actualisez le graphe ou réessayez.",
+  declaredRelation: "Déclaré dans related_skills par",
+  lexicalRelation: "Mots communs ; lien déduit, pas un fait vérifié",
+  sharedTerms: "Termes communs",
+  matchedSkillName: "Nom de compétence trouvé dans l’extrait",
+  unknownEvidence: "Aucune provenance fournie par cet environnement",
+
   findMemory: "Rechercher des souvenirs, compétences ou sources",
   memorySearchScope: "La recherche couvre les entrées chargées, y compris les extraits de notes fournis. Le graphe affiche une sélection limitée ; la liste inclut tous les résultats. Les liens peuvent être déclarés ou déduits de mots communs.",
   memoryEntries: "Souvenirs et compétences",
@@ -154,6 +187,17 @@ export const AGENT_OS_LOCALES = {
     ACTION: 'Action', AGENT: 'Agent', VERIFICATION: 'Vérification', MANUAL: 'Votre intervention'
   },
   es: {
+  refreshMemoryGraph: "Actualizar grafo de memoria",
+  readFullMemory: "Leer nota completa",
+  reloadMemory: "Recargar nota",
+  loadingMemory: "Cargando nota…",
+  memoryReadFailed: "No se pudo leer la nota. Puede haber cambiado o sido eliminada. Actualiza el grafo o vuelve a intentarlo.",
+  declaredRelation: "Declarado en related_skills por",
+  lexicalRelation: "Palabras compartidas; conexión inferida, no un hecho verificado",
+  sharedTerms: "Términos compartidos",
+  matchedSkillName: "Nombre de habilidad encontrado en el extracto",
+  unknownEvidence: "Este entorno no proporciona procedencia",
+
   findMemory: "Buscar recuerdos, habilidades o fuentes",
   memorySearchScope: "La búsqueda abarca las entradas cargadas, incluidos los extractos de notas proporcionados. El grafo muestra una selección limitada; la lista incluye todos los resultados. Las conexiones pueden ser declaradas o deducidas de palabras compartidas.",
   memoryEntries: "Recuerdos y habilidades",
@@ -200,6 +244,17 @@ export const AGENT_OS_LOCALES = {
     ACTION: 'Acción', AGENT: 'Agente', VERIFICATION: 'Verificación', MANUAL: 'Tu intervención'
   },
   zh: {
+  refreshMemoryGraph: "刷新记忆图谱",
+  readFullMemory: "阅读完整笔记",
+  reloadMemory: "重新加载笔记",
+  loadingMemory: "正在加载笔记…",
+  memoryReadFailed: "无法读取笔记，可能已更改或删除。请刷新图谱或重试。",
+  declaredRelation: "在 related_skills 中声明者",
+  lexicalRelation: "共同词语；推断的关联，并非已验证的事实",
+  sharedTerms: "共同词语",
+  matchedSkillName: "笔记摘录中出现了技能名称",
+  unknownEvidence: "此运行环境未提供来源依据",
+
   findMemory: "搜索记忆、技能或来源",
   memorySearchScope: "搜索涵盖已加载的条目及提供的笔记摘录。图谱仅显示部分匹配条目；列表包含所有匹配项。关联可能由明确声明或共同词语推断得出。",
   memoryEntries: "记忆和技能",
@@ -243,6 +298,17 @@ export const AGENT_OS_LOCALES = {
     ACTION: '操作', AGENT: '智能体', VERIFICATION: '验证', MANUAL: '需要你的输入'
   },
   'zh-hant': {
+  refreshMemoryGraph: "重新整理記憶圖譜",
+  readFullMemory: "閱讀完整筆記",
+  reloadMemory: "重新載入筆記",
+  loadingMemory: "正在載入筆記…",
+  memoryReadFailed: "無法讀取筆記，可能已變更或刪除。請重新整理圖譜或重試。",
+  declaredRelation: "在 related_skills 中聲明者",
+  lexicalRelation: "共同詞語；推斷的關聯，並非已驗證的事實",
+  sharedTerms: "共同詞語",
+  matchedSkillName: "筆記摘錄中出現了技能名稱",
+  unknownEvidence: "此執行環境未提供來源依據",
+
   findMemory: "搜尋記憶、技能或來源",
   memorySearchScope: "搜尋涵蓋已載入的項目及提供的筆記摘錄。圖譜僅顯示部分符合項目；清單包含所有符合項目。關聯可能由明確聲明或共同詞語推斷而來。",
   memoryEntries: "記憶和技能",
@@ -286,6 +352,17 @@ export const AGENT_OS_LOCALES = {
     ACTION: '操作', AGENT: '代理程式', VERIFICATION: '驗證', MANUAL: '需要你的輸入'
   },
   ja: {
+  refreshMemoryGraph: "記憶グラフを更新",
+  readFullMemory: "ノート全文を読む",
+  reloadMemory: "ノートを再読み込み",
+  loadingMemory: "ノートを読み込み中…",
+  memoryReadFailed: "読み込めませんでした。変更または削除された可能性があります。グラフを更新するか再試行してください。",
+  declaredRelation: "related_skills の宣言元",
+  lexicalRelation: "共通の単語から推定した接続であり、検証済みの事実ではありません",
+  sharedTerms: "共通の語句",
+  matchedSkillName: "ノートの抜粋にスキル名があります",
+  unknownEvidence: "このランタイムは根拠を提供していません",
+
   findMemory: "記憶・スキル・出典を検索",
   memorySearchScope: "読み込み済みの項目と提供されたノートの抜粋を検索します。グラフには一致項目の一部、一覧にはすべての一致項目を表示します。接続は明示されたもの、または共通の単語から推定されたものです。",
   memoryEntries: "記憶とスキル",
@@ -329,6 +406,17 @@ export const AGENT_OS_LOCALES = {
     ACTION: '操作', AGENT: 'エージェント', VERIFICATION: '検証', MANUAL: 'ユーザーの入力'
   },
   ru: {
+  refreshMemoryGraph: "Обновить граф памяти",
+  readFullMemory: "Прочитать заметку целиком",
+  reloadMemory: "Перезагрузить заметку",
+  loadingMemory: "Загрузка заметки…",
+  memoryReadFailed: "Не удалось прочитать заметку. Возможно, она изменена или удалена. Обновите граф или повторите попытку.",
+  declaredRelation: "Указано в related_skills у",
+  lexicalRelation: "Общие слова: связь выведена, а не подтверждена",
+  sharedTerms: "Общие слова",
+  matchedSkillName: "Название навыка найдено во фрагменте заметки",
+  unknownEvidence: "Среда не предоставила сведения о происхождении",
+
   findMemory: "Поиск воспоминаний, навыков или источников",
   memorySearchScope: "Поиск охватывает загруженные записи, включая предоставленные фрагменты заметок. Граф показывает ограниченную выборку совпадений, список — все совпадения. Связи могут быть указаны явно или выведены из общих слов.",
   memoryEntries: "Воспоминания и навыки",
@@ -372,6 +460,17 @@ export const AGENT_OS_LOCALES = {
     ACTION: 'Действие', AGENT: 'Агент', VERIFICATION: 'Проверка', MANUAL: 'Ваше участие'
   },
   ar: {
+  refreshMemoryGraph: "تحديث رسم الذاكرة",
+  readFullMemory: "قراءة الملاحظة كاملة",
+  reloadMemory: "إعادة تحميل الملاحظة",
+  loadingMemory: "جارٍ تحميل الملاحظة…",
+  memoryReadFailed: "تعذرت قراءة الملاحظة. ربما تغيرت أو حُذفت. حدّث الرسم أو أعد المحاولة.",
+  declaredRelation: "مُعلن في related_skills بواسطة",
+  lexicalRelation: "كلمات مشتركة؛ رابط مستنتج وليس حقيقة مؤكدة",
+  sharedTerms: "المصطلحات المشتركة",
+  matchedSkillName: "وُجد اسم المهارة في مقتطف الملاحظة",
+  unknownEvidence: "لا توفر بيئة التشغيل دليلًا على المصدر",
+
   findMemory: "البحث في الذكريات والمهارات والمصادر",
   memorySearchScope: "يشمل البحث العناصر المحملة ومقتطفات الملاحظات المتاحة. يعرض الرسم مجموعة محدودة من النتائج وتعرض القائمة جميع النتائج. قد تكون الروابط معلنة أو مستنتجة من كلمات مشتركة.",
   memoryEntries: "الذكريات والمهارات",

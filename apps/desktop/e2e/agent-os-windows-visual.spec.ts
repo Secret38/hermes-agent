@@ -12,12 +12,27 @@ let fixture: MockBackendFixture | null = null
 function seedAgentOS(sandbox: Sandbox, env: Record<string, string>): void {
   const script = String.raw`
 import os
+from hermes_constants import get_hermes_home
+from tools.skill_usage import record_created
 from agent_os.agents.records import AgentInstanceRecord, AgentInstanceState
 from agent_os.contracts import ActionRecord, TaskRecord
 from agent_os.events import EventRecord, EventType
 from agent_os.orchestration.plan import PlanRecord, PlanState, PlanStepKind, PlanStepRecord, PlanStepState
 from agent_os.states import ActionState, TaskState
 from agent_os.store import AgentOSStore
+
+memory_dir = get_hermes_home() / "memories"
+memory_dir.mkdir(parents=True, exist_ok=True)
+(memory_dir / "MEMORY.md").write_text(
+    "Visual memory note\nUse report-builder. " + "Long note content. " * 100 + "FULL_NOTE_VISUAL_END", encoding="utf-8"
+)
+for name, related in (("report-builder", "[reviewer]"), ("reviewer", "[]")):
+    folder = get_hermes_home() / "skills" / name
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "SKILL.md").write_text(
+        f"---\nname: {name}\ndescription: Visual QA\nrelated_skills: {related}\n---\nVisual test skill", encoding="utf-8"
+    )
+    record_created(name, agent_created=False)
 
 store = AgentOSStore()
 store.initialize()
@@ -400,4 +415,21 @@ test(`Results stay searchable and readable in a compact window at ${scaleLabel}%
   const width = await gallery.evaluate(element => ({ client: element.clientWidth, scroll: element.scrollWidth }))
   expect(width.scroll).toBeLessThanOrEqual(width.client + 2)
   await gallery.screenshot({ animations: 'disabled', path: test.info().outputPath(`agent-os-windows-${scaleLabel}-results-gallery-actual.png`) })
+})
+
+
+test(`Memory search, full note and connection evidence at ${scaleLabel}% DPI`, async () => {
+  const { page } = fixture!
+  await setWindowSize(820, 640)
+  await gotoMissionControl()
+  await page.getByRole('button', { name: 'Memory', exact: true }).click()
+  await page.getByRole('textbox', { name: 'Search memories, skills or sources' }).fill('Visual memory note')
+  await expect(page.getByRole('navigation', { name: 'Memories and skills' }).getByRole('button')).toHaveCount(1)
+  await expect(page.getByText('Shared words; inferred connection, not a verified fact')).toBeVisible()
+  await page.getByRole('button', { name: 'Read full note', exact: true }).click()
+  await expect(page.getByText(/FULL_NOTE_VISUAL_END/)).toBeVisible()
+  await page.screenshot({
+    animations: 'disabled', caret: 'hide',
+    path: test.info().outputPath(`agent-os-memory-${scaleLabel}-actual.png`),
+  })
 })

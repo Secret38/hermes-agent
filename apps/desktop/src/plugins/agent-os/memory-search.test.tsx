@@ -9,9 +9,12 @@ import type { AgentOSLearningGraph } from './types'
 
 vi.mock('@hermes/plugin-sdk', async () => {
   const { AGENT_OS_LOCALES } = await import('./i18n')
+  const { atom } = await import('nanostores')
 
   return {
     ...(await import('@tanstack/react-query')),
+    useValue: (await import('@nanostores/react')).useStore,
+    host: { state: { profile: atom('default'), connectionId: atom(null) } },
     ...(await import('@/components/ui/button')),
     ...(await import('@/components/ui/search-field')),
     ...(await import('@/components/ui/codicon')),
