@@ -1,5 +1,5 @@
-import { type CSSProperties } from 'react'
 import { useStore } from '@nanostores/react'
+import { type CSSProperties } from 'react'
 
 import { HackeryButton } from '../components/hackery-button'
 import { $hermesHome, startInstall } from '../store'
@@ -15,6 +15,7 @@ import { $hermesHome, startInstall } from '../store'
  */
 export default function Welcome() {
   const hermesHome = useStore($hermesHome)
+
   return (
     <div className="hermes-fade-in flex h-full flex-col items-center justify-center gap-10 px-12 py-10">
       {/* Hero — same recipe the desktop's chat/intro.tsx uses */}

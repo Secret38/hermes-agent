@@ -60,9 +60,9 @@ function Assert-EmptyTestHome([string]$Target, [string[]]$ProtectedHomes) {
         }
         $ancestor = Split-Path $ancestor -Parent
     }
-    foreach ($home in $ProtectedHomes) {
-        if (-not $home) { continue }
-        $protected = [IO.Path]::GetFullPath($home).TrimEnd('\')
+    foreach ($protectedHome in $ProtectedHomes) {
+        if (-not $protectedHome) { continue }
+        $protected = [IO.Path]::GetFullPath($protectedHome).TrimEnd('\')
         if ($full.Equals($protected, [StringComparison]::OrdinalIgnoreCase) -or
             $full.StartsWith($protected + '\', [StringComparison]::OrdinalIgnoreCase) -or
             $protected.StartsWith($full + '\', [StringComparison]::OrdinalIgnoreCase)) {
