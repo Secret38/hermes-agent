@@ -53,7 +53,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           foreach ($engine in @('powershell', 'pwsh')) {
-            foreach ($suite in @('protocol', 'repository-binding', 'agent-os-runtime', 'user-kit')) {
+            foreach ($suite in @('protocol', 'repository-binding', 'agent-os-runtime', 'user-kit', 'isolated')) {
               & $engine -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "scripts/tests/test-install-ps1-$suite.ps1"
               if ($LASTEXITCODE -ne 0) {
                 throw "Installer $suite failed under $engine (exit $LASTEXITCODE)"
@@ -80,11 +80,15 @@ jobs:
           $ErrorActionPreference = 'Stop'
           cargo metadata --locked --manifest-path apps/bootstrap-installer/src-tauri/Cargo.toml --format-version 1 | Out-Null
 
+      - name: Verify isolated bootstrap launch environment
+        shell: pwsh
+        run: cargo test --locked --manifest-path apps/bootstrap-installer/src-tauri/Cargo.toml isolated_desktop_commands_bind_both_data_roots
+
       - name: Build pinned Windows executable
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          npm run tauri:build --workspace @hermes/bootstrap-installer -- --bundles nsis
+          npm run tauri:build --workspace @hermes/bootstrap-installer -- --bundles nsis --config src-tauri/tauri.agent-os-test.conf.json
 
           # Ship the installer bundle: the raw Tauri executable alone cannot
           # provision WebView2 on a fresh Windows machine.

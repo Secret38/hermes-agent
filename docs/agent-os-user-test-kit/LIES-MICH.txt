@@ -3,9 +3,12 @@ AGENT OS - WINDOWS-NUTZERTEST
 1. STARTEN
 Das gesamte ZIP in einen beschreibbaren Ordner entpacken. Nicht direkt aus
 dem ZIP starten. Windows x64 und eine Internetverbindung sind erforderlich.
-Nutze einen frischen Windows-Testbenutzer oder eine VM, wenn Hermes schon
-installiert ist. START-TEST.cmd verweigert den Teststart bei einer bestehenden
-Installation, damit sie nicht versehentlich durch diesen Kandidaten ersetzt wird.
+START-TEST.cmd bietet eine Ordnerauswahl fuer eine getrennte Installation an.
+Erstelle beispielsweise %LOCALAPPDATA%\hermes-agent-os-test. Der Ordner muss
+leer sein und ausserhalb deiner bestehenden Hermes-Installation liegen.
+Belegte Ordner werden abgewiesen. Nach einer falschen Auswahl erneut starten.
+Die Auswahl wird in Testinstallation.json neben den CMD-Helfern gespeichert.
+Diese Datei zusammen mit dem entpackten Paket aufbewahren.
 
 START-TEST.cmd doppelklicken. Es prüft zuerst den Installer gegen die beiliegende
 SHA-256-Prüfsumme und erstellt Arbeitsordner/Testaufgaben.txt. Dann startet es
@@ -21,10 +24,20 @@ Das Setup richtet WebView2 bei Bedarf ein und lädt Laufzeit, Quellcode und
 Komponenten nach. Es ist kein Offline-Installer. Bei Fehlern Open logs verwenden.
 Anschließend Launch wählen. Nicht mehrere Installationsversuche zugleich starten.
 
-Die Standardpfade sind:
-  Daten und Konfiguration: %LOCALAPPDATA%\hermes
-  Programmquellen:          %LOCALAPPDATA%\hermes\hermes-agent
-Ein schon gesetztes HERMES_HOME hat Vorrang. Die Helfer verwenden denselben Pfad.
+Im gewaehlten Ordner liegen:
+  Programmquellen: hermes-agent
+  Desktop-Daten:  desktop-data
+  Laufzeit:       runtime
+  Konfiguration und weitere Hermes-Daten: direkt im gewaehlten Ordner
+Status, Reparatur und Fortsetzen verwenden die gespeicherte Auswahl auch dann,
+wenn im Windows-Benutzer bereits ein anderes HERMES_HOME gesetzt ist.
+
+Zum spaeteren Start die neue Verknuepfung "Hermes Agent OS (<Kennung>)" verwenden.
+Die bestehende Hermes.lnk und der dauerhafte Benutzer-PATH bleiben unveraendert.
+Der Setup-Assistent hat eine eigene Registrierung "Hermes Agent OS Test Setup".
+WebView2 und Windows-Komponenten koennen gemeinsam genutzt werden; dies ist
+keine VM-Isolation. Die Ordnerauswahl beginnt ueber START-TEST.cmd, nicht durch
+direkten Start der EXE. Fuer eine weitere Installation das ZIP neu entpacken.
 
 3. MODELL EINRICHTEN
 Im normalen Hermes-Einrichtungsdialog einen angebotenen Modellanbieter wählen
@@ -69,7 +82,7 @@ dieses Pakets. Es installiert dieselbe Version erneut; es ist kein Versionsupdat
 Kein allgemeines Update auf main durchführen, während du diesen Kandidaten prüfst.
 Für einen späteren Versionssprung wird ein neuer geprüfter Kandidat benötigt.
 Eine fehlgeschlagene Erstinstallation im Installer über Retry install fortsetzen.
-Ist dessen Fenster geschlossen, Hermes-Setup.exe direkt erneut starten.
+Ist dessen Fenster geschlossen, INSTALLATION-FORTSETZEN.cmd starten.
 
 7. WAS DIESE VERSION ABDECKT
 Mission Control, dauerhafte Planfreigabe, Änderungen an Titeln und JSON-Parametern

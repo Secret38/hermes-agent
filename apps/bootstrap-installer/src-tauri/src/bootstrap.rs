@@ -504,6 +504,13 @@ fn desktop_launch_command(
     }
 
     let mut cmd = tokio::process::Command::new(exe_path);
+    if let Some(home) = install_root.parent() {
+        if home.join("agent-os-instance.json").is_file() {
+            cmd.env("HERMES_HOME", home);
+            cmd.env("HERMES_DESKTOP_USER_DATA_DIR", home.join("desktop-data"));
+            cmd.env("HERMES_RUNTIME_DIR", home.join("runtime"));
+        }
+    }
     cmd.current_dir(exe_path.parent().unwrap_or(install_root));
     cmd.stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -529,6 +536,13 @@ fn desktop_launch_command_std(
     }
 
     let mut cmd = std::process::Command::new(exe_path);
+    if let Some(home) = install_root.parent() {
+        if home.join("agent-os-instance.json").is_file() {
+            cmd.env("HERMES_HOME", home);
+            cmd.env("HERMES_DESKTOP_USER_DATA_DIR", home.join("desktop-data"));
+            cmd.env("HERMES_RUNTIME_DIR", home.join("runtime"));
+        }
+    }
     cmd.current_dir(exe_path.parent().unwrap_or(install_root));
     cmd.stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -1117,6 +1131,28 @@ mod tests {
     const STDIO_SLEEPER_TEST: &str = "bootstrap::tests::stdio_sleeper";
     #[cfg(windows)]
     const STDIO_SENTINEL: &str = "helper-launched";
+
+    #[test]
+    fn isolated_desktop_commands_bind_both_data_roots() {
+        let home = unique_tmp_dir("isolated-desktop");
+        let root = home.join("hermes-agent");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(home.join("agent-os-instance.json"), "{}").unwrap();
+        let exe = root.join("Hermes.exe");
+        let sync = desktop_launch_command_std(&exe, &root);
+        let asynchronous = desktop_launch_command(&exe, &root);
+        for command in [&sync, asynchronous.as_std()] {
+            let env: std::collections::HashMap<_, _> = command.get_envs().collect();
+            for (key, path) in [
+                ("HERMES_HOME", home.clone()),
+                ("HERMES_DESKTOP_USER_DATA_DIR", home.join("desktop-data")),
+                ("HERMES_RUNTIME_DIR", home.join("runtime")),
+            ] {
+                assert_eq!(env.get(std::ffi::OsStr::new(key)), Some(&Some(path.as_os_str())));
+            }
+        }
+        std::fs::remove_dir_all(home).unwrap();
+    }
 
     fn unique_tmp_dir(tag: &str) -> PathBuf {
         let base = std::env::temp_dir().join(format!(

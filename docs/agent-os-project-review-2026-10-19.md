@@ -196,3 +196,7 @@ Lokale YAML-Prüfung erfolgreich. Die lokale Teilumgebung kann die vollständige
 Windows-Prüfung nicht ersetzen: Prozessidentitäts- und Prozessende-Tests treffen
 auf fehlende Prozessinformationen im Sandbox-Host. Native CI bleibt deshalb
 maßgeblich; ein neuer Windows-Lauf muss die Isolation bestätigen.
+
+## Separate Windows test installation (2026-10-20)
+
+START-TEST.cmd selects an empty local folder, rejects occupied/nested existing homes and junctions, and persists the candidate/instance identity. Continue, status and repair resolve that saved home. Desktop shortcuts bind home, Electron data and managed runtime after a fresh login without changing the existing Hermes shortcut or persistent user PATH. The bootstrap also binds these paths for its immediate launch. The candidate NSIS wrapper has a separate product name and identifier. This is folder separation, not VM isolation; Windows components remain shared. Bare EXE invocation does not provide the folder picker. Native Windows suites cover persistence, protected folders and a real child launched through the generated shortcut; acceptance depends on the corresponding CI run and a user installation test.

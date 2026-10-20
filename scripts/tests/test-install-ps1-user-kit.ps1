@@ -22,6 +22,21 @@ try {
     Prepare-TestWorkspace $package $testHome
     if (-not (Test-Path (Join-Path $package 'Arbeitsordner/Testaufgaben.txt'))) { throw 'Test workspace missing' }
 
+    if ((Resolve-TestHome $package (Join-Path $temp 'wrong-home')) -ne $testHome) { throw 'Saved home not restored' }
+    $blocked = $false
+    try { Prepare-TestWorkspace $package (Join-Path $temp 'other-home') } catch { $blocked = $true }
+    if (-not $blocked) { throw 'Existing package was silently reassigned' }
+    $existing = Join-Path $temp 'existing-hermes'
+    New-Item -ItemType Directory -Path $existing | Out-Null
+    'keep-me' | Set-Content (Join-Path $existing 'config.yaml')
+    foreach ($target in @($existing, (Join-Path $existing 'nested'), $temp)) {
+        $blocked = $false
+        try { $null = Assert-EmptyTestHome $target @($existing) } catch { $blocked = $true }
+        if (-not $blocked) { throw "Unsafe target accepted: $target" }
+    }
+    $null = Assert-EmptyTestHome (Join-Path $temp 'new-second-home') @($existing)
+    if ((Get-Content (Join-Path $existing 'config.yaml') -Raw).Trim() -ne 'keep-me') { throw 'Existing config changed' }
+
     # Use the canonical resolver and a real child process, not a PATH stub.
     $root = Join-Path $testHome 'hermes-agent'
     $bin = Join-Path $root '.hermes/bin'
