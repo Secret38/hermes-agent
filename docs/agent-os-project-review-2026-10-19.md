@@ -175,3 +175,24 @@ Dieser native Fall ist vorbereitet, noch nicht ausgeführt.
 
 Der derzeitige Status lautet **weiterentwickelter Testkandidat mit offenen
 Windows- und Nutzerabnahmen**, nicht „V1 vollständig fertig“.
+
+## Windows-Nachprüfung am 20. Oktober
+
+Der Testkandidat `b8919b5a5a7cf9b99e95176eaf9164e0a7989192` wurde erfolgreich
+als Installer gebaut und mit verifizierter Versionsbindung und SHA256 übergeben.
+Die visuellen Läufe bei 125 %, 150 % und 200 % bestanden. Der 100-%-Lauf
+scheiterte vorher im Backendtest: Eine parallel laufende Testdatei hielt dieselbe
+benutzerweite Desktopreservierung. HERMES_HOME-Isolation isoliert diese bewusst
+profilübergreifende Ressource nicht.
+
+Die Fortsetzung gibt jedem Agent-OS-Test eine eigene echte OS-Sperrdatei, gemeinsam
+für alle Dienste und Profile innerhalb des Tests. Die produktive Sperre bleibt
+unverändert. Existierende Tests prüfen weiterhin Profilkonkurrenz, echte separate
+Prozesse und Freigabe nach Prozessende. Push- und PR-Läufe teilen nun eine
+Concurrency-Gruppe pro Branch. Die visuelle Prüfung checkt wie der Installer
+den exakten Kandidaten-Commit aus, statt den synthetischen PR-Merge zu prüfen.
+
+Lokale YAML-Prüfung erfolgreich. Die lokale Teilumgebung kann die vollständige
+Windows-Prüfung nicht ersetzen: Prozessidentitäts- und Prozessende-Tests treffen
+auf fehlende Prozessinformationen im Sandbox-Host. Native CI bleibt deshalb
+maßgeblich; ein neuer Windows-Lauf muss die Isolation bestätigen.

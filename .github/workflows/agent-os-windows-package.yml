@@ -30,7 +30,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: agent-os-windows-package-${{ github.ref }}
+  group: agent-os-windows-package-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
