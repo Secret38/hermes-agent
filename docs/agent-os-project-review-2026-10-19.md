@@ -1,9 +1,10 @@
 # Agent OS: Produkt- und Umsetzungsreview
 
-Stand: 19. Oktober 2026. Geprüfte Basis: PR #34,
+Stand: 20. Oktober 2026. Geprüfte Basis: PR #34,
 `6bfccfef9593f48a42c6885dfd99659942c01b62`; Fortsetzung auf
 `6b703494d0ec56dca76b7d69dbda88ee5238076c` und
-`38a462ea22c85df2284e4552f7e3f3f304ae629c`.
+`38a462ea22c85df2284e4552f7e3f3f304ae629c` und
+`6c2e08b734a9093085bc1f8c715af25d091a3dcf`.
 Die Änderungen dieses Reviews werden auf demselben Integrationsbranch fortgeführt.
 
 ## Projektentscheidung
@@ -35,7 +36,7 @@ nicht eine neue bildgenaue Video-Parität.
 | Idee → Plan → Human Gate → Ausführung → Ergebnis | Missionsweg und dauerhafte revisionsgebundene Planprüfung vorhanden | Frische Installation und echte durchgehende Aufgabe weiter P0; kein vollständiger Nachweis aller Videoabläufe |
 | Pipeline und Ergebnisansicht als eigene Einstiege | Neu: eigener Ergebnisse-Einstieg in Mission Control, suchbare Missionsliste und Dateidetails nebeneinander | Auf Missionen der aktuellen Übersicht begrenzt; keine vollständige paginierte Dateihistorie |
 | Artefakte tatsächlich prüfen und wiederfinden | Vorhandene verifizierte Dateischreibausgaben, Textvorschau, Download und Missions-/Workspace-Identität wiederverwendet | Kein universeller Katalog für Browser-, Terminal-, Bild-, PDF- und Subagent-Ausgaben |
-| Plan verstehen und ändern | Titel und JSON-Parameter bestehender Schritte bearbeitbar; lokale Eingabefehler jetzt korrigierbar | Einfügen, Entfernen, Umordnen von Schritten und natürlichsprachliches Umplanen fehlen |
+| Plan verstehen und ändern | Titel und strukturierte Datei-, Browser- und Terminalfelder bearbeitbar; erweiterte JSON-Parameter und korrigierbare Eingabefehler | Einfügen, Entfernen, Umordnen von Schritten und natürlichsprachliches Umplanen fehlen |
 | Memory-Graph, Suche und begleitende Liste | Gemeinsame Suche über geladene Titel, Notizauszüge und Quellen; Liste aller Treffer, synchronisierte Graph-/Detailauswahl, Inhaltsidentität geprüft | Suche weiterhin auf gelieferte Auszüge bis 1.200 Zeichen begrenzt; vollständige Notiz auf Anfrage lesbar; deklarierende Skills bzw. gemeinsame Begriffe jetzt pro Verbindung vorhanden. Lexikalische Verbindungen sind keine bestätigten Fakten |
 | Agenten- und Prozesszusammenhänge | Execution Canvas verwendet vorhandene Plan-/Agent-/Aktionsidentitäten; Zugehörigkeit und Ausführung werden unterschieden | Noch keine vollständige praktische Prüfung mit realer Delegation und komplexen Fehlerfällen |
 | Live-Computeransicht und Medienzustände | Live-Ansicht ist ausdrücklich einzuschalten; Frame-Ablauf und falsche Task-Zuordnung werden getestet | Opt-in-Ansicht ist keine belegte vollständige Jarvis-/Wake-Word-/Sprachsteuerungsparität |
@@ -96,6 +97,25 @@ nicht eine neue bildgenaue Video-Parität.
    Ältere Antworten ohne diese Felder werden als „kein Herkunftsnachweis“
    gekennzeichnet. Es wird keine geprüfte inhaltliche Beziehung behauptet.
 
+## Fortsetzung am 20. Oktober: verständliche Planfelder
+
+Dateipfad und Schreibinhalt, Browserziel sowie Terminalbefehl und Arbeitsordner
+sind für unterstützte Operationen über beschriftete Felder bearbeitbar.
+Vorhandene textuelle Dateiprüfungen (`content_equals`, `content_contains`) sind
+ebenfalls zugänglich. Weitere Parameter bleiben erhalten und über „Erweitertes
+JSON“ erreichbar. Unbekannte Werkzeuge behalten ihren bisherigen JSON-Editor.
+Bekannte Schwärzungsmarker sperren das jeweilige Feld; die bestehende
+serverseitige Prüfung versteckter Werte bleibt maßgeblich.
+
+Leere Pflichtfelder verhindern das Speichern, ohne den Entwurf zu verlieren.
+Eine erfolgreiche Änderung bleibt revisionsgebunden und startet keine Aufgabe.
+Die Beschriftungen sind in allen neun Sprachen vorhanden. Die Tests prüfen
+Feldänderungen, Erhalt zusätzlicher Parameter, JSON-Reparatur, maskierte Felder
+und den vollständigen UI-Speichervorgang einschließlich Pflichtfeldkorrektur.
+Die Windows-Vorlage benutzt jetzt den tatsächlichen Prüfschlüssel
+`content_contains` und bearbeitet Schreibinhalt sowie Erwartung über die Felder.
+Dieser native Fall ist vorbereitet, noch nicht ausgeführt.
+
 ## Prüfung und Aussagegrenzen
 
 - Der neue Planeditor-Test scheiterte am Ausgangscode nach der JSON-Korrektur;
@@ -114,7 +134,7 @@ nicht eine neue bildgenaue Video-Parität.
   der Testdaten auf echte Backend-ID-Formate reproduzierte zusätzlich den
   Fingerabdruckfehler. Zwei weitere Tests prüfen Quellen-/Inhaltsidentität,
   ältere Antworten und unveränderte Kartenindizes beim Filtern.
-- Gezielte lokale UI-Regression: 14 Testdateien, 47 bestandene Tests einschließlich
+- Gezielte lokale UI-Regression: 15 Testdateien, 49 bestandene Tests einschließlich
   der vorhandenen Onboarding-Connector-Prüfung.
 - Weitere UI-Fälle prüfen den bewussten Volltextabruf, Antwortidentität,
   Wiederholung nach Fehler und verspätete Antworten nach Auswahlwechsel sowie
@@ -147,7 +167,7 @@ nicht eine neue bildgenaue Video-Parität.
 | P0 | Vollständigen Nutzerweg abnehmen | Neuer Windows-Benutzer/VM: Installation → Provider → echte Aufgabe → Plan-/Aktionsfreigaben → Datei extern öffnen; zusätzlich Browser, Notepad, Neustart, Fehler und Reparatur |
 | P0 | Einen reproduzierbaren Kandidaten übergeben | Installer-Metadaten und SHA256 passen zum geprüften Commit; Anleitung nennt Grenzen; Update auf eine zweite Version separat geprüft |
 | P1 | Vollständige Ergebnis-Historie | Backendseitig paginierte/verifizierte Dateireferenzen mit Mission, Workspace, Suche und Fehlerzuständen; alte Ergebnisse fallen nicht aus dem Suchraum |
-| P1 | Planeditor für normale Nutzer | Strukturierte Felder für unterstützte Werkzeuge; DAG-Änderungen mit Abhängigkeitsprüfung; jede Änderung erzeugt eine neue freizugebende Revision |
+| P1 | Planeditor für normale Nutzer | Strukturierte Felder und neue freizugebende Revision implementiert; offen: DAG-Änderungen mit Abhängigkeitsprüfung und natürlichsprachliches Umplanen |
 | P1 | Memory-Ansicht wie vereinbart vervollständigen | Suche, synchronisierte Liste, Volltextabruf und individuelle Herkunft implementiert; offen bleiben native visuelle Abnahme und bei Bedarf serverseitige Volltextsuche jenseits der Auszüge |
 | P1 | Visuelle Konsistenz und Lokalisierung | Bestehende englische Alttexte und eigene Steuerflächen schrittweise auf gemeinsame Primitives/Übersetzungen migriert; reale kleine Fenster, lange Texte und Tastaturbedienung geprüft |
 | P2 | Langzeitbetrieb und große Datenmengen | Messungen zu Reconnect, Wiederaufnahme, Hintergrundarbeit, vielen Missionen, Cachebedarf und Antwortzeiten; keine unbewiesenen Prozent-Fortschrittswerte |

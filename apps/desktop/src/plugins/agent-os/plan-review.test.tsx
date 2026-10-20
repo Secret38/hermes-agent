@@ -108,7 +108,13 @@ it('lets users correct JSON without losing edits and reviews only the saved new 
     fireEvent.click(screen.getByRole('button', { name: 'Save new version' }))
     await screen.findByRole('alert')
     expect(writes).not.toHaveBeenCalled()
-    fireEvent.change(details, { target: { value: '{"content":"After"}' } })
+    fireEvent.change(details, {
+      target: { value: JSON.stringify({ tool: 'file', operation: 'write', input: { path: '', content: 'After' } }) }
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save new version' }))
+    expect(writes).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert').textContent).toContain('Enter a file path')
+    fireEvent.change(screen.getByRole('textbox', { name: 'File path' }), { target: { value: 'notes.txt' } })
     expect(screen.getByRole('button', { name: 'Save new version' }).hasAttribute('disabled')).toBe(false)
     expect(screen.getByRole('textbox', { name: 'Action details: Review manually' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Save new version' }))

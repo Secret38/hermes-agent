@@ -1,7 +1,8 @@
-import { Button, Input, queryClient, Textarea, usePluginI18n, useQuery } from '@hermes/plugin-sdk'
+import { Button, Input, queryClient, usePluginI18n, useQuery } from '@hermes/plugin-sdk'
 import { useId, useRef, useState } from 'react'
 
 import { AGENT_OS_PLAN_REVIEW_KEY, decideAgentOSPlan, editAgentOSPlan, fetchAgentOSPlanReview } from './api'
+import { PlanFields, validPlanFields } from './plan-fields'
 import type { AgentOSMissionJob } from './types'
 
 interface MissionPlanReviewProps {
@@ -105,6 +106,12 @@ export function MissionPlanReview({ job, startBlocked, onResolved }: MissionPlan
       return
     }
 
+    if (steps.some(step => !validPlanFields(step.spec))) {
+      setEditError(t('requiredPlanFields'))
+
+      return
+    }
+
     setEditError(undefined)
     inFlight.current = true
     setSaving(true)
@@ -194,13 +201,10 @@ export function MissionPlanReview({ job, startBlocked, onResolved }: MissionPlan
                       <details open>
                         <summary className="cursor-pointer text-(--ui-text-secondary)">{t('details')}</summary>
                         {edits ? (
-                          <Textarea
-                            aria-label={`${t('details')}: ${step.title}`}
+                          <PlanFields
                             disabled={saving}
-                            onChange={event =>
-                              setEdits({ ...edits, [step.id]: { ...edits[step.id], spec: event.target.value } })
-                            }
-                            rows={8}
+                            label={`${t('details')}: ${step.title}`}
+                            onChange={value => setEdits({ ...edits, [step.id]: { ...edits[step.id], spec: value } })}
                             value={edits[step.id].spec}
                           />
                         ) : (

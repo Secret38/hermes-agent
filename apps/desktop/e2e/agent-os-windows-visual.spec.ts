@@ -1,8 +1,8 @@
 import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 
+import { type MockBackendFixture, type Sandbox, setupMockBackend, waitForAppReady } from './fixtures'
 import { expect, test } from './test'
-import { setupMockBackend, waitForAppReady, type MockBackendFixture, type Sandbox } from './fixtures'
 
 const scale = Number(process.env.AGENT_OS_VISUAL_SCALE ?? '1')
 const scaleLabel = String(Math.round(scale * 100))
@@ -111,7 +111,7 @@ write = PlanStepRecord.create(
 )
 verify = PlanStepRecord.create(
     plan_id=draft.id, task_id=review_task.id, title="Verify saved notes", kind=PlanStepKind.VERIFICATION,
-    spec={"tool": "file", "operation": "read_file", "input": {"path": "release-notes.txt"}, "expected_state": {"contains": "Reviewed release notes"}},
+    spec={"tool": "file", "operation": "read_file", "input": {"path": "release-notes.txt"}, "expected_state": {"content_contains": "Reviewed release notes"}},
 )
 store.create_plan(draft, [write, verify], {verify.id: [write.id]})
 store.transition_task(review_task.id, TaskState.READY)
@@ -192,6 +192,7 @@ async function focusTasksWithKeyboard() {
   const tasks = page.getByRole('button', { name: 'Tasks', exact: true })
   await expect(tasks).toBeFocused()
   expect(await tasks.evaluate(element => element.matches(':focus-visible'))).toBe(true)
+
   return tasks
 }
 
@@ -218,10 +219,13 @@ test(`Mission Control renders without clipping at ${scaleLabel}% DPI`, async () 
   expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 2)
 
   const tasks = await focusTasksWithKeyboard()
+
   const focusStyle = await tasks.evaluate(element => {
     const style = getComputedStyle(element)
+
     return { outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth }
   })
+
   expect(focusStyle.outlineStyle).not.toBe('none')
   const physicalOutlineWidth = Number.parseFloat(focusStyle.outlineWidth) * scale
   expect(physicalOutlineWidth).toBeGreaterThanOrEqual(1.99)
@@ -246,11 +250,13 @@ test(`Mission Control navigation remains operable at ${scaleLabel}% DPI`, async 
   }
 
   const nav = page.getByRole('navigation', { name: 'Agent OS sections' })
+
   const overflow = await nav.evaluate(element => ({
     clientWidth: element.clientWidth,
     scrollWidth: element.scrollWidth,
     overflowX: getComputedStyle(element).overflowX,
   }))
+
   expect(['auto', 'scroll']).toContain(overflow.overflowX)
   expect(overflow.scrollWidth).toBeGreaterThanOrEqual(overflow.clientWidth)
 })
@@ -273,11 +279,13 @@ test(`Mission Control keyboard-only navigation works in a compact window at ${sc
   await expect(tasks).toHaveAttribute('aria-pressed', 'true')
 
   const nav = page.getByRole('navigation', { name: 'Agent OS sections' })
+
   const compact = await nav.evaluate(element => ({
     clientWidth: element.clientWidth,
     scrollWidth: element.scrollWidth,
     overflowX: getComputedStyle(element).overflowX,
   }))
+
   expect(['auto', 'scroll']).toContain(compact.overflowX)
   expect(compact.scrollWidth).toBeGreaterThan(compact.clientWidth)
 
@@ -298,18 +306,24 @@ test(`Mission Control respects Windows High Contrast at ${scaleLabel}% DPI`, asy
   expect(forcedColors).toBe(true)
 
   const root = page.locator('.agent-os-page')
+
   const surface = await root.evaluate(element => {
     const style = getComputedStyle(element)
+
     return { backgroundImage: style.backgroundImage, color: style.color }
   })
+
   expect(surface.backgroundImage).toBe('none')
   expect(surface.color).not.toBe('rgba(0, 0, 0, 0)')
 
   const tasks = await focusTasksWithKeyboard()
+
   const focus = await tasks.evaluate(element => {
     const style = getComputedStyle(element)
+
     return { outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth }
   })
+
   expect(focus.outlineStyle).not.toBe('none')
   expect(Number.parseFloat(focus.outlineWidth) * scale).toBeGreaterThanOrEqual(1.99)
 
@@ -335,10 +349,14 @@ test(`Mission Control honors reduced motion at ${scaleLabel}% DPI`, async () => 
 
   const animationMs = await runningDot.evaluate(element => {
     const value = getComputedStyle(element).animationDuration.trim()
-    if (value.endsWith('ms')) return Number.parseFloat(value)
-    if (value.endsWith('s')) return Number.parseFloat(value) * 1000
+
+    if (value.endsWith('ms')) {return Number.parseFloat(value)}
+
+    if (value.endsWith('s')) {return Number.parseFloat(value) * 1000}
+
     return Number.POSITIVE_INFINITY
   })
+
   expect(animationMs).toBeLessThanOrEqual(0.011)
 })
 
@@ -375,6 +393,9 @@ test(`A saved plan stays pending after reload and can be discarded at ${scaleLab
   await review.getByRole('button', { name: 'Edit steps', exact: true }).click()
   await review.getByRole('textbox', { name: 'Step title', exact: true }).first().fill('Save corrected release notes')
   await expect(review.getByRole('button', { name: 'Approve and start', exact: true })).toBeDisabled()
+  await review.getByRole('textbox', { name: 'File contents', exact: true }).fill('User-edited release notes')
+  await review.getByRole('textbox', { name: 'Required text in file', exact: true }).fill('User-edited release notes')
+  await review.getByText('Advanced JSON', { exact: true }).first().click()
   const details = review.getByRole('textbox', { name: 'Action details: Save release notes', exact: true })
   const originalSpec = await details.inputValue()
   await details.fill('{broken')
@@ -385,6 +406,7 @@ test(`A saved plan stays pending after reload and can be discarded at ${scaleLab
   await review.getByRole('button', { name: 'Save new version', exact: true }).click()
   await expect(review.getByText('Save corrected release notes', { exact: true })).toBeVisible()
   await expect(review.getByText('Version: 2', { exact: true })).toBeVisible()
+  await expect(review).toContainText('User-edited release notes')
   await review.screenshot({ animations: 'disabled', path: test.info().outputPath(`agent-os-windows-${scaleLabel}-plan-edited-actual.png`) })
   await page.reload()
   await gotoMissionControl()

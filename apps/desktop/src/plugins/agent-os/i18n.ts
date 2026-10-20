@@ -1,6 +1,17 @@
 import type { Locale, PluginLocaleBundles } from '@hermes/plugin-sdk'
 
 const en = {
+  requiredPlanFields: "Enter a file path, page address or command for each applicable step. Your edits are kept.",
+  filePath: "File path",
+  fileContents: "File contents",
+  plannedCommand: "Command",
+  workingDirectory: "Working directory",
+  pageAddress: "Page address",
+  expectedExactText: "Expected exact contents",
+  expectedContainedText: "Required text in file",
+  advancedPlanJSON: "Advanced JSON",
+  planFieldsNote: "After changing an output, review its verification steps too. Other settings remain available in Advanced JSON. Hidden values cannot be changed.",
+
   refreshMemoryGraph: "Refresh memory graph",
   readFullMemory: "Read full note",
   reloadMemory: "Reload note",
@@ -40,7 +51,7 @@ const en = {
   stepTitle: "Step title",
   cancelEdit: "Cancel edits",
   saveRevision: "Save new version",
-  editNote: "Saving creates a new version for review. Nothing starts automatically. Hidden values remain unchanged. Action details use JSON.",
+  editNote: "Saving creates a new version for review. Nothing starts automatically. Hidden values remain unchanged.",
 
   createPlan: 'Create plan',
   reviewIntro: 'Review the plan, then start. Sensitive actions keep their own approval.',
@@ -73,6 +84,17 @@ type Messages = Record<keyof typeof en, string>
 export const AGENT_OS_LOCALES = {
   en,
   de: {
+  requiredPlanFields: "Gib für jeden entsprechenden Schritt einen Dateipfad, eine Seitenadresse oder einen Befehl ein. Deine Änderungen bleiben erhalten.",
+  filePath: "Dateipfad",
+  fileContents: "Dateiinhalt",
+  plannedCommand: "Befehl",
+  workingDirectory: "Arbeitsverzeichnis",
+  pageAddress: "Seitenadresse",
+  expectedExactText: "Erwarteter exakter Dateiinhalt",
+  expectedContainedText: "Erforderlicher Text in der Datei",
+  advancedPlanJSON: "Erweitertes JSON",
+  planFieldsNote: "Prüfe nach einer Änderung der Ausgabe auch die zugehörigen Prüfschritte. Weitere Einstellungen stehen im erweiterten JSON. Verborgene Werte lassen sich nicht ändern.",
+
   refreshMemoryGraph: "Memory-Graph aktualisieren",
   readFullMemory: "Vollständige Notiz lesen",
   reloadMemory: "Notiz erneut laden",
@@ -112,7 +134,7 @@ export const AGENT_OS_LOCALES = {
   stepTitle: "Schritttitel",
   cancelEdit: "Bearbeitung abbrechen",
   saveRevision: "Neue Version speichern",
-  editNote: "Speichern erstellt eine neue Version zur Prüfung. Nichts startet automatisch. Geheimwerte bleiben unverändert. Aktionsdetails verwenden JSON.",
+  editNote: "Speichern erstellt eine neue Version zur Prüfung. Nichts startet automatisch. Geheimwerte bleiben unverändert.",
 
     createPlan: 'Plan erstellen',
     reviewIntro: 'Plan prüfen und dann starten. Sensible Aktionen brauchen weiterhin eine eigene Freigabe.',
@@ -130,6 +152,17 @@ export const AGENT_OS_LOCALES = {
     ACTION: 'Aktion', AGENT: 'Agent', VERIFICATION: 'Ergebnisprüfung', MANUAL: 'Deine Eingabe'
   },
   fr: {
+  requiredPlanFields: "Renseignez un chemin de fichier, une adresse de page ou une commande pour chaque étape concernée. Vos modifications sont conservées.",
+  filePath: "Chemin du fichier",
+  fileContents: "Contenu du fichier",
+  plannedCommand: "Commande",
+  workingDirectory: "Répertoire de travail",
+  pageAddress: "Adresse de la page",
+  expectedExactText: "Contenu exact attendu",
+  expectedContainedText: "Texte requis dans le fichier",
+  advancedPlanJSON: "JSON avancé",
+  planFieldsNote: "Après avoir modifié un résultat, vérifiez aussi ses étapes de contrôle. Les autres paramètres restent accessibles dans le JSON avancé. Les valeurs masquées ne peuvent pas être modifiées.",
+
   refreshMemoryGraph: "Actualiser le graphe mémoire",
   readFullMemory: "Lire la note complète",
   reloadMemory: "Recharger la note",
@@ -169,7 +202,7 @@ export const AGENT_OS_LOCALES = {
   stepTitle: "Titre de l’étape",
   cancelEdit: "Annuler les modifications",
   saveRevision: "Enregistrer une nouvelle version",
-  editNote: "L’enregistrement crée une nouvelle version à vérifier. Rien ne démarre automatiquement. Les secrets restent inchangés. Les détails utilisent JSON.",
+  editNote: "L’enregistrement crée une nouvelle version à vérifier. Rien ne démarre automatiquement. Les secrets restent inchangés.",
 
     createPlan: 'Créer le plan',
     reviewIntro: 'Vérifiez le plan, puis démarrez. Les actions sensibles demandent leur propre autorisation.',
@@ -187,6 +220,17 @@ export const AGENT_OS_LOCALES = {
     ACTION: 'Action', AGENT: 'Agent', VERIFICATION: 'Vérification', MANUAL: 'Votre intervention'
   },
   es: {
+  requiredPlanFields: "Introduce una ruta, dirección de página o comando en cada paso correspondiente. Se conservan tus cambios.",
+  filePath: "Ruta del archivo",
+  fileContents: "Contenido del archivo",
+  plannedCommand: "Comando",
+  workingDirectory: "Directorio de trabajo",
+  pageAddress: "Dirección de la página",
+  expectedExactText: "Contenido exacto esperado",
+  expectedContainedText: "Texto requerido en el archivo",
+  advancedPlanJSON: "JSON avanzado",
+  planFieldsNote: "Tras cambiar un resultado, revisa también sus pasos de verificación. Los demás ajustes están en JSON avanzado. Los valores ocultos no se pueden cambiar.",
+
   refreshMemoryGraph: "Actualizar grafo de memoria",
   readFullMemory: "Leer nota completa",
   reloadMemory: "Recargar nota",
@@ -226,7 +270,7 @@ export const AGENT_OS_LOCALES = {
   stepTitle: "Título del paso",
   cancelEdit: "Cancelar cambios",
   saveRevision: "Guardar nueva versión",
-  editNote: "Se crea una nueva versión para revisar. Nada se inicia automáticamente. Los secretos no cambian. Los detalles usan JSON.",
+  editNote: "Se crea una nueva versión para revisar. Nada se inicia automáticamente. Los secretos no cambian.",
 
     createPlan: 'Crear plan',
     reviewIntro: 'Revisa el plan y luego inicia. Las acciones sensibles mantienen su propia autorización.',
@@ -244,6 +288,17 @@ export const AGENT_OS_LOCALES = {
     ACTION: 'Acción', AGENT: 'Agente', VERIFICATION: 'Verificación', MANUAL: 'Tu intervención'
   },
   zh: {
+  requiredPlanFields: "请为相应步骤填写文件路径、页面地址或命令。你的修改已保留。",
+  filePath: "文件路径",
+  fileContents: "文件内容",
+  plannedCommand: "命令",
+  workingDirectory: "工作目录",
+  pageAddress: "页面地址",
+  expectedExactText: "预期的完整文件内容",
+  expectedContainedText: "文件中必须包含的文本",
+  advancedPlanJSON: "高级 JSON",
+  planFieldsNote: "修改输出后，请同时检查相关验证步骤。其他设置位于高级 JSON 中。隐藏值无法修改。",
+
   refreshMemoryGraph: "刷新记忆图谱",
   readFullMemory: "阅读完整笔记",
   reloadMemory: "重新加载笔记",
@@ -283,7 +338,7 @@ export const AGENT_OS_LOCALES = {
   stepTitle: "步骤标题",
   cancelEdit: "取消编辑",
   saveRevision: "保存新版本",
-  editNote: "保存将创建待审阅的新版本，不会自动启动。机密值保持不变。操作详情使用 JSON。",
+  editNote: "保存将创建待审阅的新版本，不会自动启动。机密值保持不变。",
 
     createPlan: '创建计划', reviewIntro: '先审阅计划，再启动。敏感操作仍需单独批准。',
     waitingPlan: '等待计划审阅', reviewPlan: '审阅计划', hidePlan: '隐藏计划',
@@ -298,6 +353,17 @@ export const AGENT_OS_LOCALES = {
     ACTION: '操作', AGENT: '智能体', VERIFICATION: '验证', MANUAL: '需要你的输入'
   },
   'zh-hant': {
+  requiredPlanFields: "請為相應步驟填寫檔案路徑、頁面位址或命令。你的修改已保留。",
+  filePath: "檔案路徑",
+  fileContents: "檔案內容",
+  plannedCommand: "命令",
+  workingDirectory: "工作目錄",
+  pageAddress: "頁面位址",
+  expectedExactText: "預期的完整檔案內容",
+  expectedContainedText: "檔案中必須包含的文字",
+  advancedPlanJSON: "進階 JSON",
+  planFieldsNote: "修改輸出後，請同時檢查相關驗證步驟。其他設定位於進階 JSON 中。隱藏值無法修改。",
+
   refreshMemoryGraph: "重新整理記憶圖譜",
   readFullMemory: "閱讀完整筆記",
   reloadMemory: "重新載入筆記",
@@ -337,7 +403,7 @@ export const AGENT_OS_LOCALES = {
   stepTitle: "步驟標題",
   cancelEdit: "取消編輯",
   saveRevision: "儲存新版本",
-  editNote: "儲存會建立待審閱的新版本，不會自動啟動。機密值保持不變。操作詳情使用 JSON。",
+  editNote: "儲存會建立待審閱的新版本，不會自動啟動。機密值保持不變。",
 
     createPlan: '建立計畫', reviewIntro: '先審閱計畫，再啟動。敏感操作仍需個別核准。',
     waitingPlan: '等待計畫審閱', reviewPlan: '審閱計畫', hidePlan: '隱藏計畫',
@@ -352,6 +418,17 @@ export const AGENT_OS_LOCALES = {
     ACTION: '操作', AGENT: '代理程式', VERIFICATION: '驗證', MANUAL: '需要你的輸入'
   },
   ja: {
+  requiredPlanFields: "該当するステップにファイルパス、ページのアドレス、またはコマンドを入力してください。編集内容は保持されています。",
+  filePath: "ファイルパス",
+  fileContents: "ファイルの内容",
+  plannedCommand: "コマンド",
+  workingDirectory: "作業ディレクトリ",
+  pageAddress: "ページのアドレス",
+  expectedExactText: "期待する完全な内容",
+  expectedContainedText: "ファイルに必要なテキスト",
+  advancedPlanJSON: "詳細 JSON",
+  planFieldsNote: "出力を変更したら、対応する検証ステップも確認してください。他の設定は詳細 JSON で編集できます。非表示の値は変更できません。",
+
   refreshMemoryGraph: "記憶グラフを更新",
   readFullMemory: "ノート全文を読む",
   reloadMemory: "ノートを再読み込み",
@@ -391,7 +468,7 @@ export const AGENT_OS_LOCALES = {
   stepTitle: "手順のタイトル",
   cancelEdit: "編集をキャンセル",
   saveRevision: "新しいバージョンを保存",
-  editNote: "保存すると確認用の新しいバージョンを作成します。自動実行はしません。秘密情報は変更されません。操作の詳細は JSON 形式です。",
+  editNote: "保存すると確認用の新しいバージョンを作成します。自動実行はしません。秘密情報は変更されません。",
 
     createPlan: '計画を作成', reviewIntro: '計画を確認してから開始します。機密性の高い操作は個別に承認が必要です。',
     waitingPlan: '計画の確認待ち', reviewPlan: '計画を確認', hidePlan: '計画を隠す',
@@ -406,6 +483,17 @@ export const AGENT_OS_LOCALES = {
     ACTION: '操作', AGENT: 'エージェント', VERIFICATION: '検証', MANUAL: 'ユーザーの入力'
   },
   ru: {
+  requiredPlanFields: "Укажите путь к файлу, адрес страницы или команду для соответствующих шагов. Изменения сохранены в черновике.",
+  filePath: "Путь к файлу",
+  fileContents: "Содержимое файла",
+  plannedCommand: "Команда",
+  workingDirectory: "Рабочая папка",
+  pageAddress: "Адрес страницы",
+  expectedExactText: "Ожидаемое точное содержимое",
+  expectedContainedText: "Обязательный текст в файле",
+  advancedPlanJSON: "Расширенный JSON",
+  planFieldsNote: "После изменения результата проверьте связанные шаги проверки. Другие настройки доступны в расширенном JSON. Скрытые значения изменить нельзя.",
+
   refreshMemoryGraph: "Обновить граф памяти",
   readFullMemory: "Прочитать заметку целиком",
   reloadMemory: "Перезагрузить заметку",
@@ -445,7 +533,7 @@ export const AGENT_OS_LOCALES = {
   stepTitle: "Название шага",
   cancelEdit: "Отменить изменения",
   saveRevision: "Сохранить новую версию",
-  editNote: "Сохранение создаёт новую версию для проверки. Автоматического запуска нет. Секреты не меняются. Детали задаются в JSON.",
+  editNote: "Сохранение создаёт новую версию для проверки. Автоматического запуска нет. Секреты не меняются.",
 
     createPlan: 'Создать план', reviewIntro: 'Проверьте план, затем запустите. Для чувствительных действий требуется отдельное разрешение.',
     waitingPlan: 'Ожидает проверки плана', reviewPlan: 'Проверить план', hidePlan: 'Скрыть план',
@@ -460,6 +548,17 @@ export const AGENT_OS_LOCALES = {
     ACTION: 'Действие', AGENT: 'Агент', VERIFICATION: 'Проверка', MANUAL: 'Ваше участие'
   },
   ar: {
+  requiredPlanFields: "أدخل مسار ملف أو عنوان صفحة أو أمرًا لكل خطوة ذات صلة. تم الاحتفاظ بتعديلاتك.",
+  filePath: "مسار الملف",
+  fileContents: "محتوى الملف",
+  plannedCommand: "الأمر",
+  workingDirectory: "مجلد العمل",
+  pageAddress: "عنوان الصفحة",
+  expectedExactText: "المحتوى الدقيق المتوقع",
+  expectedContainedText: "النص المطلوب في الملف",
+  advancedPlanJSON: "JSON متقدم",
+  planFieldsNote: "بعد تغيير المخرجات، راجع خطوات التحقق المرتبطة بها أيضًا. تتوفر الإعدادات الأخرى في JSON المتقدم. لا يمكن تغيير القيم المخفية.",
+
   refreshMemoryGraph: "تحديث رسم الذاكرة",
   readFullMemory: "قراءة الملاحظة كاملة",
   reloadMemory: "إعادة تحميل الملاحظة",
@@ -499,7 +598,7 @@ export const AGENT_OS_LOCALES = {
   stepTitle: "عنوان الخطوة",
   cancelEdit: "إلغاء التعديلات",
   saveRevision: "حفظ إصدار جديد",
-  editNote: "ينشئ الحفظ إصدارًا جديدًا للمراجعة دون بدء تلقائي. تبقى القيم السرية دون تغيير. تستخدم التفاصيل JSON.",
+  editNote: "ينشئ الحفظ إصدارًا جديدًا للمراجعة دون بدء تلقائي. تبقى القيم السرية دون تغيير.",
 
     createPlan: 'إنشاء خطة', reviewIntro: 'راجع الخطة ثم ابدأ. تظل الإجراءات الحساسة بحاجة إلى موافقة منفصلة.',
     waitingPlan: 'بانتظار مراجعة الخطة', reviewPlan: 'مراجعة الخطة', hidePlan: 'إخفاء الخطة',
