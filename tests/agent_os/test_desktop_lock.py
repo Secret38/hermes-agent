@@ -37,7 +37,8 @@ def test_process_loss_releases_os_reservation(tmp_path):
     code = (
         "from pathlib import Path; from agent_os.desktop_lock import InteractiveDesktopLock; "
         "import os,sys,time; lock=InteractiveDesktopLock(Path(sys.argv[1])); "
-        "assert lock.acquire(); Path(sys.argv[2]).write_text(str(os.getpid())); time.sleep(60)"
+        "assert lock.acquire(); ready=Path(sys.argv[2]); staged=ready.with_suffix('.tmp'); "
+        "staged.write_text(str(os.getpid())); staged.replace(ready); time.sleep(60)"
     )
     # On Windows a venv executable can be a launcher with a separate Python
     # child. Terminating that launcher does not terminate the lock owner.
