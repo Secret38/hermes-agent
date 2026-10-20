@@ -36,20 +36,29 @@ def test_process_loss_releases_os_reservation(tmp_path):
     ready = tmp_path / "ready"
     code = (
         "from pathlib import Path; from agent_os.desktop_lock import InteractiveDesktopLock; "
-        "import sys,time; lock=InteractiveDesktopLock(Path(sys.argv[1])); "
-        "assert lock.acquire(); Path(sys.argv[2]).write_text('ready'); time.sleep(60)"
+        "import os,sys,time; lock=InteractiveDesktopLock(Path(sys.argv[1])); "
+        "assert lock.acquire(); Path(sys.argv[2]).write_text(str(os.getpid())); time.sleep(60)"
     )
-    process = subprocess.Popen([sys.executable, "-c", code, str(path), str(ready)])
+    # On Windows a venv executable can be a launcher with a separate Python
+    # child. Terminating that launcher does not terminate the lock owner.
+    process = subprocess.Popen([sys._base_executable, "-c", code, str(path), str(ready)])
     try:
         deadline = time.monotonic() + 15
         while not ready.exists() and process.poll() is None and time.monotonic() < deadline:
             time.sleep(0.02)
         assert ready.exists(), "holder did not acquire the reservation"
+        assert int(ready.read_text()) == process.pid, "must terminate the actual lock owner"
         lock = InteractiveDesktopLock(path)
         assert not lock.acquire()
         process.terminate()
         process.wait(timeout=10)
-        assert lock.acquire()
+        # OS handle cleanup can finish after process termination is signalled.
+        deadline = time.monotonic() + 10
+        acquired = lock.acquire()
+        while not acquired and time.monotonic() < deadline:
+            time.sleep(0.02)
+            acquired = lock.acquire()
+        assert acquired, "reservation remained held after its owner exited"
         lock.release()
     finally:
         if process.poll() is None:
