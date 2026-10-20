@@ -10,6 +10,9 @@ on:
       - "apps/desktop/src/store/prompts.ts"
       - "apps/shared/**"
       - "agent_os/**"
+      - "agent/learning_graph.py"
+      - "agent/learning_mutations.py"
+      - "tests/agent/test_learning*.py"
       - "plugins/agent-os/dashboard/**"
       - "tests/agent_os/**"
       - "apps/desktop/package.json"
@@ -18,13 +21,16 @@ on:
       - "apps/desktop/e2e/tsconfig.agent-os-visual.json"
       - "apps/desktop/e2e/fixtures.ts"
       - ".github/workflows/agent-os-windows-visual-qa.yml"
+  push:
+    branches:
+      - agent-os-user-test-20261009
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: agent-os-windows-visual-qa-${{ github.ref }}
+  group: agent-os-windows-visual-qa-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
@@ -54,6 +60,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -78,14 +86,14 @@ jobs:
       - name: Install Node dependencies
         run: npm ci
 
-      - name: Verify durable plan review and profile ownership on Windows
+      - name: Verify mission and memory behavior on Windows
         if: matrix.scale == '1'
         shell: bash
         env:
           HERMES_TEST_FILE_RETRIES: "0"
         run: |
           export HERMES_PYTHON="$GITHUB_WORKSPACE/.venv/Scripts/python.exe"
-          scripts/run_tests.sh tests/agent_os/test_mission_plan_review.py tests/agent_os/test_mission_profile_scope.py tests/agent_os/test_mission_control_runtime.py tests/agent_os/test_mission_control.py tests/agent_os/test_mission_results.py -q
+          scripts/run_tests.sh tests/agent_os/test_mission_plan_review.py tests/agent_os/test_mission_profile_scope.py tests/agent_os/test_mission_control_runtime.py tests/agent_os/test_mission_control.py tests/agent_os/test_mission_results.py tests/agent_os/test_desktop_lock.py tests/agent/test_learning_evidence.py tests/agent/test_learning_graph.py tests/agent/test_learning_mutations.py -q
 
       - name: Typecheck Windows visual harness
         working-directory: apps/desktop
@@ -103,7 +111,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: agent-os-windows-visual-${{ matrix.scale_label }}-${{ github.sha }}
+          name: agent-os-windows-visual-${{ matrix.scale_label }}-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
             apps/desktop/test-results/**/*.png
             apps/desktop/test-results/**/error-context.md
@@ -112,3 +120,4 @@ jobs:
             apps/desktop/playwright-report
           retention-days: 14
           if-no-files-found: warn
+

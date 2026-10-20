@@ -1,7 +1,8 @@
+import { useStore } from '@nanostores/react'
 import { type CSSProperties } from 'react'
 
 import { HackeryButton } from '../components/hackery-button'
-import { startInstall } from '../store'
+import { $hermesHome, startInstall } from '../store'
 
 /*
  * Welcome screen.
@@ -11,11 +12,10 @@ import { startInstall } from '../store'
  *   - mix-blend-plus-lighter so the type "glows" on the canvas
  *   - fit-text utility so the wordmark sizes itself to the column
  *
- * No install-path footer. The default install location is correct for
- * 99% of users; the rest will use the CLI installer with a -HermesHome
- * flag. Showing %LOCALAPPDATA% to grandma is developer-brain.
  */
 export default function Welcome() {
+  const hermesHome = useStore($hermesHome)
+
   return (
     <div className="hermes-fade-in flex h-full flex-col items-center justify-center gap-10 px-12 py-10">
       {/* Hero — same recipe the desktop's chat/intro.tsx uses */}
@@ -42,6 +42,10 @@ export default function Welcome() {
         </p>
       </div>
 
+      <div className="w-full max-w-2xl rounded-xl border border-border p-4 text-sm">
+        <p className="text-muted-foreground">Installation and data folder</p>
+        <p className="mt-1 break-all font-mono">{hermesHome}</p>
+      </div>
       <HackeryButton label="Install" onClick={() => void startInstall()} />
     </div>
   )

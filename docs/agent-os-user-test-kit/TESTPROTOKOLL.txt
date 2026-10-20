@@ -1,0 +1,79 @@
+AGENT OS - MEIN NUTZERTEST
+
+Datum:
+Windows-Version:
+Frischer Benutzer/VM oder bestehende Installation:
+Commit (build-metadata.json):
+Modellanbieter und Modell (keine Zugangsdaten):
+
+Je Test: BESTANDEN / FEHLER / NICHT GETESTET, Beobachtung, ggf. Fehlermeldung.
+
+01 Installation und Launch
+Erwartung: Assistent und Installationsstufen schließen ab; Launch öffnet Hermes.
+Ergebnis:
+
+02 Modell und STATUS.cmd
+Erwartung: Eine echte Chatantwort; Status bestätigt den Paketcommit,
+full_ready und production_security_ready. Status allein ersetzt keine Aufgabe.
+Ergebnis:
+
+03 Datei, Vorschau und Download
+Erwartung: Vor Freigabe keine Datei. Danach korrekter Inhalt im Arbeitsordner,
+in der Vorschau UND in der außerhalb der App geöffneten Download-Datei.
+Ergebnis:
+
+04 Planbearbeitung
+Erwartung: Schreibinhalt und erwartete Prüfung auf Version B ändern.
+Speichern erzeugt eine neue ungeprüfte Revision; erst Freigabe führt sie aus.
+Ergebnis:
+
+05 Neustart vor Planfreigabe
+Erwartung: Ungeprüfter Entwurf bleibt nach Neustart erhalten und wartet weiter.
+Ergebnis:
+
+06 Browser
+Erwartung: https://example.com öffnet sich tatsächlich; Überschrift wird gelesen
+und geprüft. Keine behauptete Ausführung bei blockiertem Browser.
+Ergebnis:
+
+07 Notepad / Computersteuerung
+Erwartung: Ein neues Dokument enthält sichtbar Agent OS Computer-Test.
+Keine eigenen Dokumente verändern. Sichtbares Ergebnis selbst prüfen.
+Ergebnis:
+
+08 Plan verwerfen
+Erwartung: abgelehnt.txt entsteht nicht; Neustart startet den verworfenen Plan nicht.
+Ergebnis:
+
+09 Veralteter Dateinachweis
+Erwartung: Eine geprüfte Datei in Notepad ändern. Erneute Vorschau darf den alten
+Nachweis nicht als passend darstellen. Download holt den aktuellen Dateistand.
+Ergebnis:
+
+10 Reparatur derselben Version
+Erwartung: Hermes vorher schließen. REPARIEREN.cmd hält den Paketcommit fest.
+Nach erneutem Start sind vorherige Entwürfe und Dateinachweise weiterhin vorhanden.
+Ergebnis:
+
+11 Fehler und Unterbrechung
+Erwartung: Nicht abgeschlossene Aktionen werden nicht als erfolgreich ausgegeben.
+Unterbrochene Missionen nur fortsetzen, wenn die App dies ausdrücklich anbietet.
+Ergebnis:
+
+12 Versionsupdate
+Noch nicht durch Reparatur belegt. Benötigt zwei geprüfte Versionen und einen
+eigenen Abnahmelauf mit erhaltenen Daten. Bis dahin NICHT GETESTET eintragen.
+Ergebnis:
+
+ERSTER BLOCKER
+Schritt:
+Eingabe/Aufgabe:
+Erwartet:
+Tatsächlich sichtbar:
+Fehlermeldung:
+Testdiagnose.json vorhanden:
+
+GESAMTERGEBNIS
+Für meine Aufgaben nutzbar:
+Offene Fehler:
+Keine automatische Produktionsfreigabe durch dieses Formular.

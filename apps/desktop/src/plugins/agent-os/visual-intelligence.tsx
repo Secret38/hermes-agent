@@ -645,7 +645,7 @@ function knowledgeNodeScore(node: AgentOSLearningNode, degree: number): number {
   return degree * 1000 + (node.useCount ?? 0) * 10 + (node.pinned ? 5 : 0)
 }
 
-export function buildKnowledgeCanvasModel(graph: AgentOSLearningGraph, limit = 30): KnowledgeCanvasModel {
+export function buildKnowledgeCanvasModel(graph: AgentOSLearningGraph, limit = 30, selectedId?: string): KnowledgeCanvasModel {
   const degree = new Map<string, number>()
 
   for (const edge of graph.edges) {
@@ -664,6 +664,15 @@ export function buildKnowledgeCanvasModel(graph: AgentOSLearningGraph, limit = 3
   const memoryLimit = Math.max(1, Math.ceil(limit / 2))
   const skillLimit = Math.max(1, limit - memoryLimit)
   const visible = [...memory.slice(0, memoryLimit), ...skills.slice(0, skillLimit)]
+  const selected = graph.nodes.find(node => node.id === selectedId)
+
+  if (selected && !visible.some(node => node.id === selected.id)) {
+    const sameKind = visible.findLastIndex(node => (node.kind === 'memory') === (selected.kind === 'memory'))
+
+    if (sameKind >= 0) {visible.splice(sameKind, 1)}
+    visible.unshift(selected)
+  }
+
   const visibleIds = new Set(visible.map(node => node.id))
   const rows = new Map<number, number>()
 
@@ -722,7 +731,7 @@ export function SemanticKnowledgeCanvas({
   onSelect: (id: string) => void
   selectedId?: string
 }) {
-  const model = useMemo(() => buildKnowledgeCanvasModel(graph), [graph])
+  const model = useMemo(() => buildKnowledgeCanvasModel(graph, 30, selectedId), [graph, selectedId])
   const [zoom, setZoom] = useState(1)
   const [focusPath, setFocusPath] = useState(false)
   const viewportRef = useRef<HTMLDivElement>(null)
@@ -909,6 +918,7 @@ export function SemanticKnowledgeCanvas({
               return (
                 <button
                   aria-label={node.label}
+                  aria-pressed={selectedId === node.id}
                   className={cn(
                     'aos-knowledge-node',
                     node.kind === 'memory' ? 'aos-knowledge-node-memory' : 'aos-knowledge-node-skill',
@@ -1047,6 +1057,7 @@ export function RuntimeObservatory({ task }: { task: AgentOSTask }) {
   useEffect(() => {
     setLiveFrame(undefined)
     setLiveStatus(liveEnabled ? 'waiting' : 'idle')
+
     if (!liveEnabled) {
       return
     }
@@ -1055,11 +1066,14 @@ export function RuntimeObservatory({ task }: { task: AgentOSTask }) {
       if (message.task_id !== task.id) {
         return
       }
+
       if (message.type === 'runtime.frame') {
         setLiveFrame(message)
         setLiveStatus('live')
+
         return
       }
+
       setLiveFrame(undefined)
       setLiveStatus('waiting')
     })

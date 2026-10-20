@@ -1,9 +1,11 @@
-import { cn, Codicon, host, useQuery } from '@hermes/plugin-sdk'
+import { Button, cn, Codicon, host, usePluginI18n, useQuery } from '@hermes/plugin-sdk'
 import { useState } from 'react'
 
 import { AGENT_OS_CONTEXT_KEY, fetchAgentOSContext } from './api'
+import { MemoryDetail } from './memory-detail'
+import { MemoryEvidence } from './memory-evidence'
+import { memoryCardForNode, MemorySearch, searchMemoryGraph } from './memory-search'
 import type {
-  AgentOSLearningNode,
   AgentOSMcpConnection,
   AgentOSMemoryProviderConnection
 } from './types'
@@ -68,31 +70,17 @@ function formatMemoryTimestamp(value: null | number | undefined): string {
   }).format(date)
 }
 
-function memoryCardForNode(
-  node: AgentOSLearningNode | undefined,
-  cards: Array<{ source: string; title: string; body: string }>
-) {
-  if (!node || node.kind !== 'memory') {
-    return undefined
-  }
-
-  const match = node.id.match(/^memory:[^:]+:(\d+)$/)
-
-  if (!match) {
-    return undefined
-  }
-
-  return cards[Number(match[1])]
-}
-
 export function SemanticMemorySection() {
-  const { data, error } = useQuery({
+  const t = usePluginI18n('agent-os')
+
+  const { data, error, refetch, isFetching } = useQuery({
     queryFn: fetchAgentOSContext,
     queryKey: AGENT_OS_CONTEXT_KEY,
     refetchInterval: 60_000
   })
 
   const [selectedId, setSelectedId] = useState<string>()
+  const [query, setQuery] = useState('')
 
   if (error) {
     return <ErrorPanel message={error instanceof Error ? error.message : String(error)} />
@@ -103,15 +91,16 @@ export function SemanticMemorySection() {
   }
 
   const graph = data.learning
+  const filteredGraph = searchMemoryGraph(graph, query)
 
-  const orderedNodes = [...graph.nodes].sort(
+  const orderedNodes = [...filteredGraph.nodes].sort(
     (a, b) =>
       Number(b.kind === 'memory') - Number(a.kind === 'memory') ||
       (b.useCount ?? 0) - (a.useCount ?? 0) ||
       a.label.localeCompare(b.label)
   )
 
-  const selected = selectedId ? graph.nodes.find(node => node.id === selectedId) : orderedNodes[0]
+  const selected = orderedNodes.find(node => node.id === selectedId) ?? orderedNodes[0]
   const selectedCard = memoryCardForNode(selected, graph.memory)
   const edgeCountByNode = new Map<string, number>()
 
@@ -140,25 +129,29 @@ export function SemanticMemorySection() {
               </div>
             </div>
           </div>
+          <Button disabled={isFetching} onClick={() => void refetch()} size="sm" variant="ghost">{t('refreshMemoryGraph')}</Button>
           {graph.error && <span className="text-[0.6rem] text-destructive">{graph.error}</span>}
         </div>
 
-        <div className="grid gap-3 p-3 xl:grid-cols-[minmax(0,1.45fr)_minmax(17rem,0.55fr)]">
+        <MemorySearch nodes={orderedNodes} onQuery={setQuery} onSelect={setSelectedId}
+          query={query} selectedId={selected?.id} total={graph.nodes.length} />
+
+        <div className="grid min-w-0 gap-3 p-3 xl:grid-cols-[minmax(0,1.45fr)_minmax(17rem,0.55fr)]">
           <div className="min-h-64 overflow-hidden rounded-lg border border-(--ui-stroke-tertiary) bg-(--ui-bg-primary)">
             <SemanticKnowledgeCanvas
-              graph={graph}
+              graph={filteredGraph}
               onSelect={setSelectedId}
               selectedId={selected?.id}
             />
           </div>
 
-          <aside className="rounded-lg border border-(--ui-stroke-tertiary) bg-(--ui-bg-secondary) p-3">
+          <aside className="min-w-0 rounded-lg border border-(--ui-stroke-tertiary) bg-(--ui-bg-secondary) p-3">
             {selected ? (
               <>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="aos-kicker">{selected.kind === 'memory' ? 'Memory' : 'Learned skill'}</div>
-                    <div className="mt-1.5 text-sm font-semibold leading-snug text-foreground">{selected.label}</div>
+                    <div className="mt-1.5 break-words text-sm font-semibold leading-snug text-foreground">{selected.label}</div>
                   </div>
                   <Codicon
                     className="shrink-0 text-(--ui-text-tertiary)"
@@ -206,38 +199,37 @@ export function SemanticMemorySection() {
                 </div>
 
                 {selectedCard && (
-                  <div className="aos-scrollbar mt-3 max-h-72 overflow-y-auto whitespace-pre-wrap rounded-md border border-(--ui-stroke-tertiary) bg-(--ui-bg-primary) p-2.5 text-[0.65rem] leading-relaxed text-(--ui-text-secondary)">
-                    {selectedCard.body}
-                  </div>
+                  <MemoryDetail excerpt={selectedCard.body} key={selected.id} nodeId={selected.id} />
                 )}
 
                 <div className="mt-3 border-t border-(--ui-stroke-tertiary) pt-2">
                   <div className="aos-kicker">Connected to</div>
-                  <div className="mt-2 flex flex-wrap gap-1">
+                  <div className="aos-scrollbar mt-2 max-h-64 space-y-3 overflow-y-auto">
                     {graph.edges
                       .filter(edge => edge.source === selected.id || edge.target === selected.id)
-                      .slice(0, 12)
                       .map(edge => {
                         const other = edge.source === selected.id ? edge.target : edge.source
                         const node = graph.nodes.find(item => item.id === other)
 
                         return (
-                          <button
-                            aria-label={node?.label || other}
-                            className="max-w-full truncate rounded border border-(--ui-stroke-tertiary) px-1.5 py-1 text-[0.58rem] text-(--ui-text-secondary) hover:bg-(--ui-control-hover-background)"
-                            key={`${edge.source}->${edge.target}`}
-                            onClick={() => setSelectedId(other)}
-                            type="button"
-                          >
-                            {node?.label || other}
-                          </button>
+                          <div className="min-w-0 space-y-1" key={`${edge.source}->${edge.target}`}>
+                            <button
+                              aria-label={node?.label || other}
+                              className="max-w-full truncate rounded border border-(--ui-stroke-tertiary) px-1.5 py-1 text-[0.58rem] text-(--ui-text-secondary) hover:bg-(--ui-control-hover-background)"
+                              onClick={() => { setQuery(''); setSelectedId(other) }}
+                              type="button"
+                            >
+                              {node?.label || other}
+                            </button>
+                            <MemoryEvidence edge={edge} />
+                          </div>
                         )
                       })}
                   </div>
                 </div>
               </>
             ) : (
-              <div className="grid min-h-48 place-items-center text-xs text-(--ui-text-tertiary)">No semantic memory yet.</div>
+              <div className="grid min-h-48 place-items-center text-xs text-(--ui-text-tertiary)">{t('noMemoryMatches')}</div>
             )}
           </aside>
         </div>

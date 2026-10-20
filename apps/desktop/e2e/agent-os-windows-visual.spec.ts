@@ -1,8 +1,8 @@
 import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 
+import { type MockBackendFixture, type Sandbox, setupMockBackend, waitForAppReady } from './fixtures'
 import { expect, test } from './test'
-import { setupMockBackend, waitForAppReady, type MockBackendFixture, type Sandbox } from './fixtures'
 
 const scale = Number(process.env.AGENT_OS_VISUAL_SCALE ?? '1')
 const scaleLabel = String(Math.round(scale * 100))
@@ -12,12 +12,27 @@ let fixture: MockBackendFixture | null = null
 function seedAgentOS(sandbox: Sandbox, env: Record<string, string>): void {
   const script = String.raw`
 import os
+from hermes_constants import get_hermes_home
+from tools.skill_usage import record_created
 from agent_os.agents.records import AgentInstanceRecord, AgentInstanceState
 from agent_os.contracts import ActionRecord, TaskRecord
 from agent_os.events import EventRecord, EventType
 from agent_os.orchestration.plan import PlanRecord, PlanState, PlanStepKind, PlanStepRecord, PlanStepState
 from agent_os.states import ActionState, TaskState
 from agent_os.store import AgentOSStore
+
+memory_dir = get_hermes_home() / "memories"
+memory_dir.mkdir(parents=True, exist_ok=True)
+(memory_dir / "MEMORY.md").write_text(
+    "Visual memory note\nUse report-builder. " + "Long note content. " * 100 + "FULL_NOTE_VISUAL_END", encoding="utf-8"
+)
+for name, related in (("report-builder", "[reviewer]"), ("reviewer", "[]")):
+    folder = get_hermes_home() / "skills" / name
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "SKILL.md").write_text(
+        f"---\nname: {name}\ndescription: Visual QA\nrelated_skills: {related}\n---\nVisual test skill", encoding="utf-8"
+    )
+    record_created(name, agent_created=False)
 
 store = AgentOSStore()
 store.initialize()
@@ -96,7 +111,7 @@ write = PlanStepRecord.create(
 )
 verify = PlanStepRecord.create(
     plan_id=draft.id, task_id=review_task.id, title="Verify saved notes", kind=PlanStepKind.VERIFICATION,
-    spec={"tool": "file", "operation": "read_file", "input": {"path": "release-notes.txt"}, "expected_state": {"contains": "Reviewed release notes"}},
+    spec={"tool": "file", "operation": "read_file", "input": {"path": "release-notes.txt"}, "expected_state": {"content_contains": "Reviewed release notes"}},
 )
 store.create_plan(draft, [write, verify], {verify.id: [write.id]})
 store.transition_task(review_task.id, TaskState.READY)
@@ -177,6 +192,7 @@ async function focusTasksWithKeyboard() {
   const tasks = page.getByRole('button', { name: 'Tasks', exact: true })
   await expect(tasks).toBeFocused()
   expect(await tasks.evaluate(element => element.matches(':focus-visible'))).toBe(true)
+
   return tasks
 }
 
@@ -203,10 +219,13 @@ test(`Mission Control renders without clipping at ${scaleLabel}% DPI`, async () 
   expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 2)
 
   const tasks = await focusTasksWithKeyboard()
+
   const focusStyle = await tasks.evaluate(element => {
     const style = getComputedStyle(element)
+
     return { outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth }
   })
+
   expect(focusStyle.outlineStyle).not.toBe('none')
   const physicalOutlineWidth = Number.parseFloat(focusStyle.outlineWidth) * scale
   expect(physicalOutlineWidth).toBeGreaterThanOrEqual(1.99)
@@ -221,7 +240,7 @@ test(`Mission Control renders without clipping at ${scaleLabel}% DPI`, async () 
 test(`Mission Control navigation remains operable at ${scaleLabel}% DPI`, async () => {
   const { page } = fixture!
   await gotoMissionControl()
-  const sections = ['Tasks', 'Operations', 'Projects', 'Fleet', 'Memory', 'Connections', 'Security']
+  const sections = ['Tasks', 'Results', 'Operations', 'Projects', 'Fleet', 'Memory', 'Connections', 'Security']
 
   for (const section of sections) {
     const button = page.getByRole('button', { name: section, exact: true })
@@ -231,11 +250,13 @@ test(`Mission Control navigation remains operable at ${scaleLabel}% DPI`, async 
   }
 
   const nav = page.getByRole('navigation', { name: 'Agent OS sections' })
+
   const overflow = await nav.evaluate(element => ({
     clientWidth: element.clientWidth,
     scrollWidth: element.scrollWidth,
     overflowX: getComputedStyle(element).overflowX,
   }))
+
   expect(['auto', 'scroll']).toContain(overflow.overflowX)
   expect(overflow.scrollWidth).toBeGreaterThanOrEqual(overflow.clientWidth)
 })
@@ -258,11 +279,13 @@ test(`Mission Control keyboard-only navigation works in a compact window at ${sc
   await expect(tasks).toHaveAttribute('aria-pressed', 'true')
 
   const nav = page.getByRole('navigation', { name: 'Agent OS sections' })
+
   const compact = await nav.evaluate(element => ({
     clientWidth: element.clientWidth,
     scrollWidth: element.scrollWidth,
     overflowX: getComputedStyle(element).overflowX,
   }))
+
   expect(['auto', 'scroll']).toContain(compact.overflowX)
   expect(compact.scrollWidth).toBeGreaterThan(compact.clientWidth)
 
@@ -283,18 +306,24 @@ test(`Mission Control respects Windows High Contrast at ${scaleLabel}% DPI`, asy
   expect(forcedColors).toBe(true)
 
   const root = page.locator('.agent-os-page')
+
   const surface = await root.evaluate(element => {
     const style = getComputedStyle(element)
+
     return { backgroundImage: style.backgroundImage, color: style.color }
   })
+
   expect(surface.backgroundImage).toBe('none')
   expect(surface.color).not.toBe('rgba(0, 0, 0, 0)')
 
   const tasks = await focusTasksWithKeyboard()
+
   const focus = await tasks.evaluate(element => {
     const style = getComputedStyle(element)
+
     return { outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth }
   })
+
   expect(focus.outlineStyle).not.toBe('none')
   expect(Number.parseFloat(focus.outlineWidth) * scale).toBeGreaterThanOrEqual(1.99)
 
@@ -320,10 +349,14 @@ test(`Mission Control honors reduced motion at ${scaleLabel}% DPI`, async () => 
 
   const animationMs = await runningDot.evaluate(element => {
     const value = getComputedStyle(element).animationDuration.trim()
-    if (value.endsWith('ms')) return Number.parseFloat(value)
-    if (value.endsWith('s')) return Number.parseFloat(value) * 1000
+
+    if (value.endsWith('ms')) {return Number.parseFloat(value)}
+
+    if (value.endsWith('s')) {return Number.parseFloat(value) * 1000}
+
     return Number.POSITIVE_INFINITY
   })
+
   expect(animationMs).toBeLessThanOrEqual(0.011)
 })
 
@@ -360,9 +393,20 @@ test(`A saved plan stays pending after reload and can be discarded at ${scaleLab
   await review.getByRole('button', { name: 'Edit steps', exact: true }).click()
   await review.getByRole('textbox', { name: 'Step title', exact: true }).first().fill('Save corrected release notes')
   await expect(review.getByRole('button', { name: 'Approve and start', exact: true })).toBeDisabled()
+  await review.getByRole('textbox', { name: 'File contents', exact: true }).fill('User-edited release notes')
+  await review.getByRole('textbox', { name: 'Required text in file', exact: true }).fill('User-edited release notes')
+  await review.getByText('Advanced JSON', { exact: true }).first().click()
+  const details = review.getByRole('textbox', { name: 'Action details: Save release notes', exact: true })
+  const originalSpec = await details.inputValue()
+  await details.fill('{broken')
+  await review.getByRole('button', { name: 'Save new version', exact: true }).click()
+  await expect(review.getByRole('alert')).toBeVisible()
+  await expect(review.getByRole('button', { name: 'Save new version', exact: true })).toBeEnabled()
+  await details.fill(originalSpec)
   await review.getByRole('button', { name: 'Save new version', exact: true }).click()
   await expect(review.getByText('Save corrected release notes', { exact: true })).toBeVisible()
   await expect(review.getByText('Version: 2', { exact: true })).toBeVisible()
+  await expect(review).toContainText('User-edited release notes')
   await review.screenshot({ animations: 'disabled', path: test.info().outputPath(`agent-os-windows-${scaleLabel}-plan-edited-actual.png`) })
   await page.reload()
   await gotoMissionControl()
@@ -373,4 +417,41 @@ test(`A saved plan stays pending after reload and can be discarded at ${scaleLab
   await discard.focus()
   await page.keyboard.press('Enter')
   await expect(review).toHaveCount(0)
+})
+
+test(`Results stay searchable and readable in a compact window at ${scaleLabel}% DPI`, async () => {
+  const { page } = fixture!
+  await page.emulateMedia({ forcedColors: 'none', reducedMotion: 'reduce' })
+  await setWindowSize(820, 640)
+  await gotoMissionControl()
+  const resultsTab = page.getByRole('button', { name: 'Results', exact: true })
+  await resultsTab.focus()
+  await page.keyboard.press('Enter')
+  await expect(resultsTab).toHaveAttribute('aria-pressed', 'true')
+  const gallery = page.getByRole('region', { name: 'Results', exact: true })
+  await gallery.getByRole('textbox', { name: 'Find mission or workspace', exact: true }).fill('downloadable')
+  await gallery.getByRole('button', { name: 'Create a downloadable test result', exact: true }).click()
+  await expect(gallery.getByText('visual-result.txt', { exact: true })).toBeVisible()
+  await gallery.getByRole('button', { name: 'Preview', exact: true }).click()
+  await expect(gallery.getByText('A verified file from the Windows test', { exact: true })).toBeVisible()
+  const width = await gallery.evaluate(element => ({ client: element.clientWidth, scroll: element.scrollWidth }))
+  expect(width.scroll).toBeLessThanOrEqual(width.client + 2)
+  await gallery.screenshot({ animations: 'disabled', path: test.info().outputPath(`agent-os-windows-${scaleLabel}-results-gallery-actual.png`) })
+})
+
+
+test(`Memory search, full note and connection evidence at ${scaleLabel}% DPI`, async () => {
+  const { page } = fixture!
+  await setWindowSize(820, 640)
+  await gotoMissionControl()
+  await page.getByRole('button', { name: 'Memory', exact: true }).click()
+  await page.getByRole('textbox', { name: 'Search memories, skills or sources' }).fill('Visual memory note')
+  await expect(page.getByRole('navigation', { name: 'Memories and skills' }).getByRole('button')).toHaveCount(1)
+  await expect(page.getByText('Shared words; inferred connection, not a verified fact')).toBeVisible()
+  await page.getByRole('button', { name: 'Read full note', exact: true }).click()
+  await expect(page.getByText(/FULL_NOTE_VISUAL_END/)).toBeVisible()
+  await page.screenshot({
+    animations: 'disabled', caret: 'hide',
+    path: test.info().outputPath(`agent-os-memory-${scaleLabel}-actual.png`),
+  })
 })

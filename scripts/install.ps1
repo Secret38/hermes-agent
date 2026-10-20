@@ -1016,7 +1016,7 @@ function Stage-Products {
 
 function Set-LauncherUserPath([string]$binDir) {
     $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-    if ($userPath -notlike "*$binDir*") {
+    if (-not (Test-Path -LiteralPath (Join-Path $HermesHome 'agent-os-instance.json')) -and $userPath -notlike "*$binDir*") {
         [Environment]::SetEnvironmentVariable("Path", "$binDir;$userPath", "User")
         Write-Ok "added $binDir to your user PATH (new shells pick it up)"
     }
@@ -1175,7 +1175,41 @@ function Stage-Complete {
 }
 
 function New-DesktopShortcuts {
-    param([Parameter(Mandatory = $true)][string]$TargetExe)
+    param(
+        [Parameter(Mandatory = $true)][string]$TargetExe,
+        [string[]]$ShortcutFolders = @([Environment]::GetFolderPath('Programs'), [Environment]::GetFolderPath('Desktop'))
+    )
+
+    $instancePath = Join-Path $HermesHome 'agent-os-instance.json'
+    if (Test-Path -LiteralPath $instancePath) {
+        $instance = Get-Content -LiteralPath $instancePath -Raw | ConvertFrom-Json
+        if ($instance.id -notmatch '^[a-f0-9]{32}$') { throw 'Invalid isolated installation identity' }
+        @{exe=$TargetExe; home=$HermesHome} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $HermesHome 'agent-os-desktop.json') -Encoding UTF8
+        $launcher = Join-Path $HermesHome 'Start-Agent-OS.ps1'
+        @'
+$ErrorActionPreference = 'Stop'
+$config = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'agent-os-desktop.json') -Raw | ConvertFrom-Json
+$env:HERMES_HOME = $config.home
+$env:HERMES_DESKTOP_USER_DATA_DIR = Join-Path $config.home 'desktop-data'
+$env:HERMES_RUNTIME_DIR = Join-Path $config.home 'runtime'
+Start-Process -FilePath $config.exe -WorkingDirectory (Split-Path $config.exe -Parent)
+'@ | Set-Content -LiteralPath $launcher -Encoding UTF8
+        $shell = New-Object -ComObject WScript.Shell
+        $name = 'Hermes Agent OS (' + $instance.id.Substring(0, 8) + ').lnk'
+        foreach ($folder in (@($ShortcutFolders) + @($HermesHome))) {
+            New-Item -ItemType Directory -Path $folder -Force | Out-Null
+            $shortcut = $shell.CreateShortcut((Join-Path $folder $name))
+            $shortcut.TargetPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+            $shortcut.Arguments = '-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + $launcher + '"'
+            $shortcut.WorkingDirectory = $HermesHome
+            $shortcut.IconLocation = "$TargetExe,0"
+            $shortcut.Description = "Agent OS: $HermesHome"
+            $shortcut.Save()
+        }
+        Write-Ok "Separate Agent OS launcher created in $HermesHome"
+        return
+    }
+
 
     # Best-effort: a shortcut failure must never fail an otherwise-good install.
     try {

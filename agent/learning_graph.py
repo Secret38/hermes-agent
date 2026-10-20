@@ -176,9 +176,9 @@ def _tokenize(text: str) -> set[str]:
     return {t for t in re.split(r"[^a-z0-9]+", text.lower()) if len(t) >= 3}
 
 
-def _memory_skill_edges(memory_cards: list[dict[str, Any]], skills: list[SkillNode]) -> list[tuple[str, str]]:
+def _memory_skill_edges(memory_cards: list[dict[str, Any]], skills: list[SkillNode]) -> list[dict[str, Any]]:
     """Top-4 lexically overlapping skills per memory card (name hit weighs 6)."""
-    edges: list[tuple[str, str]] = []
+    edges: list[dict[str, Any]] = []
     skill_meta = [(s.name, _tokenize(s.name), s.name.lower()) for s in skills]
     for idx, card in enumerate(memory_cards):
         text = f"{card.get('title', '')}\n{card.get('body', '')}".lower()
@@ -187,7 +187,12 @@ def _memory_skill_edges(memory_cards: list[dict[str, Any]], skills: list[SkillNo
             ((score, name) for name, tokens, name_lower in skill_meta if (score := (6 if name_lower in text else 0) + len(tokens & text_tokens)) > 0),
             key=lambda x: (-x[0], x[1]),
         )
-        edges.extend((memory_node_id(card, idx), name) for _, name in scored[:4])
+        for score, name in scored[:4]:
+            edges.append({
+                "source": memory_node_id(card, idx), "target": name,
+                "kind": "lexical", "shared_terms": sorted(_tokenize(name) & text_tokens),
+                "name_match": name.lower() in text, "score": score,
+            })
     return edges
 
 
@@ -230,7 +235,11 @@ def build_learning_graph() -> dict[str, Any]:
     ]
     return {
         "nodes": graph_nodes,
-        "edges": [{"source": a, "target": b} for a, b in skill_edges + memory_edges],
+        "edges": [
+            {"source": a, "target": b, "kind": "declared",
+             "declared_by": [name for name, target in ((a, b), (b, a)) if target in learned_skills[name].related]}
+            for a, b in skill_edges
+        ] + memory_edges,
         "clusters": [{"category": c, "count": n} for c, n in sorted(clusters.items(), key=lambda kv: -kv[1])],
         "memory": memory_cards,
         "stats": {

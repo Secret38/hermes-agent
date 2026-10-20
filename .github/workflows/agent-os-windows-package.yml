@@ -1,10 +1,21 @@
 name: Agent OS Windows Installer Candidate
 
 on:
+  workflow_dispatch:
   pull_request:
     paths:
+      - "apps/desktop/**"
+      - "apps/shared/**"
+      - "agent/**"
+      - "plugins/agent-os/**"
+      - "package.json"
+      - "package-lock.json"
+      - "pyproject.toml"
+      - "uv.lock"
       - "apps/bootstrap-installer/**"
       - "scripts/install.ps1"
+      - "scripts/agent_os_user_test.ps1"
+      - "docs/agent-os-user-test-kit/**"
       - "scripts/install.sh"
       - "scripts/tests/test-install-ps1-*.ps1"
       - "agent_os/**"
@@ -13,19 +24,13 @@ on:
     branches:
       - agent-os-v1
       - agent-os-v1-release-candidate
-    paths:
-      - "apps/bootstrap-installer/**"
-      - "scripts/install.ps1"
-      - "scripts/install.sh"
-      - "scripts/tests/test-install-ps1-*.ps1"
-      - "agent_os/**"
-      - ".github/workflows/agent-os-windows-package.yml"
+      - agent-os-user-test-20261009
 
 permissions:
   contents: read
 
 concurrency:
-  group: agent-os-windows-package-${{ github.ref }}
+  group: agent-os-windows-package-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
@@ -48,7 +53,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           foreach ($engine in @('powershell', 'pwsh')) {
-            foreach ($suite in @('protocol', 'repository-binding', 'agent-os-runtime')) {
+            foreach ($suite in @('protocol', 'repository-binding', 'agent-os-runtime', 'user-kit', 'isolated')) {
               & $engine -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "scripts/tests/test-install-ps1-$suite.ps1"
               if ($LASTEXITCODE -ne 0) {
                 throw "Installer $suite failed under $engine (exit $LASTEXITCODE)"
@@ -75,11 +80,15 @@ jobs:
           $ErrorActionPreference = 'Stop'
           cargo metadata --locked --manifest-path apps/bootstrap-installer/src-tauri/Cargo.toml --format-version 1 | Out-Null
 
+      - name: Verify isolated bootstrap launch environment
+        shell: pwsh
+        run: cargo test --locked --manifest-path apps/bootstrap-installer/src-tauri/Cargo.toml isolated_desktop_commands_bind_both_data_roots
+
       - name: Build pinned Windows executable
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          npm run tauri:build --workspace @hermes/bootstrap-installer -- --bundles nsis
+          npm run tauri:build --workspace @hermes/bootstrap-installer -- --bundles nsis --config src-tauri/tauri.agent-os-test.conf.json
 
           # Ship the installer bundle: the raw Tauri executable alone cannot
           # provision WebView2 on a fresh Windows machine.
@@ -107,6 +116,12 @@ jobs:
             production_release = $false
           } | ConvertTo-Json | Set-Content -Encoding utf8 dist/build-metadata.json
 
+      - name: Assemble user test kit
+        shell: pwsh
+        run: |
+          Copy-Item docs/agent-os-user-test-kit/* dist/ -Force
+          Copy-Item scripts/agent_os_user_test.ps1 dist/ -Force
+
       - name: Upload unsigned release candidate
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
         with:
@@ -115,5 +130,10 @@ jobs:
             dist/Hermes-Setup.exe
             dist/SHA256SUMS.txt
             dist/build-metadata.json
+            dist/*.cmd
+            dist/*.ps1
+            dist/*.md
+            dist/*.txt
           if-no-files-found: error
           retention-days: 30
+

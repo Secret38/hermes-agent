@@ -1,6 +1,6 @@
 # Windows Agent OS: installierbarer Testkandidat
 
-Stand: 4. Oktober 2026. Dieser Kandidat ist für einen begleiteten Nutzertest,
+Stand: 9. Oktober 2026. Dieser Kandidat ist für einen begleiteten Nutzertest,
 noch nicht als vollständig abgenommener Produktionsrelease bestimmt.
 Die genaue Quellversion und die SHA-256-Prüfsumme stehen neben der EXE in
 `build-metadata.json` und `SHA256SUMS.txt`.
@@ -61,11 +61,11 @@ Eine ausdrücklich als unterbrochen angebotene Mission kann über `Resume`
 fortgesetzt werden. Eine blockierte oder fehlgeschlagene Aufgabe darf nicht
 allein durch eine Statusänderung als erfolgreich gelten.
 
-Für eine gezielte Reparatur ist der bestehende Bootstrap-Aufruf verfügbar:
+Für dieses Testpaket liegt REPARIEREN.cmd bei. Es verwendet das vorhandene
+Installationsskript und hält den Paketcommit fest. Der frühere, nicht abgenommene
+Bootstrap-Aufruf wird hier nicht mehr als Reparaturweg empfohlen:
 
-```powershell
-& "$env:LOCALAPPDATA\hermes\hermes-setup.exe" --repair
-```
+REPARIEREN.cmd vor der Ausführung lesen und Hermes vollständig schließen.
 
 Bei abweichendem `HERMES_HOME` den entsprechenden Pfad verwenden. Reparatur,
 Update, Neustart und echte Browser-/Computeraktionen gehören weiterhin zur
@@ -81,7 +81,9 @@ Fehlermeldung und die relevante Logstelle angeben; Zugangsdaten nicht mitsenden.
   Ein allgemeiner Artefaktkatalog für beliebige Terminal-/Browser-/Subagent-Ausgaben,
   Bild-/PDF-Vorschauen und projektweite Suche sind noch offen.
 - Vollständige Wiederaufnahme jeder Fehlerklasse, alle Referenzvideo-Abläufe,
-  die maschinenweite Sperre über mehrere Backend-Prozesse und die frische
-  Windows-End-to-End-Abnahme sind noch offen.
+  und die frische Windows-End-to-End-Abnahme sind noch offen. Die Desktopreservierung
+  wird nun zwischen Backend-Prozessen desselben Benutzers geteilt; sie sperrt
+  keine manuellen Eingaben oder fremden Anwendungen.
 - Kein signierter Produktionsrelease und keine automatische Zusammenführung
   des Review-Branches. Signierung und Produktionsfreigabe behalten ihre Gates.
+
